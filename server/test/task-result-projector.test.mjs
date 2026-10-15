@@ -3,6 +3,18 @@ import test from 'node:test'
 import { ConversationSync } from '../src/conversation/conversation-sync.mjs'
 import { recordTaskResult } from '../src/conversation/task-result-projector.mjs'
 
+test('continuation revisions preserve prior results without duplicating reconnect deliveries', () => {
+  const sync = new ConversationSync()
+  for (const revision of [0, 1, 1]) {
+    recordTaskResult({
+      conversationSync: sync, ownerId: 'personal', sessionId: 'main',
+      task: { id: 'task_1', status: 'completed', revision, result: `result ${revision}` },
+    })
+  }
+  assert.deepEqual(sync.list({ ownerId: 'personal', sessionId: 'main' })
+    .map(item => item.content), ['result 0', 'result 1'])
+})
+
 test('records terminal work results identically', () => {
   const sync = new ConversationSync()
   for (const id of ['first', 'second']) {

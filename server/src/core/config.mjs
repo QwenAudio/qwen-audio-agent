@@ -544,12 +544,12 @@ export const config = {
   ),
   taskMaxConcurrent: numberSetting(
     process.env.QWEN_AUDIO_AGENT_TASK_MAX_CONCURRENT,
-    4,
+    1,
     { min: 1, max: 64 },
   ),
   taskMaxConcurrentPerOwner: numberSetting(
     process.env.QWEN_AUDIO_AGENT_TASK_MAX_CONCURRENT_PER_OWNER,
-    2,
+    1,
     { min: 1, max: 16 },
   ),
   conversationSessionTtlMs: numberSetting(

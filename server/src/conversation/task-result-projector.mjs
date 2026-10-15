@@ -8,7 +8,7 @@ export function recordTaskResult({
   return conversationSync.record({
     ownerId,
     sessionId,
-    id: `agent:${task.id}`,
+    id: `agent:${task.id}${task.revision ? `:${task.revision}` : ''}`,
     role: 'assistant',
     content: task.status === 'completed' ? task.result : task.error,
     source: 'agent-result',

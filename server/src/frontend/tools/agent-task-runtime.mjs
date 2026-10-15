@@ -10,6 +10,12 @@ const CANCEL_RECEIPT_INSTRUCTIONS = [
 ].join(' ')
 
 const STATUS_RESULT_MESSAGE = '请根据这次查询结果自然回答用户；不要再次调用状态工具，不要展示 task_id。'
+const WORK_ACCEPTED_MESSAGE = '请求已受理，执行结果另行返回。本次只需自然确认受理。'
+const WORK_DUPLICATE_MESSAGE = '请求此前已受理。本次只需自然确认受理。'
+
+// Frontend handlers can be replaced on reconnect while their Tasks keep
+// running. Keep bounded tool receipts with that TaskManager's lifetime.
+const updateReceiptsByTaskManager = new WeakMap()
 
 function objectiveFingerprint(objective) {
   return createHash('sha256')
@@ -61,6 +67,9 @@ export class AgentTaskRuntime {
   constructor(host) {
     this.host = host
     this.permissionReceipts = new Map()
+    const manager = host.taskOperations?.taskManager || host.taskManager || host.taskOperations || host
+    if (!updateReceiptsByTaskManager.has(manager)) updateReceiptsByTaskManager.set(manager, new Map())
+    this.updateResponses = updateReceiptsByTaskManager.get(manager)
   }
 
   pendingPermissions() {
@@ -93,6 +102,68 @@ export class AgentTaskRuntime {
     return this.host.taskOperations.submit(input, {
       ownerId: this.host.ownerId, sessionId: this.host.sessionId, turnId,
     })
+  }
+
+  async executeUpdateToolCall({ callId, turnId, args, event, callContext = {} }) {
+    const responseId = String(callContext.responseId || event?.response_id || '')
+    const key = JSON.stringify([this.host.ownerId, this.host.sessionId, turnId || callId, args.task_id])
+    const previous = this.updateResponses.get(key)
+    let receipt
+    try {
+      // Keep the accepted receipt even after a pending input is resolved. A
+      // repeated answer must not fall through into steering or restart work.
+      if (previous) {
+        const prior = await previous
+        receipt = {
+          ...prior,
+          status: 'duplicate',
+          message: prior.input_request_id
+            ? '回答此前已受理，不代表操作已批准或执行完成。本次只需自然确认受理。'
+            : WORK_DUPLICATE_MESSAGE,
+        }
+      } else {
+        const pending = this.applyTaskUpdate({ callId, turnId, args })
+        this.updateResponses.set(key, pending)
+        if (this.updateResponses.size > 200) this.updateResponses.delete(this.updateResponses.keys().next().value)
+        receipt = await pending
+      }
+    } catch (error) {
+      if (!previous) this.updateResponses.delete(key)
+      await this.host.sendOutput(callId, failure(
+        error.code || 'work_update_failed', error.message, { retryable: false },
+      ), turnId, args.task_id)
+      return
+    }
+    if (previous) this.host.markTerminalToolResponse(responseId)
+    await this.host.sendOutput(callId, receipt, turnId, args.task_id,
+      previous ? { createResponse: false } : undefined)
+  }
+
+  async applyTaskUpdate({ callId, turnId, args }) {
+    const instruction = typeof args.instruction === 'string' ? args.instruction.trim() : ''
+    if (!instruction || instruction.length > 16_000) {
+      throw Object.assign(new Error('补充要求或回答不能为空或超过 16000 字符。'), { code: 'invalid_instruction' })
+    }
+    const task = this.host.taskOperations.get(args.task_id, this.host)
+    const request = task?.inputRequest
+    if (request?.status === 'pending'
+      || args.input_request_id !== undefined || args.values !== undefined) {
+      return this.replyToTaskInput(task, request, { ...args, instruction }, turnId)
+    }
+    const inputParts = mergeInputParts(
+      this.host.transcripts.parts(turnId),
+      this.host.inputAssets?.resolve({
+        ownerId: this.host.ownerId, sessionId: this.host.sessionId, refs: args.input_refs,
+      }) || [],
+    )
+    const receipt = this.host.taskOperations.update({
+      taskId: args.task_id, instruction, inputParts,
+      submissionKey: JSON.stringify(['update', this.host.sessionId, turnId || callId, args.task_id]),
+    }, this.host)
+    return {
+      status: receipt.status, task_id: receipt.taskId,
+      message: receipt.status === 'duplicate' ? WORK_DUPLICATE_MESSAGE : WORK_ACCEPTED_MESSAGE,
+    }
   }
 
   async executeCancelToolCall({
@@ -200,65 +271,9 @@ export class AgentTaskRuntime {
     event,
     callContext,
   }) {
-    const pendingInputTasks = this.host.taskOperations.list({
-      ownerId: this.host.ownerId,
-      sessionId: this.host.sessionId,
-      active: true,
-    }).filter(task => task.status !== 'cancelling' && task.inputRequest?.status === 'pending')
-    if (pendingInputTasks.length) {
-      // A waiting task retains the serial backend lane. A new work item cannot
-      // resume it and would remain queued indefinitely. Never infer approval
-      // from a spawn objective: return the actual pending request.
-      await this.host.sendOutput(callId, {
-        status: 'input_pending', error: true, error_code: 'input_response_required',
-        pending_inputs: pendingInputTasks.map(task => ({ task_id: task.id,
-          kind: task.inputRequest.kind, prompt: task.inputRequest.prompt })),
-        user_message: '当前有任务等待客户答复，未创建新任务。请回答或取消原任务后再派单。',
-        retryable: true,
-      }, turnId, pendingInputTasks.length === 1 ? pendingInputTasks[0].id : null, {
-        response: { instructions: [
-          'No new task was created. The existing task is waiting for CUSTOMER input.',
-          'If the latest real customer reply answers the pending request, call respond_agent_input with that task_id and the customer reply.',
-          'Do not invent an answer or approve on behalf of the customer. If the customer has not answered, convey the pending question and wait.',
-          'Do not call spawn_thinking again or claim any operation completed. Multiple pending requests require clarification of which one the customer is answering.',
-        ].join(' ') },
-      })
-      return
-    }
-    const pendingPermissionTask = this.host.taskOperations.list({
-      ownerId: this.host.ownerId,
-      sessionId: this.host.sessionId,
-      active: true,
-    }).find(task => task.authorization?.status === 'pending')
-    if (pendingPermissionTask) {
-      await this.host.sendOutput(
-        callId,
-        {
-          status: 'authorization_pending',
-          error: true,
-          error_code: 'permission_decision_required',
-          task_id: pendingPermissionTask.id,
-          operation: pendingPermissionTask.authorization.summary,
-          user_message: '当前有一项权限请求正在等待用户决定，不能把本轮回答提交成新工作。',
-          retryable: true,
-        },
-        turnId,
-        pendingPermissionTask.id,
-        {
-          response: {
-            instructions: [
-              '当前有一项权限请求正在等待决定，本轮不能调用 spawn_thinking。',
-              '重新结合刚才提出的具体权限问题和本轮用户原话判断。',
-              '若用户已自然表达同意或拒绝，立即调用 respond_permission；按语义判断，不要要求固定口令。',
-              '若用户没有作出决定，只用一句自然的话继续确认。',
-              '绝对不要代替用户同意，也不要声称权限已经生效。',
-            ].join(' '),
-          },
-        },
-      )
-      return
-    }
-
+    // A pending request belongs to its Task, not the entire conversation.
+    // Independent work can use another execution slot without approving or
+    // resolving that request. Replies use the explicit update/permission tools.
     // Receipt-based acceptance: this receipt only acknowledges intake, so it
     // must not wait on ASR timing or a live backend round trip. Availability
     // comes from the cached snapshot; a backend that looks healthy here but
@@ -421,12 +436,12 @@ export class AgentTaskRuntime {
           ? {
               status: 'duplicate',
               task_id: task.id,
-              message: '同一工作此前已受理，请自然确认一次，不要再次调用工具。',
+              message: WORK_DUPLICATE_MESSAGE,
             }
           : {
               status: 'accepted',
               task_id: task.id,
-              message: '工作已受理，请自然确认一次，不要再次调用工具。',
+              message: WORK_ACCEPTED_MESSAGE,
             },
         turnId,
         task.id,
@@ -604,69 +619,37 @@ export class AgentTaskRuntime {
     }
   }
 
-  async respondAgentInput({ callId, turnId, args }) {
-    const taskId = String(args.task_id || '').trim()
-    const action = ['accept', 'decline', 'cancel'].includes(args.action)
-      ? args.action
-      : ''
-    const task = taskId ? this.host.taskOperations.get(taskId, {
-      ownerId: this.host.ownerId,
-    }) : null
-    const request = task?.inputRequest
+  async replyToTaskInput(task, request, args, turnId) {
+    const fail = (code, message) => { throw Object.assign(new Error(message), { code }) }
     if (
       !task
       || task.sessionId !== this.host.sessionId
       || request?.status !== 'pending'
-      || !action
+      || (args.input_request_id !== undefined && args.input_request_id !== request.id)
     ) {
-      await this.host.sendOutput(callId, failure(
-        'input_not_pending',
-        '当前没有仍在等待回答的后台输入请求。',
-      ), turnId, null, {
-        response: { instructions: '简短说明这次回答没有提交成功，不要声称后台已经继续。' },
-      })
-      return
+      fail('input_not_pending', '对应的后台问题已失效或不在当前会话，回答没有提交。')
     }
     if (!this.host.taskOperations.respondInput) {
-      await this.host.sendOutput(callId, failure(
-        'input_unavailable',
-        '当前后台无法接收补充输入。',
-      ), turnId)
-      return
+      fail('input_unavailable', '当前后台无法接收补充输入。')
     }
-    if (request.kind === 'authorization' && action === 'accept') {
-      // `action` is chosen by the active conversation model with the complete
-      // dialogue and preview in context. Do not second-guess that semantic
-      // decision with a brittle keyword/regular-expression classifier.
-      args = {
-        ...args,
-        text: String(await this.host.transcripts.transcript(turnId)).trim(),
-      }
+    if (args.values !== undefined && (!args.values || typeof args.values !== 'object' || Array.isArray(args.values))) {
+      fail('invalid_input_values', '表单回答必须是对象。')
     }
+    if (args.input_refs?.length || this.host.transcripts.parts(turnId)?.some(part => part?.type === 'file')) {
+      fail('input_attachments_unsupported', '当前后台追问仅支持文本或表单回答，尚未提交附件。')
+    }
+    // Deliver the user's answer, not an inferred approval. Its business meaning
+    // belongs to the backend holding the original question or operation preview.
     await this.host.taskOperations.respondToInput(task.id, request.id, {
-      action,
-      text: String(args.text || '').trim(),
+      text: args.instruction,
       values: args.values,
-    }, { ownerId: this.host.ownerId })
-    await this.host.sendOutput(callId, {
-      status: 'submitted',
+    }, this.host)
+    return {
+      status: 'accepted',
       task_id: task.id,
-    }, turnId, task.id, {
-      response: {
-        instructions: action === 'accept'
-          ? '回答已交给原来的后台工作。只简短自然地说明会继续处理，不要新建工作或重复问题。'
-          : request.kind === 'authorization' && action === 'decline'
-            ? [
-              '当前操作预览已拒绝，没有批准这次写入；整项后台工作没有因此被取消。',
-        '若用户提出更新后的诉求，待原任务结束后，保留已知上下文及用户的新条件，调用 spawn_thinking 新建工作并生成新预览。',
-        '可由后台查询的既有事实不要反复要求用户提供。',
-        '若用户只是拒绝当前操作而没有新诉求，简短确认未执行即可；不要声称新操作已经完成。',
-            ].join(' ')
-            : request.kind === 'authorization' && action === 'cancel'
-              ? '用户已明确终止整项后台工作。简短确认任务已取消，不要声称任何待确认操作已经执行。'
-          : '用户没有提供这次补充信息。只作简短自然确认，不要声称工作已经完成。',
-      },
-    })
+      input_request_id: request.id,
+      message: '回答已交回原来的工作，不代表操作已批准或执行完成。本次只需自然确认受理。',
+    }
   }
 
   async cancelAgentTask(callId, turnId, args, responseOptions) {
@@ -829,6 +812,7 @@ export class AgentTaskRuntime {
         : null,
       authorization_pending: task.authorization?.status === 'pending',
       recent_updates: recentTaskUpdates(task.activity),
+      ...(task.updates?.length ? { instruction_updates: task.updates.slice(-5) } : {}),
       latest_update: task.message
         ? String(task.message).slice(0, 1_000)
         : null,

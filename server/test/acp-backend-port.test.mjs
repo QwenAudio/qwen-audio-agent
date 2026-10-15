@@ -75,6 +75,175 @@ test('ACP adapter implements the complete BackendPort surface', () => {
   assert.equal(assertBackendPort(backend), backend)
 })
 
+test('active delegated updates target the project Session, not the shared coordinator', async () => {
+  const client = fakeClient()
+  const backend = adapter({ client })
+  const prompts = []
+  const cancels = []
+  const firstProject = Promise.withResolvers()
+  let initial = true
+  let projectTurns = 0
+  client.prompt = async (sessionId, prompt) => {
+    prompts.push({ sessionId, prompt })
+    if (sessionId === 'session-1' && initial) {
+      initial = false
+      await backend.startProjectSession(backend.coordinationRuns.get('task_1'), { prompt: 'initial project' })
+      return { content: 'started', response: { stopReason: 'end_turn' } }
+    }
+    if (sessionId === 'session-2') {
+      if (projectTurns++ === 0) return firstProject.promise
+      return { content: 'updated project result', response: { stopReason: 'end_turn' } }
+    }
+    assert.match(JSON.stringify(prompt), /updated project result/u)
+    return { content: 'final updated result', response: { stopReason: 'end_turn' } }
+  }
+  client.cancelSession = async sessionId => {
+    cancels.push(sessionId)
+    firstProject.resolve({ content: 'old result', response: { stopReason: 'cancelled' } })
+  }
+  try {
+    const done = backend.submit({ id: 'task_1', ownerId: 'owner', objective: 'independent project' })
+    await new Promise(resolve => setImmediate(resolve))
+    const receipt = backend.update('task_1', { instruction: 'change project' }, { ownerId: 'owner' })
+    await receipt.completion
+    assert.equal((await done).content, 'final updated result')
+    assert.deepEqual(cancels, ['session-2'])
+    assert.deepEqual(prompts.map(call => call.sessionId), ['session-1', 'session-2', 'session-2', 'session-1'])
+    assert.match(JSON.stringify(prompts[2].prompt), /change project/u)
+  } finally { await backend.close() }
+})
+
+test('continuation never silently switches to a different coordinator Session', async () => {
+  const client = fakeClient()
+  const backend = adapter({ client })
+  try {
+    await assert.rejects(backend.submit({
+      id: 'task_1', ownerId: 'owner', objective: 'continue',
+      resumeContext: { adapter: 'acp', token: 'unavailable-original' },
+    }), { code: 'context_unavailable' })
+    assert.equal(client.prompts.length, 0)
+  } finally { await backend.close() }
+})
+
+test('cancel confirms settlement before the same task can resume and receive updates', async () => {
+  const client = fakeClient()
+  const backend = adapter({ client, maxConcurrentTasks: 1 })
+  const stopping = Promise.withResolvers()
+  const resumed = Promise.withResolvers()
+  const calls = []
+  const steers = []
+  client.prompt = async (sessionId, prompt, options) => {
+    calls.push({ sessionId, prompt, signal: options.signal })
+    if (calls.length === 2) return stopping.promise
+    if (calls.length === 3) return resumed.promise
+    return { content: 'initial result', response: { stopReason: 'end_turn' } }
+  }
+  client.steeringMode = () => 'extension'
+  client.steerSession = async (sessionId, prompt) => {
+    steers.push({ sessionId, prompt })
+    return { outcome: 'injected' }
+  }
+  const work = { id: 'same-task', ownerId: 'owner', objective: 'initial' }
+  try {
+    const initial = await backend.submit(work)
+    const continuation = { ...work, objective: 'continue', resumeContext: initial.continuation }
+    const running = backend.submit(continuation)
+    const stopped = assert.rejects(running, /用户已取消/u)
+    await new Promise(resolve => setImmediate(resolve))
+    let confirmed = false
+    const cancellation = backend.cancel(work.id, { ownerId: work.ownerId })
+      .then(result => { confirmed = true; return result })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(calls[1].signal.aborted, true)
+    assert.equal(confirmed, false)
+    assert.equal(backend.workControllers.has(work.id), true)
+    await assert.rejects(backend.submit(continuation), /already active/u)
+    assert.throws(() => backend.update(work.id, { instruction: 'too soon' }, {
+      ownerId: work.ownerId,
+    }), { code: 'task_cancelling' })
+    assert.equal(calls.length, 2)
+
+    stopping.resolve({ content: '', response: { stopReason: 'cancelled' } })
+    await stopped
+    assert.deepEqual(await cancellation, { taskId: work.id, state: 'cancelled' })
+    assert.equal(backend.workControllers.has(work.id), false)
+    const next = backend.submit({ ...continuation, objective: 'resume after cancellation' })
+    await new Promise(resolve => setImmediate(resolve))
+    const receipt = backend.update(work.id, { instruction: 'new requirements' }, {
+      ownerId: work.ownerId,
+    })
+    await receipt.completion
+    resumed.resolve({ content: 'resumed and updated', response: { stopReason: 'end_turn' } })
+    assert.equal((await next).content, 'resumed and updated')
+    assert.deepEqual(calls.map(call => call.sessionId), ['session-1', 'session-1', 'session-1'])
+    assert.equal(steers[0].sessionId, 'session-1')
+    assert.match(JSON.stringify(steers[0].prompt), /new requirements/u)
+  } finally {
+    stopping.resolve({ content: '', response: { stopReason: 'cancelled' } })
+    resumed.resolve({ content: 'cleanup', response: { stopReason: 'end_turn' } })
+    await backend.close()
+  }
+})
+
+test('unresponsive cancellation is bounded and does not release the active Session', async () => {
+  const client = fakeClient()
+  const backend = adapter({ client, maxConcurrentTasks: 1, cancelTimeoutMs: 20 })
+  const stopping = Promise.withResolvers()
+  let calls = 0
+  client.prompt = async () => {
+    if (++calls === 1) return stopping.promise
+    return { content: 'safe after settlement', response: { stopReason: 'end_turn' } }
+  }
+  const work = { id: 'same-task', ownerId: 'owner', objective: 'request' }
+  const running = backend.submit(work)
+  const stopped = assert.rejects(running, /用户已取消/u)
+  try {
+    await new Promise(resolve => setImmediate(resolve))
+    await assert.rejects(backend.cancel(work.id, { ownerId: work.ownerId }), {
+      code: 'cancellation_unconfirmed',
+    })
+    assert.equal(backend.workControllers.has(work.id), true)
+    await assert.rejects(backend.submit(work), /already active/u)
+    const queued = backend.submit({ ...work, id: 'next-task' })
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(calls, 1)
+    stopping.resolve({ content: '', response: { stopReason: 'cancelled' } })
+    await stopped
+    assert.equal((await queued).content, 'safe after settlement')
+    assert.equal((await backend.submit(work)).content, 'safe after settlement')
+  } finally {
+    stopping.resolve({ content: '', response: { stopReason: 'cancelled' } })
+    await backend.close()
+  }
+})
+
+test('cancel preserves remote-stop uncertainty and prevents continuation on that Session', async () => {
+  const client = fakeClient()
+  const backend = adapter({ client })
+  const uncertain = Object.assign(new Error('remote stop was not confirmed'), { contextUncertain: true })
+  let calls = 0
+  client.prompt = async (_sessionId, _prompt, { signal }) => {
+    if (++calls === 1) return { content: 'initial', response: { stopReason: 'end_turn' } }
+    return new Promise((_, reject) => {
+      signal.addEventListener('abort', () => reject(uncertain), { once: true })
+    })
+  }
+  const work = { id: 'same-task', ownerId: 'owner', objective: 'initial' }
+  try {
+    const initial = await backend.submit(work)
+    const continuation = { ...work, objective: 'continue', resumeContext: initial.continuation }
+    const running = backend.submit(continuation)
+    const failed = assert.rejects(running, error => error === uncertain)
+    await new Promise(resolve => setImmediate(resolve))
+    await assert.rejects(backend.cancel(work.id, { ownerId: work.ownerId }), error => error === uncertain)
+    await failed
+    assert.equal(backend.workControllers.has(work.id), false)
+    assert.equal(backend.uncertainUpdateSessions.has('session-1'), true)
+    await assert.rejects(backend.submit(continuation), { code: 'context_unavailable' })
+    assert.equal(calls, 2)
+  } finally { await backend.close() }
+})
+
 test('ACP submit exposes Work values while Session details stay private', async () => {
   const client = fakeClient({ hold: true })
   const backend = adapter({ client })
@@ -119,6 +288,7 @@ test('ACP submit exposes Work values while Session details stay private', async 
   assert.deepEqual(outcome, {
     content: '已经完成。',
     artifacts: [],
+    continuation: { adapter: 'acp', token: 'session-1' },
   })
   assert.equal('metadata' in outcome, false)
   assert.equal('sessionId' in outcome, false)

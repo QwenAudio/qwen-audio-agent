@@ -17,6 +17,7 @@ export function createAcpBackendAdapter({
   model,
   coordinatorAgent,
   timeoutMs = config.agentTimeoutMs,
+  maxConcurrentTasks = config.taskMaxConcurrentPerOwner,
   backends = {},
   sessionStatePath = config.backendSessionStatePath,
   acpClient,
@@ -47,6 +48,7 @@ export function createAcpBackendAdapter({
     ownership,
     permissionMode,
     timeoutMs,
+    maxConcurrentTasks,
     ...options,
     profile,
     nativeDelegationAdapter:

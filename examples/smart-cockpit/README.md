@@ -197,10 +197,15 @@ the foreground MCP tools above, Gateway built-ins, and capability-gated tools.
 
 | Function tool source | Count | Tools |
 |---|---:|---|
-| Gateway built-ins, default | 7 | `spawn_thinking`, `schedule_reminder`, `cancel_agent_task`, `get_agent_task_status`, `get_current_time`, `memory`, `notes` |
-| Gateway built-ins, conditional | up to +7 | `knowledge`, `recall`, `respond_permission`, `respond_agent_input`, `web_search`, `fetch_url`, `enter_sleep`; visible only when the matching knowledge, session digest, retrieval, pending permission, pending input, or client sleep action capability exists |
+| Gateway built-ins, default | 8 | `spawn_thinking`, `update_agent_task`, `schedule_reminder`, `cancel_agent_task`, `get_agent_task_status`, `get_current_time`, `memory`, `notes` |
+| Gateway built-ins, conditional | up to +6 | `knowledge`, `recall`, `respond_permission`, `web_search`, `fetch_url`, `enter_sleep`; visible only when the matching knowledge, session digest, retrieval, pending permission, or client sleep action capability exists |
 | Cockpit foreground MCP tools | 37 | `vehicle`, `navigation`, `music`, `weather`, and the 3 `custom-skills` tools; model-visible names are `mcp__cockpit__*` |
-| **Default Realtime base total** | **44** | 7 Gateway built-ins + 37 cockpit foreground MCP tools, before conditional tools |
+| **Default Realtime base total** | **45** | 8 Gateway built-ins + 37 cockpit foreground MCP tools, before conditional tools |
+
+`update_agent_task` returns user replies to pending backend questions on the same
+task; updating work without a pending question requires backend steering support.
+Gateway runs one user task at a time by default; later backend work queues while
+foreground conversation remains available.
 
 By default, `vehicle`, `navigation`, `music`, `weather`, and `custom-skills` use
 the foreground Realtime path; only `flashbuy` uses the backend Service surface.

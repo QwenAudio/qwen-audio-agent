@@ -26,6 +26,7 @@ export class BackendWorkRuntime {
       instruction: input?.instruction,
       objective: input?.objective,
       inputParts: input?.inputParts || [],
+      ...(input?.resumeContext ? { resumeContext: input.resumeContext } : {}),
       ...(options.continuity === 'isolated' ? { continuity: 'isolated' } : {}),
     }
     work.instruction = backendInstructionFromWork(work)
@@ -46,6 +47,26 @@ export class BackendWorkRuntime {
 
   cancel(taskId, options = {}) {
     return this.backend.cancel(taskId, options)
+  }
+
+  canUpdate() {
+    return this.backend.describe()?.capabilities?.workUpdates === true
+      && typeof this.backend.update === 'function'
+  }
+
+  update(taskId, input, options = {}) {
+    if (!this.canUpdate()) {
+      throw Object.assign(new Error('当前后台不支持调整已有工作。'), { code: 'update_unsupported' })
+    }
+    const receipt = this.backend.update(taskId, input, options)
+    if (typeof receipt?.completion?.then !== 'function') {
+      // A misconfigured async adapter may already have dispatched; don't retry.
+      receipt?.catch?.(() => {})
+      throw Object.assign(new Error('后台未返回有效的调整回执，投递结果无法确认；没有自动重发。'), {
+        code: 'update_unconfirmed',
+      })
+    }
+    return receipt
   }
 
   status(taskId, options = {}) {

@@ -26,6 +26,7 @@ import {
 
 const FRONTEND_TOOL_NAMES = [
   'spawn_thinking',
+  'update_agent_task',
   'schedule_reminder',
   'cancel_agent_task',
   'get_agent_task_status',
@@ -44,6 +45,8 @@ test('both realtime schemas omit unavailable tools and keep frontend-only remind
     const definitions = session.tools.map(tool => tool.function || tool)
     const names = definitions.map(tool => tool.name)
     assert.equal(names.includes('spawn_thinking'), false)
+    assert.equal(names.includes('update_agent_task'), false)
+    assert.equal(names.includes('respond_agent_input'), false)
     assert.equal(names.includes('notes'), false)
     for (const name of ['web_search', 'fetch_url', 'get_agent_task_status', 'cancel_agent_task']) {
       assert.equal(names.includes(name), true, name)
@@ -52,6 +55,27 @@ test('both realtime schemas omit unavailable tools and keep frontend-only remind
       definitions.find(tool => tool.name === 'schedule_reminder').parameters.properties.type.enum,
       ['reminder'],
     )
+  }
+})
+
+test('both realtime schemas expose unified pending replies even without a configured backend', () => {
+  const agentContext = { frontend: buildFrontendToolContext({
+    backendAvailability: { snapshot: () => ({ configured: false }) },
+    inputPending: true,
+  }) }
+  for (const provider of [REALTIME_PROVIDERS.qwen, REALTIME_PROVIDERS.s2s]) {
+    const session = provider.buildSession({ configured: false, agentContext })
+    const definitions = session.tools.map(tool => tool.function || tool)
+    const names = definitions.map(tool => tool.name)
+    assert.equal(names.includes('spawn_thinking'), false)
+    assert.equal(names.includes('respond_agent_input'), false)
+    const update = definitions.find(tool => tool.name === 'update_agent_task')
+    assert.ok(update)
+    assert.deepEqual(update.parameters.required, ['task_id', 'instruction'])
+    assert.equal(Object.hasOwn(update.parameters.properties, 'decision'), false)
+    assert.equal(Object.hasOwn(update.parameters.properties, 'action'), false)
+    assert.equal(update.parameters.properties.input_request_id.type, 'string')
+    assert.equal(update.parameters.properties.values.type, 'object')
   }
 })
 
@@ -74,19 +98,39 @@ test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
     /忠实、完整且自包含地转达用户要做什么及其明确约束/,
   )
   assert.ok(spawn.function.description.trim())
-  assert.match(spawn.function.description, /用户补充信息、作出选择或确认后继续/)
   const instructions = buildFrontendInstructions()
   assert.match(instructions, /不要重复提交已经覆盖的目标/)
   assert.match(instructions, /把回答交回请求中的同一项工作/)
-  assert.match(instructions, /不支持结构化输入请求的旧后台.*既有工作的续办/s)
+  assert.match(instructions, /update_agent_task/)
+  assert.doesNotMatch(instructions, /respond_agent_input/)
   assert.match(instructions, /不要预测、模拟或代替后台提出权限请求/)
-  assert.match(instructions, /duplicate.*同一目标此前已提交/)
 })
 
-test('changed authorization previews are declined without cancelling the whole task', () => {
-  assert.match(inputRequestResponseInstructions, /respond_agent_input 的 decline 拒绝当前预览/)
-  assert.match(inputRequestResponseInstructions, /不要 cancel 整项任务/)
-  assert.match(inputRequestResponseInstructions, /待原任务收尾后.*重新派单/)
+for (const lineEnding of ['\n', '\r\n']) {
+  test(`core routing distinguishes discussion from execution and keeps receipt guidance generic (${JSON.stringify(lineEnding)})`, () => {
+    const instructions = buildFrontendInstructions().replace(/\r?\n/g, lineEnding)
+    const routing = instructions.match(/# Routing\r?\n([\s\S]*?)(?=\r?\n# |$)/)?.[1]
+    assert.ok(routing)
+    assert.match(routing, /讨论|解释|建议/)
+    assert.match(routing, /执行/)
+    assert.match(routing, /专用工具/)
+    assert.match(routing, /`spawn_thinking`[^。]*description[^。]*能力范围/)
+    assert.match(routing, /新增|新工作|新目标/)
+    assert.match(routing, /已有|原目标|原工作/)
+    assert.match(routing, /(?:已完成|工作完成后).*续接/)
+    assert.match(routing, /update_agent_task/)
+    assert.match(instructions, /调用 `spawn_thinking` 或 `update_agent_task` 前不要口头回应/)
+    assert.match(instructions, /实际限制.*如实说明/)
+    assert.match(instructions, /根据工具结果如实回应.*不把请求受理或执行进展说成已经完成/)
+    assert.doesNotMatch(instructions, /`accepted`|`duplicate`|不再调用任何工具/)
+  })
+}
+
+test('pending business previews request a neutral reply through the unified update tool', () => {
+  assert.match(inputRequestResponseInstructions, /update_agent_task/)
+  assert.match(inputRequestResponseInstructions, /instruction/)
+  assert.match(inputRequestResponseInstructions, /input_request_id/)
+  assert.doesNotMatch(inputRequestResponseInstructions, /\bdecision\b|\baccept\b|\bdecline\b|respond_agent_input/)
   assert.match(inputRequestResponseInstructions, /不要附加示例回答/)
   assert.match(inputRequestResponseInstructions, /不能生成“我同意”/)
 })
@@ -947,13 +991,10 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.match(prompt, /不要要求用户额外说“记住”或“以后”/)
   assert.match(prompt, /“这次”、“今天”或“暂时”[\s\S]*不保存为长期记忆/)
   assert.match(prompt, /清除冲突或归类错误的旧内容/)
-  assert.match(prompt, /选择最直接且足够的处理方式/)
-  assert.match(prompt, /`spawn_thinking` 声明能力范围[\s\S]*统一的执行入口/)
-  assert.match(prompt, /必须调用它，不能提前声称“做不到”/)
-  assert.match(prompt, /可通过已注册工具完成的事就是你的能力/)
-  assert.match(prompt, /不要先说自己不能做/)
+  assert.match(prompt, /工具声明的能力也是你的能力/)
+  assert.match(prompt, /不要把自己无法直接执行，等同于无法通过工具完成/)
+  assert.match(prompt, /可由工具查明的信息交给工具获取/)
   assert.match(prompt, /不要因一次工具\s*调用而忽略其余请求/)
-  assert.match(prompt, /用户应当能够继续交谈/)
   assert.match(prompt, /避免空泛承接、重复用户要求/)
   assert.match(prompt, /# Instruction hierarchy/)
   assert.match(prompt, /<assistant_profile authority="persona_only">/)

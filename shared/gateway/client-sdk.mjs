@@ -14,6 +14,7 @@ const RESULT_TYPES = new Set([
   GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH_RESULT,
   GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED,
   GatewayClientProtocolEvent.TASK_CREATE_RESULT,
+  GatewayClientProtocolEvent.TASK_UPDATE_RESULT,
   GatewayClientProtocolEvent.TASK_GET_RESULT,
   GatewayClientProtocolEvent.TASK_LIST_RESULT,
   GatewayClientProtocolEvent.TASK_CANCEL_RESULT,

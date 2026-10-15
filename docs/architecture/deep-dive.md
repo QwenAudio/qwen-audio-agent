@@ -43,7 +43,7 @@ final ASR
       Task accepted
           │ response returns to Realtime immediately
           ▼
-      owner FIFO queue
+      bounded owner queue
           │
           ▼
       configured BackendPort
@@ -56,8 +56,11 @@ final ASR
 ```
 
 `spawn_thinking` never waits for the requested work. The user can continue
-speaking while multiple Task items are queued. For each owner, only one Task
-item is sent into the configured BackendPort at a time.
+speaking while work runs. The runtime defaults to one user task globally and one
+per owner; later work queues. Waiting for input or permission and delegated execution
+retain that slot until the whole task ends. Replies and targeted updates continue the
+existing task. New work never implicitly cancels old work. Concurrency limits remain
+explicitly configurable; the default does not start another coordinator Session when busy.
 
 ## 3. Realtime boundary
 
@@ -66,7 +69,7 @@ tool calls alone do not require backend execution. Tools have two prompt-ownersh
 
 | Contract | Tools |
 | --- | --- |
-| Core contract | `spawn_thinking`, `get_agent_task_status`, `cancel_agent_task`, `respond_permission`, `respond_agent_input`, `get_current_time` |
+| Core contract | `spawn_thinking`, `update_agent_task`, `get_agent_task_status`, `cancel_agent_task`, `respond_permission`, `get_current_time` |
 | Optional capabilities | `memory`, `web_search`, `fetch_url`, `knowledge`, `recall`, `notes`, `schedule_reminder`, `enter_sleep`; dynamic MCP tools are also configuration-dependent |
 
 The fixed `config/frontend-agent/PROMPT.md` may name only core-contract tools.
@@ -85,14 +88,22 @@ Core versus optional is a prompt-maintenance convention, not a runtime classific
 the core-tool allowlist lives only in boundary tests. The registry stores tool definitions
 and optional, effective runtime policies such as capability requirements, result-size
 limits, and repeat handling. Tools need no group or execution-mode label. An unconfigured
-backend hides `spawn_thinking`; confirmation tools are exposed only for real pending
-requests. Even core-contract tools cannot be called when unavailable. Tests check the
-fixed prompt, tool references, and capability switches to keep new optional features
+backend hides `spawn_thinking` and `update_agent_task`; `respond_permission` is exposed
+only for real pending permission requests. Even core-contract tools cannot be called
+when unavailable. Tests check the fixed prompt, tool references, and capability switches to keep new optional features
 out of core rules.
 
 The Gateway exposes `respond_permission` for pending backend permissions.
 The model answers the permission request; the Gateway resolves the request
 and its associated Task before forwarding the decision.
+
+`update_agent_task` forwards a user's instruction to existing work. When an input
+request is pending, the same tool answers it; an optional `input_request_id` binds
+the exact request. Confirmation, refusal, and changed requirements remain natural
+language in `instruction`; the backend interprets the reply in the original context.
+The Gateway does not classify keywords or treat an omitted decision as approval.
+Otherwise, updating work depends on the backend's steering support. `cancel_agent_task` stops the whole
+task. The client Gateway protocol retains its separate `task.input.respond` command.
 
 `memory` maintains two ordinary Markdown documents through one flat interface. Each call is one
 atomic `read`, `append`, or `replace` operation. `replace` locates a unique source fragment, and
@@ -181,9 +192,9 @@ forwarding those documents.
 
 A backend turn may return a result or ask for information, a choice,
 confirmation, or clarification required to continue. The frontend presents
-that need naturally. When the user answers, it calls `spawn_thinking` again as
-a continuation of the same work instead of predicting or simulating the next
-backend action. This rule does not depend on the wording of a particular case.
+that need naturally. When the user answers, it calls `update_agent_task` with
+the same task ID instead of predicting or simulating the next backend action.
+This rule does not depend on the wording of a particular case.
 
 The Gateway automatically carries current-turn attachments as native protocol
 parts, never as a model-visible JSON manifest. Only work that explicitly
@@ -193,28 +204,25 @@ and routing remain structured Gateway/BackendPort data and are not placed in
 the backend Agent's instruction. The working directory and user time zone are
 not repeated in every prompt; protocol or backend runtime context owns them.
 
-## 4. Fixed Backend Agent Session
+## 4. Persistent Backend Agent Sessions
 
 The coordination Session here belongs to the ACP backend integration, not the framework's Orchestration Runtime.
 The runtime manages work through `BackendPort`; A2A and custom backends need not use the same Session structure.
 
-The ACP adapter owns one persistent coordinator Session identity per owner and
-backend:
-
-```text
-qwen-audio-agent:<owner>:backend
-```
-
-The Gateway stores the native ACP Session ID behind that stable key and calls
+The ACP adapter maintains persistent coordinator Sessions per owner and backend,
+with one slot by default. New tasks wait for the slot; each active task stays bound
+to its assigned Session. The Gateway records the native ACP Session ID and calls
 `session/resume` on later turns. Project delegation likewise resumes the
 selected native Session in its recorded working directory, so voice-originated
 work remains in the backend's own Session history rather than a Gateway copy.
 
-Voice browser session IDs and Task IDs never change that identity. A new voice
-conversation therefore continues using the same backend Agent context.
+An update uses the task's recorded original Session, including after completion.
+If another task occupies that Session, the update waits; it never steers the other
+task. Idle slots can be reused across tasks and voice conversations.
 
-Both the Gateway queue and the ACP adapter serialize writes. This double guard
-prevents concurrent messages from racing inside one backend Session.
+The Gateway bounds task concurrency, and the ACP adapter serializes writes within
+each Session. Explicit configuration may raise the limits, but Session separation
+does not isolate working directories, files, or external resources.
 
 The backend Agent owns its execution strategy. qwen-audio-agent supplies one
 self-contained natural task instruction and current-turn native attachments;
@@ -297,10 +305,10 @@ established only after the Session tool creates or continues the target work
 and returns run and Session identifiers validated by the adapter. It is not
 established by a model-authored field. ACP faithfully carries the tool call,
 tool result, and turn termination; the adapter publishes the validated
-correlation to the TaskManager, which moves the original Task to `delegated`
-and releases both the backend Agent serialization lock and the Task scheduler
-lane. Other voice requests can therefore use the coordinator while the target
-Session runs.
+correlation to the TaskManager, which moves the original Task to `delegated`.
+The task retains its concurrency slot and ACP coordinator Session lease until
+the entire task reaches a terminal state. Under the default serial configuration,
+later user tasks remain queued while the delegated target Session runs.
 
 The coordinator may naturally end its ACP turn after the tool succeeds, but
 that text neither controls task state nor acts as a completion signal.
@@ -309,9 +317,9 @@ registry and adapter runtime; the model never has to echo them.
 
 The adapter independently keeps the Task lifecycle and event subscription
 alive. Only the matching ACP target prompt completion correlated to the
-delegation ID can advance the Task. The adapter then briefly reacquires the
-backend Agent lock and sends the verified result, including its native
-ContentBlocks, back for a final natural answer. A busy target, an empty result,
+delegation ID can advance the Task. The adapter sends the verified result,
+including its native ContentBlocks, to the retained coordinator Session for a
+final natural answer. A busy target, an empty result,
 an unrelated Session update, or an older result cannot complete the Task.
 
 ACP Agent turns have no artificial wall-clock deadline. An initial coordinator
@@ -572,5 +580,5 @@ Before merging a change, verify:
 5. Is completion spoken only from a final backend Agent result?
 6. Does the UI use host lifecycle APIs for its local Gateway, without bypassing it to manage backend processes directly?
 7. Can interruption postpone speech without cancelling submitted Task?
-8. Do tests cover FIFO serialization, fixed Session reuse, tool animation, and
+8. Do tests cover bounded concurrency, task-bound Session reuse, tool animation, and
    delivery retry?

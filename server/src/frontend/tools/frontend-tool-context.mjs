@@ -1,7 +1,7 @@
 import {
-  BACKEND_INPUT_RESPONSE_CAPABILITY,
   PERMISSION_RESPONSE_CAPABILITY,
   SPAWN_THINKING_TOOL_NAME,
+  UPDATE_AGENT_TASK_TOOL_NAME,
 } from './features/agent-task-tools.mjs'
 import { FRONTEND_RECALL_CAPABILITY } from './features/retrieval-tools.mjs'
 import { optionalFrontendFeatures } from '../optional-features.mjs'
@@ -25,6 +25,7 @@ export function buildFrontendToolContext({
     disabledTools: [...new Set([
       ...disabledTools,
       ...(!backendConfigured ? [SPAWN_THINKING_TOOL_NAME] : []),
+      ...(!backendConfigured && !inputPending ? [UPDATE_AGENT_TASK_TOOL_NAME] : []),
     ])],
     capabilities: [...new Set([
       ...(frontendRetrieval?.capabilities?.() || []),
@@ -33,7 +34,6 @@ export function buildFrontendToolContext({
       )),
       ...(sessionDigests ? [FRONTEND_RECALL_CAPABILITY] : []),
       ...(permissionPending ? [PERMISSION_RESPONSE_CAPABILITY] : []),
-      ...(inputPending ? [BACKEND_INPUT_RESPONSE_CAPABILITY] : []),
     ])],
   }
 }

@@ -10,6 +10,7 @@
 // Every capability listed here is locked by a test (see docs/contract.md);
 // anything not listed is internal and may change in any release.
 //
+// 5.10.0 adds authenticated, owner-scoped client input state in /api/health.
 // 5.9.0 adds host-issued direct WSS device connection codes. Conversation
 // Clients authenticate and run on one WS/WSS connection; the loopback HTTP
 // management plane remains available to the Gateway operator.
@@ -50,7 +51,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '5.9.0'
+export const GATEWAY_PROTOCOL_VERSION = '5.10.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -90,6 +91,8 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // POST /api/input/suspend|resume, GET /api/input; the Gateway relays the
   // suspension to clients through input.suspend/input.resume.
   'input.suspend-protocol',
+  // /api/health reports accepted client input separately from host suspension.
+  'input.client-status',
   // input.suspend also clears playback so host recording stays clean.
   'input.suspend-clears-playback',
   // A suspension expires on its own when the holder never sends resume.

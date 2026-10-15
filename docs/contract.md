@@ -34,7 +34,9 @@ Wire 7.0 replaces the permission decision `once` with explicit Task-scoped `task
 Gateway and Clients must update together. Capability IDs keep their historical
 names; negotiate the actual wire version through `session.hello`.
 
-The current health-contract version is `5.9.0`. The additive `5.9` line adds
+The current health-contract version is `5.10.0`. The additive `5.10` line exposes
+accepted client input state through authenticated health requests, with remote
+results scoped to the authenticated owner. The additive `5.9` line adds
 host-issued direct device connection codes: Conversation Clients authenticate and operate through
 one WS/WSS connection, while loopback HTTP remains a host management plane. The `5.8` line adds
 capability-negotiated realtime JPEG visual frames while keeping provider wire
@@ -85,6 +87,7 @@ below instead of assuming the old list.
 | `gateway.direct-device-connection` | A loopback-only management call issues one short browser-compatible connection code containing a revocable per-device credential; native Clients import it without HTTP pairing or health preflight, while a browser exchanges its fragment token for an HttpOnly cookie | `server/test/gateway-application.test.mjs`, `test/gateway-remote-access.test.mjs`, `desktop/test/gateway-connection.test.mjs` |
 | `host.electron-entry` | `qwen-audio-agent/electron`: a CommonJS entry an Electron main process can `require`, loading every ESM contract through one `load()` | `test/consumer-install.test.mjs` |
 | `host.gateway-process` | `GatewayProcess` ships: forking, port fallback, the readiness handshake, restart, and telling a planned exit from a crash — the desktop app runs the same implementation | `desktop/test/gateway-process.test.mjs` |
+| `input.client-status` | Authenticated health exposes accepted client input, host suspension and effective input; remote results are owner-scoped | `server/test/gateway-application.test.mjs`, `server/test/gateway-client-handshake.test.mjs`, `server/test/realtime-session-runtime.test.mjs` |
 | `input.suspend-protocol` | `POST /api/input/suspend\|resume`, `GET /api/input`; the Gateway relays the suspension to clients through `input.suspend` / `input.resume` | `server/test/input-suspend-protocol.test.mjs` |
 | `input.suspend-clears-playback` | Suspending also clears playback so host recording stays clean | `server/test/input-suspend-protocol.test.mjs` |
 | `input.suspend-ttl` | A suspension expires on its own when the holder never resumes | `server/test/input-arbitration.test.mjs` |
@@ -314,3 +317,20 @@ opts out for harnesses that never open a voice connection. Locked by
 Shipped code runs on the oldest Node admitted by the `engines` range. CI runs
 the suite on that version, and `test/runtime-baseline.test.mjs` fails the
 build if shipped code uses an API newer than the baseline.
+
+## Client input status
+
+With `input.client-status`, `GET /api/health` includes `voiceInput`:
+
+```json
+{"inputEnabled":false,"inputActive":false,"clients":[{"clientType":"cli","inputEnabled":false,"inputSuspended":false,"inputActive":false}]}
+```
+
+`inputEnabled` is the runtime's accepted client input setting; `inputSuspended`
+is a separate host hold. `inputActive` requires enabled input, no host hold,
+an awake runtime and active voice ownership. It is a runtime input gate, not a
+measurement of physical microphone capture. Only active voice clients appear;
+without one, `inputEnabled` is `null`, `inputActive` is `false`, and `clients`
+is empty. Loopback operators see an aggregate across owners; authenticated
+remote requests see only their owner. This read does not claim a client lease.
+State is transient and carries no owner IDs, device IDs, credentials or media.

@@ -195,6 +195,7 @@ export function attachGatewayClientTransport(server, {
       descriptor,
       applyInputSuspension: status => sessionRuntime.applyInputSuspension(status),
       realtimeStatus: () => sessionRuntime.status(),
+      inputState: () => sessionRuntime.inputState(),
       isAlive: () => ws.readyState === WebSocket.OPEN,
       deactivate: replacement => sessionRuntime.deactivate(replacement?.descriptor),
     }
@@ -521,6 +522,20 @@ export function attachGatewayClientTransport(server, {
       await new Promise(resolveClose => {
         wss.close(() => resolveClose())
       })
+    },
+    inputStatus({ ownerId } = {}) {
+      const clients = []
+      for (const [owner, connections] of voiceConnections) {
+        if (ownerId !== undefined && owner !== ownerId) continue
+        const active = activeVoiceClients.active(owner)
+        if (!active || !connections.has(active) || !active.isAlive()) continue
+        clients.push({ clientType: active.descriptor.type, ...active.inputState() })
+      }
+      return {
+        inputEnabled: clients.length ? clients.some(client => client.inputEnabled) : null,
+        inputActive: clients.some(client => client.inputActive),
+        clients,
+      }
     },
     status() {
       const byType = { desktop: 0, cli: 0, web: 0 }

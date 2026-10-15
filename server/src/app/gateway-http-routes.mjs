@@ -265,6 +265,9 @@ export function registerGatewayHttpRoutes(app, {
         error: null,
       },
       inputSuspension: inputArbitration.status(),
+      voiceInput: getGateway()?.inputStatus?.({
+        ownerId: req.identity.access === 'local' ? undefined : req.identity.ownerId,
+      }) || { inputEnabled: null, inputActive: false, clients: [] },
       voiceConfigured: realtime.configured,
       realtimeProvider: realtime.provider,
       realtimeLabel: realtime.label,

@@ -25,6 +25,7 @@
 
 .composer-row textarea {
   flex: 1;
+  min-width: 0;
   min-height: 42px;
   max-height: 140px;
   resize: vertical;
@@ -37,6 +38,7 @@
 }
 
 .composer-attach,
+.composer-photo,
 .composer-send {
   min-width: 42px;
   height: 42px;
@@ -1616,3 +1618,20 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
     transition: none;
   }
 }
+
+.composer-photo svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.photo-capture {
+  width: min(560px, calc(100vw - 48px)); max-height: calc(100vh - 48px);
+  padding: 18px; overflow: auto; border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px; color: #f5f5f7; background: #12151b;
+}
+.photo-capture::backdrop { background: rgba(0, 0, 0, 0.7); }
+.photo-capture h2 { margin: 0 0 12px; font-size: 18px; }
+.photo-capture video, .photo-capture img {
+  display: block; width: 100%; max-height: 55vh; aspect-ratio: 16 / 9;
+  object-fit: contain; border-radius: 12px; background: #030405;
+}
+.photo-capture-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.photo-capture-actions button { padding: 10px 14px; border: 0; border-radius: 12px; color: inherit; background: rgba(255, 255, 255, 0.1); font: inherit; cursor: pointer; }
+.photo-capture-actions button:last-child { background: #7357ff; }
+.photo-capture-actions button:disabled { opacity: 0.5; cursor: default; }

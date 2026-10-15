@@ -21,7 +21,8 @@ const MOCK_BROWSER_APIS = String.raw`
   const protocolVersion = ${JSON.stringify(GATEWAY_CLIENT_PROTOCOL_VERSION)}
   const desktop = new URLSearchParams(location.search).get('desktop') === 'orb'
   const videoCall = location.search.includes('video-call')
-  const realAudio = location.search.includes('browser-smoke=real-audio') || videoCall
+  const photoCapture = location.search.includes('photo-capture')
+  const realAudio = photoCapture || location.search.includes('browser-smoke=real-audio') || videoCall
   const state = {
     inputMessages: [],
     mediaRequests: 0,
@@ -938,6 +939,77 @@ async function testComposerAttachments(context, diagnostics) {
   await finishPage(page, diagnostics)
 }
 
+async function testPhotoCapture(context, diagnostics) {
+  const page = await preparePage(context, '?browser-smoke=photo-capture', diagnostics)
+  await waitForAttribute(page, 'data-negotiated-socket', value => Number(value) > 0)
+  const composer = page.locator('.multimodal-composer')
+  const photos = page.locator('.composer-attachment')
+  assert.equal(await page.locator('html').getAttribute('data-camera-requests'), null)
+  await composer.getByRole('button', { name: '拍照', exact: true }).click()
+  let dialog = page.getByRole('dialog', { name: '拍照', exact: true })
+  await dialog.getByRole('button', { name: '拍摄照片', exact: true }).click()
+  await dialog.getByRole('img', { name: '照片预览', exact: true }).waitFor()
+  const screenshotDirectory = resolve(projectRoot, 'output/playwright/photo-capture')
+  await mkdir(screenshotDirectory, { recursive: true })
+  await page.screenshot({ path: join(screenshotDirectory, 'desktop.png') })
+  await page.setViewportSize({ width: 375, height: 812 })
+  const bounds = await dialog.boundingBox()
+  assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 375, 'Photo review must fit a narrow viewport')
+  await page.screenshot({ path: join(screenshotDirectory, 'mobile.png') })
+  await page.setViewportSize({ width: 1280, height: 720 })
+  assert.deepEqual(await page.evaluate(() => window.browserSmoke.inputMessages()), [])
+  await dialog.getByRole('button', { name: '重拍', exact: true }).click()
+  await dialog.getByRole('button', { name: '拍摄照片', exact: true }).click()
+  await dialog.getByRole('button', { name: '加入草稿', exact: true }).click()
+  await photos.waitFor()
+  await waitForAttribute(page, 'data-camera-stops', value => Number(value) === 1)
+  assert.equal(await page.getByRole('dialog').count(), 0)
+  assert.deepEqual(await page.evaluate(() => window.browserSmoke.inputMessages()), [])
+  assert.equal(await page.locator('html').getAttribute('data-image-appends'), null)
+  assert.equal(await page.locator('html').getAttribute('data-audio-appends'), null)
+  await composer.getByRole('button', { name: '移除附件', exact: true }).click()
+  assert.equal(await photos.count(), 0)
+
+  await composer.getByRole('button', { name: '拍照', exact: true }).click()
+  dialog = page.getByRole('dialog', { name: '拍照', exact: true })
+  await dialog.getByRole('button', { name: '拍摄照片', exact: true }).click()
+  await dialog.getByRole('button', { name: '加入草稿', exact: true }).click()
+  await photos.waitFor()
+  await composer.getByRole('button', { name: '发送', exact: true }).click()
+  await page.waitForFunction(() => document.querySelectorAll('.composer-attachment').length === 0)
+  const messages = await page.evaluate(() => window.browserSmoke.inputMessages())
+  assert.equal(messages.length, 1)
+  const file = messages[0].parts.find(part => part.type === 'file')
+  assert.equal(file.mime, 'image/jpeg')
+  assert.match(file.filename, /^photo-.*\.jpg$/)
+  const jpeg = Buffer.from(file.url.split(',')[1], 'base64')
+  assert.ok(jpeg.length <= 190 * 1024)
+  assert.equal(jpeg.readUInt16BE(0), 0xffd8)
+  await composer.getByRole('button', { name: '拍照', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click()
+  await waitForAttribute(page, 'data-camera-stops', value => Number(value) === 3)
+  assert.equal(await photos.count(), 0)
+  await finishPage(page, diagnostics)
+
+  const denied = await preparePage(context, '?browser-smoke=photo-capture-deny-camera', diagnostics)
+  await denied.locator('.multimodal-composer').getByRole('button', { name: '拍照', exact: true }).click()
+  await denied.getByRole('dialog').getByRole('alert').waitFor()
+  assert.equal(await denied.getByRole('dialog').getByRole('button', { name: '拍摄照片', exact: true }).isEnabled(), false)
+  await denied.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click()
+  assert.deepEqual(await denied.evaluate(() => window.browserSmoke.inputMessages()), [])
+  await finishPage(denied, diagnostics)
+
+  const pending = await preparePage(context, '?browser-smoke=photo-capture-delay-camera', diagnostics)
+  await pending.locator('.multimodal-composer').getByRole('button', { name: '拍照', exact: true }).click()
+  await waitForAttribute(pending, 'data-camera-requests', value => value === '1')
+  await pending.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click()
+  await pending.evaluate(() => window.browserSmoke.releaseCamera())
+  await waitForAttribute(pending, 'data-camera-stops', value => value === '1')
+  assert.equal(await pending.getByRole('dialog').count(), 0)
+  assert.equal(await pending.locator('.composer-attachment').count(), 0)
+  await finishPage(pending, diagnostics)
+}
+
 let server
 let browser
 let context
@@ -955,6 +1027,7 @@ try {
   context = await browser.newContext({ locale: 'zh-CN' })
   await context.tracing.start({ screenshots: true, snapshots: true, sources: true })
   tracingActive = true
+  await testPhotoCapture(context, diagnostics)
   await testComposerIme(context, diagnostics)
   await testComposerSendFailure(context, diagnostics)
   await testComposerAttachments(context, diagnostics)
@@ -973,7 +1046,7 @@ try {
   tracingActive = false
   await context.close()
   context = null
-  console.log('Browser WebUI smoke passed: testComposerIme, testComposerSendFailure, composer attachment races, voice lifecycle, native AudioWorklet capture, desktop CSP, sleep/wake cycles, video-call entry, camera toggle, reconnect, responsive dock and permission recovery.')
+  console.log('Browser WebUI smoke passed: one-shot photo capture, testComposerIme, testComposerSendFailure, composer attachment races, voice lifecycle, native AudioWorklet capture, desktop CSP, sleep/wake cycles, video-call entry, camera toggle, reconnect, responsive dock and permission recovery.')
 } catch (error) {
   await mkdir(diagnosticsDirectory, { recursive: true })
   const pages = context?.pages?.() || []

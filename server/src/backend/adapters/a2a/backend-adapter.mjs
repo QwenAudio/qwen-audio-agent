@@ -54,6 +54,14 @@ function bounded(value, max = 4_000) {
   return clean(value).slice(0, max)
 }
 
+function inputResponseStatus(action) {
+  return {
+    accept: InputRequestStatus.ACCEPTED,
+    decline: InputRequestStatus.DECLINED,
+    cancel: InputRequestStatus.CANCELLED,
+  }[action] || InputRequestStatus.ANSWERED
+}
+
 function positiveNumber(value, fallback, minimum) {
   const number = Number(value)
   return Number.isFinite(number) && number >= minimum ? number : fallback
@@ -839,11 +847,7 @@ export class A2ABackendAdapter {
     } finally {
       clearTimeout(expiryTimer)
     }
-    const resolved = resolveInputRequest(request, answer.action === 'accept'
-      ? InputRequestStatus.ACCEPTED
-      : answer.action === 'decline'
-        ? InputRequestStatus.DECLINED
-        : InputRequestStatus.CANCELLED)
+    const resolved = resolveInputRequest(request, inputResponseStatus(answer.action))
     record.pendingInput = null
     this.publish(backendEvent(BackendEventType.INPUT_RESOLVED, {
       input: resolved,
@@ -852,14 +856,17 @@ export class A2ABackendAdapter {
       await this.bestEffortCancel(record)
       throw cancellationError(record.gatewayTaskId)
     }
-    const text = answer.action === 'decline'
-      ? clean(answer.text) || '用户拒绝提供所请求的信息。'
-      : clean(answer.text)
-        || (answer.values && Object.keys(answer.values).length
-          ? JSON.stringify(answer.values)
-          : '用户已确认，请继续处理。')
+    const text = clean(answer.text)
+      || (answer.values && Object.keys(answer.values).length ? JSON.stringify(answer.values) : '')
+      || (answer.action === 'decline' ? '用户拒绝提供所请求的信息。' : '')
+      || (answer.action === 'accept' ? '用户已确认，请继续处理。' : '')
     const result = await record.client.sendMessage({
-      message: continuationMessage(text, task, { kind, action: answer.action }),
+      message: continuationMessage(text, task, {
+        kind,
+        // Only explicit client decisions carry an action. Natural-language
+        // replies are interpreted by the remote agent, never auto-approved.
+        ...(answer.action ? { action: answer.action } : {}),
+      }),
       configuration: {
         acceptedOutputModes: this.acceptedOutputModes,
         historyLength: 20,
@@ -1171,28 +1178,27 @@ export class A2ABackendAdapter {
         code: 'INPUT_ALREADY_SUBMITTED',
       })
     }
-    if (record.pendingInput.input.kind === 'authorization'
-      && !['accept', 'decline', 'cancel'].includes(response.action)) {
-      throw new A2ABackendError('Authorization requires an explicit accept, decline, or cancel action', {
-        code: 'INPUT_ACTION_REQUIRED',
+    if (response.action !== undefined && !['accept', 'decline', 'cancel'].includes(response.action)) {
+      throw new A2ABackendError('Input action must be accept, decline, or cancel when provided', {
+        code: 'INVALID_INPUT_ACTION',
       })
     }
-    const action = ['accept', 'decline', 'cancel'].includes(response.action)
-      ? response.action
-      : 'accept'
+    const { action, values } = response
+    const text = clean(response.text)
+    if (!action && !text && !(values && Object.keys(values).length)) {
+      throw new A2ABackendError('Input response requires text or form values', {
+        code: 'INPUT_RESPONSE_REQUIRED',
+      })
+    }
     record.pendingInput.settled = true
     record.pendingInput.pending.resolve({
       action,
-      text: clean(response.text),
-      values: response.values,
+      text,
+      values,
     })
     return resolveInputRequest(
       record.pendingInput.input,
-      action === 'accept'
-        ? InputRequestStatus.ACCEPTED
-        : action === 'decline'
-          ? InputRequestStatus.DECLINED
-          : InputRequestStatus.CANCELLED,
+      inputResponseStatus(action),
     )
   }
 

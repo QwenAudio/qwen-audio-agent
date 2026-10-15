@@ -3,6 +3,7 @@ import { extname } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { stripVTControlCharacters } from 'node:util'
 import * as acp from '@agentclientprotocol/sdk'
+import { z } from 'zod'
 import { PACKAGE_VERSION } from '../../../core/package-version.mjs'
 import { AgentError } from '../../agent-error.mjs'
 import { requestSignal } from './request-signal.mjs'
@@ -165,6 +166,7 @@ export class AcpProcessClient {
     this.stderr = ''
     this.activePrompts = new Map()
     this.sessions = new Map()
+    this.midTurnPullSessions = new Set()
     this.processTreeCleanups = new WeakMap()
   }
 
@@ -251,6 +253,8 @@ export class AcpProcessClient {
       Readable.toWeb(child.stdout),
     )
     const app = acp.client({ name: 'qwen-audio-agent' })
+      .onRequest('craft/drainMidTurnQueue', z.object({ sessionId: z.string() }).passthrough(),
+        context => this.drainMidTurnQueue(context.params))
       .onRequest(
         acp.methods.client.session.requestPermission,
         context => this.handlePermission(context.params, context.signal),
@@ -331,6 +335,7 @@ export class AcpProcessClient {
         this.connection = null
         this.context = null
         this.initializeResult = null
+        this.midTurnPullSessions.clear()
       }).catch(() => {})
       this.connectionGeneration += 1
       return this.initializeResult
@@ -409,17 +414,41 @@ export class AcpProcessClient {
     }
   }
 
+  drainMidTurnQueue({ sessionId }) {
+    if (!this.sessions.has(sessionId)) return { items: [], hasQueuedPrompt: false }
+    this.midTurnPullSessions.add(sessionId)
+    return this.activePrompts.get(sessionId)?.onMidTurnDrain?.()
+      || { items: [], hasQueuedPrompt: false }
+  }
+
+  steeringMode(sessionId) {
+    if (this.initializeResult?._meta?.steering?.supported === true) return 'extension'
+    if (this.midTurnPullSessions.has(sessionId)) return 'pull'
+    return 'restart'
+  }
+
+  steerSession(sessionId, prompt, { signal } = {}) {
+    const blocks = normalizeAcpPrompt(prompt)
+    assertPromptCapabilities(blocks, this.capabilities)
+    return this.request('_session/steering', {
+      sessionId, prompt: blocks,
+      _meta: { steering: { idleBehavior: 'promptRequired' } },
+    }, { timeoutMs: 15_000, ...(signal ? { signal } : {}) })
+  }
+
   requestSignal(signal, timeoutMs = this.timeoutMs) {
     return requestSignal(signal, timeoutMs)
   }
 
   async request(method, params, {
     signal,
+    guardSignal,
     timeoutMs = this.timeoutMs,
   } = {}) {
     let processOutputBefore = ''
     try {
       await this.start()
+      guardSignal?.throwIfAborted()
       processOutputBefore = cleanProcessOutput(
         this.stderr,
         this.sanitizeProcessOutput,
@@ -429,6 +458,7 @@ export class AcpProcessClient {
       })
     } catch (error) {
       if (signal?.aborted) throw signal.reason
+      if (guardSignal?.aborted) throw guardSignal.reason
       const isRequestError = error?.name === 'RequestError'
       const processOutput = cleanProcessOutput(
         this.stderr,
@@ -569,6 +599,8 @@ export class AcpProcessClient {
     signal,
     timeoutMs = this.timeoutMs,
     onUpdate,
+    onMidTurnDrain,
+    cancelTimeoutMs = 15_000,
   } = {}) {
     const id = String(sessionId)
     if (this.activePrompts.has(id)) {
@@ -578,10 +610,18 @@ export class AcpProcessClient {
       )
     }
     await this.start()
+    signal?.throwIfAborted()
+    if (this.activePrompts.has(id)) {
+      throw new AgentError(`${this.label} Session ${id} 已有正在执行的请求`, {
+        status: 409, protocol: 'acp',
+      })
+    }
     const promptBlocks = normalizeAcpPrompt(prompt)
     assertPromptCapabilities(promptBlocks, this.capabilities)
     const timeoutController = new AbortController()
+    const remoteController = new AbortController()
     let timeoutTimer = null
+    let cancellationTimer = null
     let permissionDepth = 0
     const armTimeout = () => {
       clearTimeout(timeoutTimer)
@@ -599,6 +639,7 @@ export class AcpProcessClient {
       text: [],
       contentBlocks: [],
       onUpdate,
+      onMidTurnDrain,
       pauseTimeout: () => {
         permissionDepth += 1
         clearTimeout(timeoutTimer)
@@ -618,6 +659,16 @@ export class AcpProcessClient {
       this.notify(acp.methods.agent.session.cancel, {
         sessionId: id,
       }).catch(() => {})
+      // Keep the prompt RPC alive until the Agent confirms its terminal result.
+      // Aborting the local RPC immediately would let the next pool tenant start
+      // a prompt while the old execution can still emit updates or permissions.
+      cancellationTimer = setTimeout(() => {
+        const error = new AgentError(`${this.label} 未确认 Session 已停止`, {
+          status: 504, protocol: 'acp',
+        })
+        error.contextUncertain = true
+        remoteController.abort(error)
+      }, cancelTimeoutMs)
     }
     combined?.addEventListener('abort', cancel, { once: true })
     if (combined?.aborted) cancel()
@@ -630,15 +681,18 @@ export class AcpProcessClient {
             sessionId: id,
             prompt: promptBlocks,
           },
-          { signal: combined, timeoutMs: 0 },
+          { signal: remoteController.signal, guardSignal: combined, timeoutMs: 0 },
         )
       } catch (error) {
+        if (error.contextUncertain) throw error
         if (!timeoutController.signal.aborted || signal?.aborted) throw error
         throw new AgentError(
           `${this.label} ACP 请求超时（${timeoutDuration(timeoutMs)}）`,
           { status: 504, protocol: 'acp' },
         )
       }
+      if (remoteController.signal.aborted) throw remoteController.signal.reason
+      signal?.throwIfAborted()
       if (timeoutController.signal.aborted && !signal?.aborted) {
         throw new AgentError(
           `${this.label} ACP 请求超时（${timeoutDuration(timeoutMs)}）`,
@@ -653,6 +707,7 @@ export class AcpProcessClient {
       }
     } finally {
       clearTimeout(timeoutTimer)
+      clearTimeout(cancellationTimer)
       combined?.removeEventListener('abort', cancel)
       if (this.activePrompts.get(id) === active) {
         this.activePrompts.delete(id)
@@ -715,6 +770,7 @@ export class AcpProcessClient {
     this.context = null
     this.initializeResult = null
     connection?.close()
+    this.midTurnPullSessions.clear()
     if (child) await this.stopProcessTree(child)
     this.child = null
   }

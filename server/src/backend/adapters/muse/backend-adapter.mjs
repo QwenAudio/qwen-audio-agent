@@ -641,6 +641,8 @@ export class MuseBackendAdapter {
         protocol: this.protocol,
       })
     }
+    // Answer submission is not a permission decision; the backend interprets
+    // the supplied text in its question context.
     const action = ['accept', 'decline', 'cancel'].includes(response.action)
       ? response.action
       : 'accept'

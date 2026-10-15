@@ -47,6 +47,10 @@ export class AgentClient {
     return this.adapter.cancel(taskId, options)
   }
 
+  update(taskId, input, options = {}) {
+    return this.adapter.update(taskId, input, options)
+  }
+
   respondAuthorization(taskId, authorizationId, decision, options = {}) {
     return this.adapter.respondAuthorization(
       taskId,
@@ -163,6 +167,7 @@ export const agent = {
   start: (options = {}) => requireAgent().start(options),
   submit: (work, options = {}) => requireAgent().submit(work, options),
   cancel: (taskId, options = {}) => requireAgent().cancel(taskId, options),
+  update: (taskId, input, options = {}) => requireAgent().update(taskId, input, options),
   respondAuthorization: (
     taskId,
     authorizationId,

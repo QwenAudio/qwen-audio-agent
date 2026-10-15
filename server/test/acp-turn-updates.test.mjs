@@ -92,14 +92,29 @@ test('Agent pull drains ordered content only at the Agent loop boundary', async 
   assert.equal(client.cancels.length, 0)
   assert.deepEqual(calls[0].options.onMidTurnDrain(), {
     items: [
-      { content: [{ type: 'text', text: 'first' }] },
-      { content: [{ type: 'text', text: 'second' }] },
+      { content: [{ type: 'text', text: 'first' }, { type: 'text', text: 'second' }] },
     ], hasQueuedPrompt: false,
   })
   await Promise.all([a.completion, b.completion])
   assert.deepEqual(updates.drain(), { items: [], hasQueuedPrompt: false })
   calls[0].resolve({ content: 'updated' })
   await done
+})
+
+test('a failed pull batch preparation rejects every receipt without acknowledging delivery', async () => {
+  let acknowledgements = 0
+  const updates = new AcpTurnUpdates({
+    client: {}, sessionId: 'session-A',
+    preparePrompt() {
+      throw new Error('cannot prepare context')
+    },
+  })
+  const receipts = [updates.enqueue('first'), updates.enqueue('second')]
+  receipts.forEach(receipt => receipt.completion.then(() => { acknowledgements += 1 }, () => {}))
+  assert.throws(() => updates.drain(), /cannot prepare context/)
+  for (const receipt of receipts) await assert.rejects(receipt.completion, /cannot prepare context/)
+  assert.equal(acknowledgements, 0)
+  assert.deepEqual(updates.drain(), { items: [], hasQueuedPrompt: false })
 })
 
 test('updates received before startup are included without cancelling the first prompt', async () => {

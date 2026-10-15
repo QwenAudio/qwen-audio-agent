@@ -914,7 +914,7 @@ test('native aggregate recovery reattaches every saved target once and waits for
     ['native-one', 'project-one'], ['native-two', 'project-two'],
   ])
   assert.equal(h.calls.length, 0, 'recovery must not replay the original objective or child prompts')
-  const delegated = events.find(event => event.type === 'backend.delegated')
+  const delegated = events.find(event => event.type === 'backend.delegated' && event.yielded)
   assert.equal(delegated.yielded, true)
   assert.equal(delegated.delegation.targets.length, 2)
   native.waits.get('native-one').resolve({ content: 'first recovered result' })

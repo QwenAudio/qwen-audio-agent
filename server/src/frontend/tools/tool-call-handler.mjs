@@ -546,10 +546,16 @@ export class ToolCallHandler {
         ? event.__voiceContext.turnGeneration
         : this.getTurnGeneration()
     let args = {}
+    let invalidArguments = false
     try {
-      args = JSON.parse(event.arguments || '{}')
+      const parsed = JSON.parse(event.arguments === undefined ? '{}' : event.arguments)
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        invalidArguments = true
+      } else {
+        args = parsed
+      }
     } catch {
-      // Invalid arguments are handled as missing fields below.
+      invalidArguments = true
     }
 
     if (this.isStale(turnId, generation)) {
@@ -583,6 +589,11 @@ export class ToolCallHandler {
     })
     let failed = false
     try {
+      if (invalidArguments) {
+        const output = failure('invalid_arguments', '工具参数必须是有效的 JSON 对象。')
+        await this.sendOutput(callId, output, turnId)
+        return { handled: true, executed: false, value: output }
+      }
       if (this.stoppedToolTurns.has(this.toolTurnKey(turnId, generation))) {
         await this.stopToolLoop({ callId, turnId, turnGeneration: generation }, 'stopped')
         return { handled: true, executed: false, limit: { admitted: false, reason: 'stopped' } }

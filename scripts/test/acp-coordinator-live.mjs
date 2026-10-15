@@ -10,8 +10,6 @@ import { randomBytes } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { AcpBackendAdapter } from '../../server/src/backend/adapters/acp/backend-adapter.mjs'
-import { AcpProcessClient } from '../../server/src/backend/adapters/acp/process-client.mjs'
 
 const commands = {
   qwen: ['qwen', '--acp', '--safe-mode'],
@@ -26,6 +24,12 @@ if (name === '--help') {
 if (!Object.hasOwn(commands, name || '') || confirmation !== '--run' || extra.length) {
   throw new Error('Explicit opt-in required: choose qwen, opencode, or qoder and append --run.')
 }
+
+// Help and opt-in validation must not initialize the backend dependency graph.
+const [{ AcpBackendAdapter }, { AcpProcessClient }] = await Promise.all([
+  import('../../server/src/backend/adapters/acp/backend-adapter.mjs'),
+  import('../../server/src/backend/adapters/acp/process-client.mjs'),
+])
 
 const [command, ...args] = commands[name]
 const directory = await mkdtemp(join(tmpdir(), 'qwa-coordinator-'))

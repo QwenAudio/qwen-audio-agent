@@ -53,13 +53,20 @@ export class AcpTurnUpdates {
   drain() {
     if (this.closed || this.signal?.aborted) return { items: [], hasQueuedPrompt: false }
     const entries = this.take()
-    const items = entries.map(entry => {
-      const delivery = this.preparePrompt(entry.prompt, [entry.context])
+    if (!entries.length) return { items: [], hasQueuedPrompt: false }
+    try {
+      // One pull boundary is one delivery: merge its context snapshots under
+      // the shared budget without truncating any of the update ContentBlocks.
+      const delivery = this.preparePrompt(
+        entries.flatMap(entry => entry.prompt), entries.map(entry => entry.context),
+      )
       delivery.acknowledge()
-      entry.resolve({ status: 'delivered' })
-      return { content: delivery.prompt }
-    })
-    return { items, hasQueuedPrompt: false }
+      entries.forEach(entry => entry.resolve({ status: 'delivered' }))
+      return { items: [{ content: delivery.prompt }], hasQueuedPrompt: false }
+    } catch (error) {
+      entries.forEach(entry => entry.reject(error))
+      throw error
+    }
   }
 
   followup(entries) {

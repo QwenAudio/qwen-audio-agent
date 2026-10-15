@@ -1393,14 +1393,14 @@ test('does not execute a disabled tool even if the model still sends its call', 
   assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
 })
 
-test('rejects unavailable memory with null arguments and clears call tracking', async () => {
+test('rejects unavailable memory with valid object arguments and clears call tracking', async () => {
   const kit = harness()
   const responseId = 'response-unavailable-memory'
   const execution = await kit.handler.handle({
-    call_id: 'memory-null-arguments',
+    call_id: 'memory-unavailable',
     response_id: responseId,
     name: 'memory',
-    arguments: 'null',
+    arguments: '{}',
   })
 
   assert.equal(execution.executed, false)
@@ -1416,6 +1416,61 @@ test('rejects unavailable memory with null arguments and clears call tracking', 
   assert.equal(kit.handler.deferredToolResponses.size, 0)
   assert.equal(kit.ensuredResponses.length, 1)
 })
+
+for (const kind of ['built-in', 'external']) {
+  for (const [label, argumentsText] of [
+    ['null', 'null'], ['array', '[]'], ['number', '42'],
+    ['boolean', 'true'], ['string', '"text"'], ['malformed JSON', '{broken'], ['empty JSON', ''],
+  ]) {
+    test(`${kind} rejects ${label} arguments with one result and a normal follow-up`, async () => {
+      let executions = 0
+      const externalName = 'mcp__documents__search'
+      const kit = harness({
+        memoryStore: { list: () => { executions += 1; return [] } },
+        frontendToolSources: [responseToolSource([externalName], async () => {
+          executions += 1
+          return { status: 'ok', text: 'Found.' }
+        })],
+      })
+      const name = kind === 'built-in' ? 'memory' : externalName
+      const responseId = 'response-invalid-arguments'
+      const event = { call_id: 'invalid-arguments', response_id: responseId, name, arguments: argumentsText }
+      const execution = await kit.handler.handle(event)
+      await kit.handler.handle(event)
+
+      assert.equal(execution.executed, false)
+      assert.equal(executions, 0)
+      assert.equal(kit.outputs.length, 1)
+      assert.equal(kit.outputs[0][1].error_code, 'invalid_arguments')
+      assert.equal(kit.outputs[0][1].error, true)
+      assert.equal(kit.outputs[0][1].status, 'failed')
+      assert.equal(kit.outputs[0][3].createResponse, false)
+      assert.equal(kit.toolResultsReady.length, 1)
+      assert.equal(kit.toolResultsReady[0].failed, true)
+      assert.equal(kit.handler.activeToolEntries.size, 0)
+      assert.equal(kit.handler.activeToolDebugEntries.size, 0)
+      assert.equal(kit.handler.stoppedToolTurns.size, 0)
+      assert.equal(kit.handler.consumeTerminalToolResponse(responseId), false)
+      assert.equal(kit.ensuredResponses.length, 0)
+
+      await kit.handler.finishToolResponse(responseId, { sourceHasSpeech: true })
+      await kit.handler.finishToolResponse(responseId)
+      assert.equal(kit.ensuredResponses.length, 1)
+      assert.equal(kit.ensuredResponses[0][1].shouldCreate(), true)
+      assert.notEqual(kit.ensuredResponses[0][1].response?.tool_choice, 'none')
+      assert.equal(kit.handler.deferredToolResponses.size, 0)
+
+      // Invalid arguments never reach execution or consume the tool budget.
+      await responseToolCall(kit.handler, 'corrected-arguments', name, 'response-corrected',
+        kind === 'built-in' ? { action: 'read' } : { query: 'architecture' })
+      await kit.handler.finishToolResponse('response-corrected')
+      assert.equal(executions, 1)
+      assert.equal(kit.outputs.length, 2)
+      assert.notEqual(kit.outputs[1][1].error, true)
+      assert.equal(kit.ensuredResponses.length, 2)
+    })
+  }
+}
 
 test('search and page reading compose inline without a backend or created work', async () => {
   const calls = []

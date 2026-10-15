@@ -400,7 +400,9 @@ test('multiple child Sessions from one turn are all tracked and summarized once 
   assert.deepEqual(h.calls.slice(1).map(call => call.sessionId), [first.session_id, second.session_id])
   h.finish(0, 'both delegated')
   await tick()
-  const delegated = events.find(event => event.type === 'backend.delegated').delegation
+  const registrations = events.filter(event => event.type === 'backend.delegated' && !event.yielded)
+  assert.equal(registrations.length, 2)
+  const delegated = events.find(event => event.type === 'backend.delegated' && event.yielded).delegation
   assert.deepEqual(delegated.targets.map(target => target.sessionId), [first.session_id, second.session_id])
   const b = h.submit('b')
   await tick()

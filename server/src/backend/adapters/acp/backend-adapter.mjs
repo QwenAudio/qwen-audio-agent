@@ -826,7 +826,16 @@ export class AcpBackendAdapter {
       }
     })
     record.promise.catch(() => {})
+    this.publishDelegation(run)
     return record
+  }
+
+  publishDelegation(run, { yielded = false } = {}) {
+    run.onEvent?.({
+      type: BackendEventType.DELEGATED,
+      yielded,
+      delegation: delegationSummary(run.delegations, run.sessionId),
+    })
   }
 
   assertActiveCoordinatorRun(run) {
@@ -1298,6 +1307,7 @@ export class AcpBackendAdapter {
     run.delegations.push(record)
     record.promise = this.waitForNativeDelegation(record, run)
     record.promise.catch(() => {})
+    this.publishDelegation(run)
     return record
   }
 
@@ -1400,6 +1410,11 @@ export class AcpBackendAdapter {
   }
 
   beginWork(taskId, ownerId, { signal, expectedSessionId = '', continuingProjects = false } = {}) {
+    if (this.closePromise) {
+      throw new AgentError('BackendPort is closing or closed', {
+        status: 503, protocol: this.protocol,
+      })
+    }
     if (this.workControllers.has(taskId)) {
       throw new AgentError('BackendPort Task is already active', {
         status: 409, protocol: this.protocol,
@@ -1713,11 +1728,7 @@ export class AcpBackendAdapter {
   async finishDelegatedWork(initial, options) {
     const { run, session } = initial
     const { signal, onEvent, workObjective } = options
-    onEvent({
-      type: BackendEventType.DELEGATED,
-      yielded: true,
-      delegation: delegationSummary(run.delegations, session.sessionId),
-    })
+    this.publishDelegation(run, { yielded: true })
     const updates = this.workUpdates.get(run.coordinationRunId)
     let outcomes
     while (true) {
@@ -1996,22 +2007,41 @@ export class AcpBackendAdapter {
     })
   }
 
-  async close() {
+  close() {
+    this.closePromise ||= Promise.resolve().then(() => this.closeAfterCancellation())
+    return this.closePromise
+  }
+
+  async closeAfterCancellation() {
     this.coordinatorQueue.close()
+    const executions = [...this.workUpdates.values()]
+    const targets = [...this.coordinationRuns.values()].flatMap(run => run.delegations || [])
     for (const controller of this.workControllers.values()) {
       controller.abort(new AgentError('后台 Agent 已关闭', {
         status: 503,
         protocol: this.protocol,
       }))
     }
-    this.workControllers.clear()
-    for (const run of this.coordinationRuns.values()) {
-      for (const target of run.delegations || []) {
-        target.controller.abort(new Error(`${this.label} backend is shutting down`))
-      }
+    for (const target of targets) {
+      target.controller.abort(new Error(`${this.label} backend is shutting down`))
     }
     this.permissionBroker.cancelAll()
     this.inputBroker.cancelAll()
+    let cancellationError
+    try {
+      await waitForCancellation(Promise.all([
+        ...targets.map(target => this.cancelDelegation({ delegation_id: target.id })),
+        ...executions.map(async execution => {
+          const outcome = await execution.settled.promise
+          if (outcome?.error?.contextUncertain) throw outcome.error
+        }),
+      ]), this.cancelTimeoutMs, this.protocol)
+    } catch (error) {
+      cancellationError = error
+    }
+    // Closing the transport is also necessary for clients whose pending prompt
+    // settles only on disconnect. Do not wait forever or mistake that local
+    // cleanup for confirmation that an independently hosted native run stopped.
     await Promise.allSettled(
       [...this.coordinatorToolRegistrationPromises.values()],
     )
@@ -2024,9 +2054,13 @@ export class AcpBackendAdapter {
       this.sessionToolServer.close(),
       this.client.close(),
     ])
-    this.uncertainUpdateSessions.clear()
     await this.builtinMcpLifecycle.close()
     this.workEventListeners.clear()
+    if (cancellationError) {
+      this.runtimeState.failed(cancellationError)
+      throw cancellationError
+    }
+    this.uncertainUpdateSessions.clear()
     this.runtimeState.stopped()
   }
 }

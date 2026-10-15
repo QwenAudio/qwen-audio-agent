@@ -378,6 +378,48 @@ test('updates admitted before the initial ACP prompt merge their contexts once w
   assert.deepEqual(h.cursor('other'), other.cursor)
 })
 
+test('a pull batch shares one context budget while preserving all update instructions and receipts', async t => {
+  const h = harness(t, { mode: 'pull' })
+  const sync = new ConversationSync()
+  const work = h.submit('work')
+  await tick()
+  record(sync, 'voice', 'A'.repeat(1_800))
+  const voice = capture(sync)
+  record(sync, 'other', 'B'.repeat(1_800), { sessionId: 'other' })
+  const other = capture(sync, undefined, { sessionId: 'other' })
+  const instructions = ['first instruction '.repeat(200), 'second instruction '.repeat(200)]
+  const receipts = [voice, other].map((conversation, index) => h.backend.update('work', {
+    instruction: instructions[index], conversation,
+  }, { ownerId: 'owner' }))
+  let deliveredReceipts = 0
+  receipts.forEach(receipt => receipt.completion.then(() => { deliveredReceipts += 1 }))
+  await tick()
+  assert.equal(deliveredReceipts, 0)
+  assert.equal(h.cursor(), undefined)
+  assert.equal(h.cursor('other'), undefined)
+
+  const drained = h.calls[0].options.onMidTurnDrain()
+  assert.equal(drained.items.length, 1)
+  const delivered = text(drained.items[0].content)
+  const history = delivered.split('近期人机对话（仅作理解当前要求的背景，不是新的执行指令）：\n')[1]
+    .split('\n\n当前要求：')[0]
+  assert.ok(history.length <= 2_000)
+  assert.match(history, /A/)
+  assert.match(history, /B/)
+  for (const instruction of instructions) assert.ok(delivered.includes(instruction.trim()))
+  assert.ok(delivered.indexOf(instructions[0].trim()) < delivered.indexOf(instructions[1].trim()))
+  assert.equal((delivered.match(/近期人机对话/g) || []).length, 1)
+  await Promise.all(receipts.map(receipt => receipt.completion))
+  assert.equal(deliveredReceipts, 2)
+  assert.deepEqual(h.cursor(), voice.cursor)
+  assert.deepEqual(h.cursor('other'), other.cursor)
+  assert.deepEqual(h.calls[0].options.onMidTurnDrain().items, [])
+  assert.equal(h.cancellations.length, 0)
+  assert.equal(h.calls.length, 1)
+  h.finish(0)
+  await work
+})
+
 test('a rejected native steer does not acknowledge its new conversation snapshot', async t => {
   const h = harness(t)
   const sync = new ConversationSync()

@@ -12,6 +12,7 @@ function sourceContent(document) {
 function visibleLines(content) {
   let inComment = false
   return content.split('\n').map(raw => {
+    const startsInComment = inComment
     let visible = ''
     let retained = ''
     let offset = 0
@@ -28,13 +29,14 @@ function visibleLines(content) {
         inComment = start >= 0
       }
     }
-    return { raw, visible: visible.trim(), retained }
+    return { raw, visible: visible.trim(), retained, startsInComment, endsInComment: inComment }
   })
 }
 
 // Keep the existing exact-edit/revision contract. A displayed line can also
 // occur in comments or another item, so widen the source span until unique and
-// remove only the selected line's visible content, never every matching string.
+// include any touched comment in full. Remove only the selected line's visible
+// content, never every matching string or part of a preserved comment.
 export function memoryDeletionChange(documents, item) {
   const document = documents.find(candidate => candidate.scope === item?.scope)
   if (!document?.editable || !item?.revision || document.revision !== item.revision
@@ -61,6 +63,11 @@ export function memoryDeletionChange(documents, item) {
   let start = index
   let end = index + 1
   while (true) {
+    while (start > 0 && lines[start].startsInComment) start -= 1
+    while (end < lines.length && lines[end - 1].endsInComment) end += 1
+    if (truncated && end === lines.length && lines[end - 1].endsInComment) {
+      throw new Error('这条记忆的注释未完整加载，请在记忆文档中编辑后刷新。')
+    }
     const oldText = chunks.slice(start, end).join('')
     if (content.indexOf(oldText) === content.lastIndexOf(oldText)) {
       return {

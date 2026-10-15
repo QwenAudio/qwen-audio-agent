@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createRealtimeSessionRuntime } from '../src/voice/realtime-session-runtime.mjs'
+import { createRealtimeSessionRuntime, permissionResponseGate } from '../src/voice/realtime-session-runtime.mjs'
+import { RealtimeFrontend, REALTIME_PROVIDERS } from '../src/voice/realtime-provider.mjs'
 import { SessionObservers } from '../src/voice/session-observers.mjs'
 import { InputAssetRegistry } from '../src/voice/input-asset-registry.mjs'
 import { createTaskAnnouncementRuntime } from '../src/voice/announcement/task-announcement-runtime.mjs'
@@ -381,6 +382,98 @@ test('pending permission tool exposure and input-busy retry use the production c
   assert.ok(!h.events.some(event => event.type === 'error'))
   h.runs.get(task.id).onEvent({ type: 'backend.permission.resolved', permission: { id: 'auth_1', status: 'approved' } })
   assert.equal(h.manager.get(task.id).authorization, null)
+})
+
+// A real frontend on a fake socket, so shouldCreate is checked as in production.
+function wiredFrontend(t) {
+  const sent = []
+  const frontend = new RealtimeFrontend({ provider: REALTIME_PROVIDERS.dashscope, onDiagnostic() {} })
+  frontend.ready = true
+  frontend.ws = { readyState: 1, send: raw => sent.push(JSON.parse(raw)) }
+  t.after(() => frontend.resetResponses())
+  return { frontend, creates: () => sent.filter(event => event.type === 'response.create').length }
+}
+
+// The user answers a pending permission by voice; returns the runtime's
+// fallback request once it fires.
+async function spokenPermissionAnswer(t) {
+  const h = harness(t)
+  const f = await h.connect()
+  const requested = []
+  f.ensureResponse = async (context, options) => { requested.push({ context, options }) }
+  const task = h.request('write a file')
+  await until(() => h.runs.has(task.id))
+  h.runs.get(task.id).onEvent({ type: 'backend.permission.requested', permission: {
+    id: 'auth_spoken', status: 'pending', summary: 'write a file',
+  } })
+  await until(() => f.deliveries.some(delivery => delivery.origin === 'permission'))
+  f.emit({ type: 'input_audio_buffer.speech_started', item_id: 'answer' })
+  f.emit({ type: 'input_audio_buffer.speech_stopped', item_id: 'answer' })
+  f.emit({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'answer', transcript: '同意' })
+  await until(() => requested.length === 1)
+  return { h, f, task, request: requested[0] }
+}
+
+test('a spoken permission answer without an automatic reply sends one response.create', async t => {
+  const { h, task, request } = await spokenPermissionAnswer(t)
+  const wired = wiredFrontend(t)
+  wired.frontend.ensureResponse(request.context, request.options).catch(() => {})
+  await until(() => wired.creates() > 0)
+  await tick()
+  assert.equal(wired.creates(), 1)
+  assert.equal(h.manager.get(task.id).authorization.status, 'pending')
+})
+
+test('an automatic reply that starts before the fallback is sent takes over its turn', async t => {
+  const { f, request } = await spokenPermissionAnswer(t)
+  f.emit({ type: 'response.created', response: { id: 'automatic' } })
+  const wired = wiredFrontend(t)
+  assert.equal((await wired.frontend.ensureResponse(request.context, request.options)).skipped, true)
+  assert.equal(wired.creates(), 0)
+})
+
+test('the pending-permission gate decides once and skips a stale or refused request', async t => {
+  const gate = state => permissionResponseGate({
+    isCandidate: () => state.candidate,
+    hasPendingPermission: () => state.pending,
+    claim: () => { state.candidate = false; state.claims += 1 },
+  })
+  // Still pending at the pre-send re-check: one request goes out and stays
+  // wanted once the backend has settled the permission.
+  const open = { candidate: true, pending: true, claims: 0 }
+  const a = wiredFrontend(t)
+  const shouldCreate = gate(open)
+  a.frontend.ensureResponse({ turnId: 'turn-1' }, { shouldCreate }).catch(() => {})
+  await until(() => a.creates() === 1)
+  assert.equal(open.claims, 1)
+  open.pending = false
+  assert.equal(shouldCreate(), true)
+  // Settled while the frontend waited for an active response: nothing is sent
+  // and the turn is never claimed.
+  const settled = { candidate: true, pending: true, claims: 0 }
+  const b = wiredFrontend(t)
+  b.frontend.handleLifecycle({ type: 'response.created', response: { id: 'busy' } })
+  const skipped = b.frontend.ensureResponse({ turnId: 'turn-1' }, { shouldCreate: gate(settled) })
+  await tick()
+  settled.pending = false
+  b.frontend.handleLifecycle({ type: 'response.done', response: { id: 'busy', status: 'completed' } })
+  assert.equal((await skipped).skipped, true)
+  assert.equal(b.creates(), 0)
+  assert.equal(settled.claims, 0)
+  // Refused as busy because the model answered on its own: once that reply has
+  // settled the permission, the retry is dropped instead of asking again.
+  const raced = { candidate: true, pending: true, claims: 0 }
+  const c = wiredFrontend(t)
+  const retried = c.frontend.ensureResponse({ turnId: 'turn-1' }, { shouldCreate: gate(raced) })
+  await until(() => c.creates() === 1)
+  c.frontend.handleLifecycle({ type: 'response.created', response: { id: 'auto-1' } })
+  c.frontend.handleLifecycle({ type: 'error', error: { type: 'invalid_request_error', message: 'Conversation already has an active response' } })
+  raced.pending = false
+  c.frontend.handleLifecycle({ type: 'response.done', response: { id: 'auto-1', status: 'completed' } })
+  // A second request would wait for its own response.created; fail fast instead.
+  const outcome = await Promise.race([retried, new Promise(resolve => setTimeout(resolve, 500, 'resent'))])
+  assert.equal(outcome.skipped, true)
+  assert.equal(c.creates(), 1)
 })
 
 test('a transport reconnect restores an unresolved permission without restarting backend work', async t => {

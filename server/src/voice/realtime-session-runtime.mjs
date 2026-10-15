@@ -68,7 +68,14 @@ export function createRealtimeSessionRuntime({
 }) {
   let closed = false
   let started = false
-  const emit = event => { if (!closed) send(event) }
+  let presentationRuntime
+  const emit = event => {
+    if (closed) return
+    if (event.type === GatewayServerEvent.PLAYBACK_CLEAR) {
+      presentationRuntime?.clearPlayback({ reason: event.reason })
+    }
+    send(event)
+  }
   let inputEnabled = false
   let outputEnabled = false
   // Set only by host arbitration. Unlike inputEnabled (which the client
@@ -413,6 +420,10 @@ export function createRealtimeSessionRuntime({
         durationMs: Math.max(0, Date.now() - timing.startedAt),
       })
     },
+    onToolResponseFailed: context => {
+      connectionLogger.warn('realtime.tool_follow_up.failed', context)
+      presentationRuntime.failToolResponse(context)
+    },
     onToolCallDebug: event => {
       const { startedAt: _startedAt, ...publicEvent } = event || {}
       emit({
@@ -531,7 +542,7 @@ export function createRealtimeSessionRuntime({
     },
   })
 
-  const presentationRuntime = new RealtimePresentationRuntime({
+  presentationRuntime = new RealtimePresentationRuntime({
     ownerId,
     sessionId,
     turns,
@@ -1067,6 +1078,7 @@ export function createRealtimeSessionRuntime({
       announcementWindow.interrupt()
       announcements.dismissActive()
       realtimeSession.cancelResponse()
+      emit({ type: GatewayServerEvent.PLAYBACK_CLEAR, reason: 'user_interruption' })
     } else if (event.type === GatewayClientEvent.PLAYBACK_STARTED) {
       const id = String(event.responseId || '')
       const playbackContext = presentationRuntime.get(id)

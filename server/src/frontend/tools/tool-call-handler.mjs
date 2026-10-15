@@ -98,6 +98,7 @@ export class ToolCallHandler {
     permissionPolicy,
     onPermissionDeliveryFailed = () => {},
     onToolResultReady = () => {},
+    onToolResponseFailed = () => {},
     onToolCallDebug = () => {},
     onAgentActivity = () => {},
     inputAssets = null,
@@ -126,6 +127,7 @@ export class ToolCallHandler {
     this.onMemoryChanged = onMemoryChanged
     this.onPermissionDeliveryFailed = onPermissionDeliveryFailed
     this.onToolResultReady = onToolResultReady
+    this.onToolResponseFailed = onToolResponseFailed
     this.onToolCallDebug = onToolCallDebug
     this.onAgentActivity = onAgentActivity
     this.inputAssets = inputAssets
@@ -419,8 +421,12 @@ export class ToolCallHandler {
   async flushDeferredToolResponse(responseId, batch) {
     if (!batch.sourceDone || batch.pending > 0) return
     this.deferredToolResponses.delete(responseId)
+    if (batch.failed) {
+      this.onToolResponseFailed({ responseId, turnId: batch.turnId })
+      return
+    }
     if (
-      batch.failed || batch.suppressResponse || !batch.responseRequested
+      batch.suppressResponse || !batch.responseRequested
       || (batch.sourceHasSpeech && !batch.requiresResultSummary)
       || this.isStale(batch.turnId, batch.turnGeneration)
     ) return
@@ -430,25 +436,30 @@ export class ToolCallHandler {
         '以上针对单项工具的回执说明仅约束该工具；请将本次响应中全部工具的实际结果合并回复，不要遗漏其他工具的成功或失败，也不要把后台受理说成任务已完成。',
       )
     }
-    await this.getFrontend()?.ensureResponse?.(
-      {
-        turnId: batch.turnId,
-        turnGeneration: batch.turnGeneration,
-        ...batch.responseContext,
-        ...(batch.taskIds.length ? {
-          taskId: batch.taskIds[0],
-          taskIds: batch.taskIds,
-        } : {}),
-      },
-      {
-        afterToolResults: true,
-        shouldCreate: () => !this.isStale(batch.turnId, batch.turnGeneration)
-          && (!batch.responseGuards.length || batch.responseGuards.some(check => check())),
-        ...(instructions.length ? {
-          response: { instructions: instructions.join(' ') },
-        } : {}),
-      },
-    )
+    try {
+      await this.getFrontend()?.ensureResponse?.(
+        {
+          turnId: batch.turnId,
+          turnGeneration: batch.turnGeneration,
+          ...batch.responseContext,
+          ...(batch.taskIds.length ? {
+            taskId: batch.taskIds[0],
+            taskIds: batch.taskIds,
+          } : {}),
+        },
+        {
+          afterToolResults: true,
+          shouldCreate: () => !this.isStale(batch.turnId, batch.turnGeneration)
+            && (!batch.responseGuards.length || batch.responseGuards.some(check => check())),
+          ...(instructions.length ? {
+            response: { instructions: instructions.join(' ') },
+          } : {}),
+        },
+      )
+    } catch (error) {
+      this.onToolResponseFailed({ responseId, turnId: batch.turnId })
+      throw error
+    }
   }
 
   async closeStaleCall(callId, turnId) {

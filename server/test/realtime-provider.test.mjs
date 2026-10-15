@@ -106,23 +106,25 @@ test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
   assert.match(instructions, /不要预测、模拟或代替后台提出权限请求/)
 })
 
-test('core routing distinguishes discussion from execution and keeps receipt guidance generic', () => {
-  const instructions = buildFrontendInstructions()
-  const routing = instructions.match(/# Routing\n([\s\S]*?)(?=\n# |$)/)?.[1]
-  assert.ok(routing)
-  assert.match(routing, /讨论|解释|建议/)
-  assert.match(routing, /执行/)
-  assert.match(routing, /专用工具/)
-  assert.match(routing, /`spawn_thinking`[^。]*description[^。]*能力范围/)
-  assert.match(routing, /新增|新工作|新目标/)
-  assert.match(routing, /已有|原目标|原工作/)
-  assert.match(routing, /(?:已完成|工作完成后).*续接/)
-  assert.match(routing, /update_agent_task/)
-  assert.match(instructions, /调用 `spawn_thinking` 或 `update_agent_task` 前不要口头回应/)
-  assert.match(instructions, /实际限制.*如实说明/)
-  assert.match(instructions, /根据工具结果如实回应.*不把请求受理或执行进展说成已经完成/)
-  assert.doesNotMatch(instructions, /`accepted`|`duplicate`|不再调用任何工具/)
-})
+for (const lineEnding of ['\n', '\r\n']) {
+  test(`core routing distinguishes discussion from execution and keeps receipt guidance generic (${JSON.stringify(lineEnding)})`, () => {
+    const instructions = buildFrontendInstructions().replace(/\r?\n/g, lineEnding)
+    const routing = instructions.match(/# Routing\r?\n([\s\S]*?)(?=\r?\n# |$)/)?.[1]
+    assert.ok(routing)
+    assert.match(routing, /讨论|解释|建议/)
+    assert.match(routing, /执行/)
+    assert.match(routing, /专用工具/)
+    assert.match(routing, /`spawn_thinking`[^。]*description[^。]*能力范围/)
+    assert.match(routing, /新增|新工作|新目标/)
+    assert.match(routing, /已有|原目标|原工作/)
+    assert.match(routing, /(?:已完成|工作完成后).*续接/)
+    assert.match(routing, /update_agent_task/)
+    assert.match(instructions, /调用 `spawn_thinking` 或 `update_agent_task` 前不要口头回应/)
+    assert.match(instructions, /实际限制.*如实说明/)
+    assert.match(instructions, /根据工具结果如实回应.*不把请求受理或执行进展说成已经完成/)
+    assert.doesNotMatch(instructions, /`accepted`|`duplicate`|不再调用任何工具/)
+  })
+}
 
 test('pending business previews request a neutral reply through the unified update tool', () => {
   assert.match(inputRequestResponseInstructions, /update_agent_task/)

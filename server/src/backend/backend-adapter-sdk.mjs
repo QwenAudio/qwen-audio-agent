@@ -46,6 +46,9 @@ export function createBackendAgentHost(adapter, options = {}) {
     start: context => backend.start(context),
     submit: (task, context) => backend.submit(task, context),
     cancel: (taskId, context) => backend.cancel(taskId, context),
+    ...(typeof backend.update === 'function' ? {
+      update: (taskId, input, context) => backend.update(taskId, input, context),
+    } : {}),
     respondAuthorization: (taskId, authorizationId, decision, context) => (
       backend.respondAuthorization(taskId, authorizationId, decision, context)
     ),

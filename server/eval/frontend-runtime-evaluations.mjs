@@ -51,7 +51,7 @@ async function evaluateRoutingContract() {
     'The frontend prompt no longer permits composing available tools.',
   )
   requireCondition(
-    /符合 `spawn_thinking` description 声明的[\s\S]*能力范围/u.test(prompt),
+    /`spawn_thinking` description 声明的\s*能力范围/u.test(prompt),
     'The frontend prompt no longer routes declared backend capabilities.',
   )
   requireCondition(

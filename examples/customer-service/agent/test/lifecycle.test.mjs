@@ -99,7 +99,7 @@ test('用户已明确批准的组合方案可覆盖多个依赖写操作', async
   assert.match(JSON.stringify(events), /Rebooked and assigned seat 21A/)
 })
 
-test('后台按前台模型的结构化 accept 提交，不再用文本规则二次分类', async t => {
+test('后台按显式 UI 的结构化 accept 提交，不用文本规则覆盖 UI 决定', async t => {
   const writes = [], revoked = []
   const executor = new ServiceAgentExecutor({
     tools: {

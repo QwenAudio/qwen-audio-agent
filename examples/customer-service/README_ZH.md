@@ -33,6 +33,7 @@ https://github.com/user-attachments/assets/ddb4cc30-e02c-4b3c-ba2a-63b3933cdaed
 携带 49 轮）。Gateway 会为同一客户的后续 Task 复用服务端签发的 A2A Context；
 待确认操作的预览只属于原 Task，不会作为可复用授权写入历史。重置业务会话、换客户
 或重启后台 Agent 后会重新积累历史。
+Gateway 默认一次执行一项用户任务，后续工作排队；回答追问仍继续原任务，前台对话不受阻塞。
 
 ## 能做什么
 
@@ -186,10 +187,11 @@ tau2 风格的对话和终态评分协议，在相同任务内容上比较 Realt
 1. 写工具第一次调用只生成预览和内部 `data.approval = { token, preview }`，不写库。
 2. executor 保存工具名、原参数、令牌和任务上下文，发布 `auth_required`。
 3. 客户只收到可读预览；令牌与内部调用指令不进入 A2A 确认文本或模型消息。
-4. 前台通过 `respond_agent_input` 返回决定，A2A adapter 在消息 metadata 中携带
-   `qwenAudioInputResponse = { kind: 'authorization', action }`。
-5. 授权必须明确为 `accept` / `decline` / `cancel`，缺失或非法动作报错。
-   只有明确 accept 才由 executor 提交保存的工具与参数；拒绝、取消、超时清理并撤销令牌。
+4. 前台通过 `update_agent_task` 返回同一 `task_id`，用 `instruction` 原样转达客户答复，
+   不把原话分类为批准决定。A2A 携带答复及 `qwenAudioInputResponse = { kind: 'authorization' }`；
+   显式客户端按钮仍保留协议动作语义。终止整项工作使用 `cancel_agent_task`。
+5. 后台结合保存的预览解释答复，只有真实同意才提交；含糊答复继续澄清。
+   条件变化时撤销旧令牌，在同一任务内按新要求继续规划；拒绝、取消、超时也撤销待确认批准。
 6. 提交结果交回模型继续原任务。后续写操作逐笔取得新批准，不共用同意。
    最终结果不再混入历史进度和旧确认问题。
 

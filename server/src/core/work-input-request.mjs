@@ -1,5 +1,6 @@
 export const InputRequestStatus = Object.freeze({
   PENDING: 'pending',
+  ANSWERED: 'answered',
   ACCEPTED: 'accepted',
   DECLINED: 'declined',
   CANCELLED: 'cancelled',

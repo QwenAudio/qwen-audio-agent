@@ -87,6 +87,8 @@ export function createRealtimeTaskPresentation({
         ] : [
           '<backend_input_request>',
           `task_id=${task.id}`,
+          `input_request_id=${request.id}`,
+          `kind=${request.kind || 'input'}`,
           `request=${request.prompt}`,
           ...(fields ? [`fields=${fields}`] : []),
           ...(request.mode === 'url' && request.url ? [`url=${request.url}`] : []),

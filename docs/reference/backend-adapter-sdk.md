@@ -48,7 +48,8 @@ An adapter implements the complete surface:
 `start` and `close` are idempotent. `status()` without a Task ID returns
 runtime status; with an ID it addresses only that Gateway Task. `submit`,
 `status`, `cancel`, `respondAuthorization`, and `respondInput` share one `taskId`. Private
-sessions, remote task IDs, and topology never cross the port.
+sessions, remote task IDs, and topology remain adapter-owned; only an opaque continuation
+reference may round-trip through the runtime.
 
 `submit(task)` receives a structured internal Task plus one canonical
 `instruction`. An adapter may use routing and correlation fields internally,
@@ -72,7 +73,28 @@ summarizes, and expresses naturally. An adapter must not prescribe separate
 spoken wording. Files, images, and structured output use `artifacts`;
 BackendPort does not prescribe a Conversation Client presentation.
 
-Do not return raw protocol objects, session IDs, tokens, or credentials.
+Do not expose raw protocol objects, session IDs, authentication tokens, or credentials in public results.
+
+### Optional Work Updates
+
+An adapter may advertise `describe().capabilities.workUpdates: true` and implement
+`update(taskId, { instruction, inputParts }, { ownerId })`. It synchronously admits an update to
+that exact active execution, returning `{ completion: Promise }`. Resolve the promise when
+delivery is acknowledged, not when the work finishes; reject if delivery fails or is ambiguous.
+Never silently create a different Task, replay an uncertain request, or modify another execution.
+Adapters without this capability remain valid and return `update_unsupported` through the runtime.
+
+For completed work, `submit` may return a private `continuation: { adapter, token }`. The runtime
+persists this opaque reference and passes it back as `task.resumeContext` on explicit continuation.
+Only the adapter interprets the token; it must verify the original context is available and reject
+otherwise. This is not an authentication token and never enters frontend tool results or client
+snapshots. Existing adapters need not implement continuation.
+
+The ACP implementation prefers negotiated `_session/steering`, then an observed
+`craft/drainMidTurnQueue` callback. These are extensions, not standard ACP methods. Otherwise it
+uses standard cancellation and waits for the original `session/prompt` to settle before prompting
+the same Session. Uncertain cancellation blocks reuse of that Session until backend restart.
+This fallback preserves history but cannot undo executed actions or match native mid-turn injection.
 Progress is published through `subscribe` as backend events correlated by
 `taskId` and `ownerId`; a failing observer cannot interrupt execution.
 
@@ -118,6 +140,15 @@ same operation, then emit `backend.input.resolved`. The request carries a
 bounded prompt and `text`, `form`, or `url` mode; protocol-native objects and
 remote IDs remain private. Adapters without interactive input reject
 `respondInput` explicitly.
+
+Natural-language replies use `respondInput(taskId, inputRequestId, { text, values }, { ownerId })`
+without an `action`. Interpret confirmation, refusal, and revisions in the original backend
+context; never default missing actions to approval. The A2A adapter resolves this delivery as
+`input.status: 'answered'`, not `accepted`. Explicit client actions retain the statuses
+`accepted`, `declined`, and `cancelled`. A model-tool receipt of `accepted` acknowledges delivery
+only, not business approval or completion. Native permissions remain separate through
+`respondAuthorization`.
+Protocol-level form acceptance only acknowledges submitted contents; it is not permission approval.
 
 ## Gateway composition
 

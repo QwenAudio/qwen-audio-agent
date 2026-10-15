@@ -1201,7 +1201,7 @@ test('replaces a persisted coordinator without the current coordinator contract'
   assert.equal(creates, 1)
   assert.equal(deleted.length, 1)
   assert.equal(saved[0][1].sessionId, 'fresh-coordinator')
-  assert.equal(saved[0][1].contractVersion, 6)
+  assert.equal(saved[0][1].contractVersion, 7)
   await adapter.close()
 })
 

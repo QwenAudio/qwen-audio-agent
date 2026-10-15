@@ -44,6 +44,8 @@ The backend Agent keeps up to 50 completed task request/reply turns in memory (a
 Context for later Tasks from the same customer. Approval previews stay attached to their
 pending Task and are never replayed as reusable authorization. Resetting the business
 session, switching customers, or restarting the Agent starts fresh backend history.
+Gateway runs one user task at a time by default; later work queues while replies to
+pending questions continue the original task. The voice conversation remains available.
 
 ## Capabilities
 
@@ -204,10 +206,13 @@ and the complete [benchmark guide](benchmark/README.md).
 1. The first write-tool call creates a preview and internal `data.approval = { token, preview }`, without mutating the DB.
 2. The executor saves the tool, original arguments, token and task context, then emits `auth_required`.
 3. Customers receive readable previews; tokens and internal tool instructions stay out of A2A confirmation text and model messages.
-4. The frontend responds through `respond_agent_input`. The A2A adapter carries
-   `qwenAudioInputResponse = { kind: 'authorization', action }` in message metadata.
-5. Authorization requires explicit `accept`, `decline` or `cancel`; absent/invalid actions are rejected.
-   Only accept commits the saved operation. Decline, cancellation and timeout clear pending state and revoke the token.
+4. The frontend responds through `update_agent_task` with the same `task_id` and the customer's
+   literal reply in `instruction`, without classifying it as an approval decision. A2A carries
+   the reply with `qwenAudioInputResponse = { kind: 'authorization' }`; explicit client UI actions
+   retain their transport semantics. Stopping the whole task uses `cancel_agent_task`.
+5. The backend interprets the reply against the saved preview. Only genuine approval commits it;
+   ambiguity prompts clarification. Changed conditions revoke the old token and continue planning
+   in the same task. Refusal, cancellation and timeout also revoke the pending approval.
 6. The model receives the committed result and continues the original task. Each subsequent write requires its own approval.
    Final output excludes historical progress and earlier confirmation questions.
 

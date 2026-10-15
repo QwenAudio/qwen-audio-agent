@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createDeliveryHarness, flush, startTask } from './helpers/task-session-harness.mjs'
 import { createTaskAnnouncementRuntime } from '../src/voice/announcement/task-announcement-runtime.mjs'
+import { TaskManager } from '../src/task/task-manager.mjs'
 
 function harness(t, options) {
   const h = createDeliveryHarness(options)
@@ -88,7 +89,7 @@ test('ordinary backend prose cannot synthesize an input request or permission', 
 })
 
 test('owner/session filtering applies before projection, permission exposure and input delivery', async t => {
-  const h = harness(t)
+  const h = harness(t, { taskManager: new TaskManager({ maxConcurrent: 2 }) })
   const foreign = await startTask(h, { ownerId: 'other' })
   const otherSession = await startTask(h, { sessionId: 'other-session' })
   permission(foreign)

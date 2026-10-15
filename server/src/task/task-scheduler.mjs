@@ -1,15 +1,15 @@
 function limit(value, fallback) {
   const parsed = Number(value)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : fallback
 }
 
 export class TaskScheduler {
   constructor({
-    maxConcurrent = 4,
-    maxConcurrentPerOwner = 2,
+    maxConcurrent = 1,
+    maxConcurrentPerOwner = 1,
   } = {}) {
-    this.maxConcurrent = limit(maxConcurrent, 4)
-    this.maxConcurrentPerOwner = limit(maxConcurrentPerOwner, 2)
+    this.maxConcurrent = limit(maxConcurrent, 1)
+    this.maxConcurrentPerOwner = limit(maxConcurrentPerOwner, 1)
     this.active = new Map()
   }
 

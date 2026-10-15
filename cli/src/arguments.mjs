@@ -53,7 +53,9 @@ function cleanOrigin(value, label) {
     throw new Error(`无效的${label}：${value}`)
   }
   if (!['http:', 'https:'].includes(url.protocol)) {
-    throw new Error(`${label}只支持 http 或 https`)
+    // label 允许带前导空格（如 ' Gateway URL'）以适配「无效的${label}」的中英
+    // 混排间距；以此为开头的消息需先去掉，避免句子以前导空格开头。
+    throw new Error(`${label.trim()}只支持 http 或 https`)
   }
   return url.origin
 }

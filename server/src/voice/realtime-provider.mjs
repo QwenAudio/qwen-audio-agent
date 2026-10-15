@@ -978,9 +978,11 @@ export class RealtimeFrontend {
       ) {
         pending = this.pendingResponses.shift()
       }
+      // An error that names a response belongs to it; only an id-less error
+      // falls back to the sole waiter.
       if (
         event.type === 'error'
-        && !pending && this.responseWaiters.size === 1
+        && !pending && !id && this.responseWaiters.size === 1
       ) {
         const first = this.responseWaiters.entries().next().value
         id = first[0]

@@ -2004,6 +2004,36 @@ test('associates an unscoped provider error with the sole active response', asyn
   assert.equal(frontend.activeResponses.size, 0)
 })
 
+test('an error naming another response leaves the sole waiting request alone', async () => {
+  const frontend = createQwenFrontend()
+  frontend.ready = true
+  frontend.send = () => {}
+
+  const outcome = frontend.speak('测试')
+  await new Promise(resolve => setImmediate(resolve))
+  frontend.handleLifecycle({ type: 'response.created', response: { id: 'requested' } })
+  frontend.handleLifecycle({ type: 'response.created', response: { id: 'automatic' } })
+  // The automatic reply fails; the error names it.
+  frontend.handleLifecycle({
+    type: 'error',
+    response_id: 'automatic',
+    error: { message: 'automatic reply failed' },
+  })
+  assert.equal(frontend.activeResponses.has('automatic'), false)
+  assert.equal(frontend.responseWaiters.has('requested'), true)
+  // An error naming an untracked response settles nothing.
+  frontend.handleLifecycle({
+    type: 'error',
+    response_id: 'command-1',
+    error: { message: 'command rejected' },
+  })
+  assert.equal(frontend.responseWaiters.has('requested'), true)
+
+  frontend.handleLifecycle({ type: 'response.done', response: { id: 'requested', status: 'completed' } })
+  assert.equal((await outcome).completed, true)
+  assert.equal(frontend.activeResponses.size, 0)
+})
+
 test('retires a sole automatic response when its provider error has no response id', () => {
   const frontend = createQwenFrontend()
   frontend.ready = true

@@ -36,8 +36,10 @@ currently expose a library-management button.
 | PDF, Word, PPT, and other complex documents | Converted to Markdown by a configured backend supporting isolated execution; conversion depends on its tools. |
 
 Complex documents use an isolated execution session, not the everyday coordinator conversation,
-and do not inherit voice-chat context. Import errors appear in the panel. If no converter is available,
-convert the document to Markdown or TXT yourself before importing it.
+and do not inherit voice-chat context. Conversion writes to an isolated temporary file; only a successful,
+validated result updates the library. On conversion failure, the panel shows an import error, the original
+file and previously imported version remain unchanged, and temporary output is removed. You can retry.
+If no converter is available, convert the document to Markdown or TXT yourself before importing it.
 
 The built-in library holds up to 40 documents by default. At capacity, it asks you to remove
 unneeded documents instead of silently dropping older entries; existing documents can still

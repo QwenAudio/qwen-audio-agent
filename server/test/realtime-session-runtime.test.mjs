@@ -454,3 +454,21 @@ for (const completesAfterClose of [true, false]) {
     assert.match(frontendResumed.deliveries[0].text, /private result for A/u)
   })
 }
+
+test('input state separates client mute, host suspension and deactivation', async t => {
+  const h = harness(t, { backend: false })
+  await h.connect()
+  assert.deepEqual(h.runtime.inputState(), { inputEnabled: true, inputSuspended: false, inputActive: true })
+  h.send({ type: Input.INPUT_MUTE })
+  assert.deepEqual(h.runtime.inputState(), { inputEnabled: false, inputSuspended: false, inputActive: false })
+  h.runtime.applyInputSuspension({ suspended: true, owner: 'host', reason: 'test' })
+  assert.deepEqual(h.runtime.inputState(), { inputEnabled: false, inputSuspended: true, inputActive: false })
+  h.send({ type: Input.INPUT_UNMUTE })
+  assert.deepEqual(h.runtime.inputState(), { inputEnabled: true, inputSuspended: true, inputActive: false })
+  h.runtime.applyInputSuspension({ suspended: false })
+  assert.deepEqual(h.runtime.inputState(), { inputEnabled: true, inputSuspended: false, inputActive: true })
+  h.runtime.deactivate({ type: 'replacement' })
+  assert.deepEqual(h.runtime.inputState(), { inputEnabled: false, inputSuspended: false, inputActive: false })
+  h.runtime.close()
+  assert.equal(h.runtime.inputState().inputActive, false)
+})

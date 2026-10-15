@@ -76,6 +76,34 @@ function harness({
   }
 }
 
+test('failed tool follow-up releases processing but still waits for foreground audio', () => {
+  const { runtime, turns, calls } = harness({ resultSummaryResponses: ['tool-audio'] })
+  turns.beginManual('turn-1')
+  deliver(runtime, { type: 'response.audio.delta', response_id: 'tool-audio', delta: 'AAA=' })
+  runtime.markFunctionCall('tool-audio')
+  deliver(runtime, { type: 'response.done', response: { id: 'tool-audio', status: 'completed' } })
+  runtime.failToolResponse({ responseId: 'tool-audio', turnId: 'turn-1' })
+  assert.equal(runtime.get('tool-audio').awaitsToolFollowUp, false)
+  assert.equal(calls.findLast(call => call[0] === 'responseDone')[1].hasAudio, true)
+  runtime.finishPlayback('tool-audio')
+  assert.equal(calls.findLast(call => call[0] === 'finishPlayback')[2].awaitsToolFollowUp, false)
+})
+
+test('cleared audio ignores late audio and duplicate cancellation receipts', () => {
+  const { runtime, turns, calls, events } = harness()
+  turns.beginManual('turn-1')
+  deliver(runtime, { type: 'response.audio.delta', response_id: 'old-audio', delta: 'AAA=' })
+  runtime.clearPlayback({ reason: 'user_interruption' })
+  const eventCount = events.length
+  const finishCount = calls.filter(call => call[0] === 'finishPlayback').length
+  runtime.cancelPlayback('old-audio', { reason: 'user_interruption' })
+  runtime.startPlayback('old-audio')
+  deliver(runtime, { type: 'response.audio.delta', response_id: 'old-audio', delta: 'AAA=' })
+  assert.equal(events.length, eventCount)
+  assert.equal(calls.filter(call => call[0] === 'finishPlayback').length, finishCount)
+  assert.equal(runtime.get('old-audio').suppressed, true)
+})
+
 test('projects turn citations once on the final assistant transcript', () => {
   const stored = [{
     id: 'source_1',

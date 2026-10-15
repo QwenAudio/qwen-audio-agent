@@ -353,13 +353,6 @@ export class RealtimePresentationRuntime {
       && !suppressToolFollowUp,
     )
     if (context) context.awaitsToolFollowUp = toolFollowUpPending
-    this.toolCalls.finishToolResponse(id, {
-      suppressResponse,
-      sourceHasSpeech,
-    }).catch(error => this.send({
-      type: GatewayServerEvent.ERROR,
-      message: error.message,
-    }))
     const guardDecision = evaluateResponseGuards({
       origin: context?.origin || 'model',
       hasFunctionCall: Boolean(context?.hasFunctionCall),
@@ -434,6 +427,15 @@ export class RealtimePresentationRuntime {
       suppressed: Boolean(context?.suppressed) || terminalToolResponse,
       failed,
     })
+    // Set the source response's waiting state first: a failed tool batch can
+    // settle synchronously and must not have its release overwritten below.
+    this.toolCalls.finishToolResponse(id, {
+      suppressResponse,
+      sourceHasSpeech,
+    }).catch(error => this.send({
+      type: GatewayServerEvent.ERROR,
+      message: error.message,
+    }))
     if (guardDecision) this.#requestGuardCorrection(guardDecision, context, responseTurnId)
     this.#flushAnnouncementsSoon()
   }
@@ -605,10 +607,40 @@ export class RealtimePresentationRuntime {
     this.#flushAnnouncementsSoon()
   }
 
+  failToolResponse({ responseId, turnId }) {
+    const context = this.contexts.get(responseId)
+    if (context) context.awaitsToolFollowUp = false
+    const hasAudio = Boolean(context?.hasAudio && !context.playbackEnded)
+    this.announcementWindow.responseDone({
+      turnId,
+      origin: context?.origin || 'model',
+      hasAudio,
+      failed: true,
+    })
+    if (!hasAudio && turnId === this.turns.turnId && !this.turns.userSpeaking) {
+      this.send({
+        type: GatewayServerEvent.VOICE_STATE,
+        state: 'idle',
+        turnId,
+        origin: context?.origin || 'model',
+      })
+    }
+    this.#flushAnnouncementsSoon()
+  }
+
+  clearPlayback({ reason = '' } = {}) {
+    // A Gateway playback.clear is authoritative. Do not keep cleared audio
+    // blocking results just because a client cancellation receipt is lost.
+    for (const id of this.playbackTurns.keys()) {
+      this.cancelPlayback(id, { reason })
+    }
+  }
+
   cancelPlayback(id, { reason = '' } = {}) {
     const context = this.contexts.get(id)
+    if (context?.suppressed && context.playbackEnded) return
     this.announcementWindow.finishPlayback(id, {
-      awaitsToolFollowUp: awaitsToolFollowUp(context),
+      awaitsToolFollowUp: false,
     })
     const playbackTurnId = this.playbackTurns.get(id) || this.turns.turnId
     this.playbackTurns.delete(id)

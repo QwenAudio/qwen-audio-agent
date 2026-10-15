@@ -148,6 +148,8 @@ export class RealtimeInputRuntime {
     this.announcementWindow.endSpeech()
     if (event.reason === 'turn_invalid') {
       this.turns.invalidateInput(event.item_id)
+      this.announcementWindow.responseDone({ turnId: stoppedTurn.turnId, failed: true })
+      this.announcements.flush()
       this.send({
         type: GatewayServerEvent.TRANSCRIPT_DISCARD,
         role: 'user',

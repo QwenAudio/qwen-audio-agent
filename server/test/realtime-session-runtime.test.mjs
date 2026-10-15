@@ -115,6 +115,130 @@ function harness(t, {
     done, memoryListeners, provider, conversationSync, ownerId, sessionId }
 }
 
+test('invalid speech releases a completed task without another user turn', async t => {
+  const h = harness(t)
+  const f = await h.connect()
+  const task = h.request('diagnostic work')
+  await until(() => h.runs.has(task.id))
+  f.emit({ type: 'input_audio_buffer.speech_started', item_id: 'noise' })
+  f.emit({ type: 'input_audio_buffer.speech_stopped', item_id: 'noise', reason: 'turn_invalid' })
+  h.runs.get(task.id).resolve({ content: 'diagnostic result' })
+  await h.manager.wait(task.id)
+  assert.equal(h.events.findLast(e => e.type === 'voice.state').state, 'idle')
+  await until(() => f.deliveries.some(d => d.origin === 'announcement'))
+})
+
+test('interruption clears old audio without requiring a client cancellation receipt', async t => {
+  const h = harness(t)
+  const f = await h.connect()
+  const task = h.request('diagnostic work')
+  await until(() => h.runs.has(task.id))
+  h.send({ type: Input.TEXT_MESSAGE, text: 'hello' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'old-audio' } })
+  f.emit({ type: 'response.audio.delta', response_id: 'old-audio', delta: 'AAA=', sampleRate: 24000 })
+  f.emit({ type: 'response.done', response: { id: 'old-audio', status: 'completed' } })
+  h.runs.get(task.id).resolve({ content: 'diagnostic result' })
+  await h.manager.wait(task.id)
+  // Generation completion is not playback completion: keep waiting normally.
+  await new Promise(resolve => setTimeout(resolve, 30))
+  assert.equal(f.deliveries.length, 0)
+  assert.equal(h.manager.get(task.id).notificationStatus, 'delivering')
+  h.send({ type: Input.INTERRUPT })
+  assert.equal(h.events.at(-1).type, 'playback.clear')
+  await until(() => f.deliveries.some(d => d.origin === 'announcement'))
+})
+
+for (const sourceDoneFirst of [false, true]) {
+  test(`tool output failure releases task delivery (source done first: ${sourceDoneFirst})`, async t => {
+    const h = harness(t)
+    const f = await h.connect()
+    let rejectOutput
+    f.sendFunctionOutput = () => new Promise((_resolve, reject) => { rejectOutput = reject })
+    h.send({ type: Input.TEXT_MESSAGE, text: 'run a background task' })
+    await until(() => f.inputs.length === 1)
+    f.emit({ type: 'response.created', response: { id: 'failed-tool-output' } })
+    f.emit({ type: 'response.function_call_arguments.done', response_id: 'failed-tool-output',
+      call_id: 'diagnostic-spawn', name: 'spawn_thinking', arguments: '{"objective":"diagnostic task"}' })
+    await until(() => rejectOutput)
+    const done = () => f.emit({ type: 'response.done', response: { id: 'failed-tool-output', status: 'completed' } })
+    if (sourceDoneFirst) done()
+    rejectOutput(new Error('tool output transport failure'))
+    await until(() => h.events.some(e => e.type === 'error' && e.message.includes('tool output transport failure')))
+    if (!sourceDoneFirst) done()
+    const task = h.manager.list({ active: true })[0]
+    await until(() => h.runs.has(task.id))
+    h.runs.get(task.id).resolve({ content: 'diagnostic completed result' })
+    await h.manager.wait(task.id)
+    await until(() => f.deliveries.some(d => d.origin === 'announcement'))
+  })
+}
+
+test('failure to request a tool continuation releases task delivery', async t => {
+  const h = harness(t)
+  const f = await h.connect()
+  f.ensureResponse = async () => { throw new Error('continuation transport failure') }
+  h.send({ type: Input.TEXT_MESSAGE, text: 'run a background task' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'failed-follow-up' } })
+  f.emit({ type: 'response.function_call_arguments.done', response_id: 'failed-follow-up',
+    call_id: 'spawn', name: 'spawn_thinking', arguments: '{"objective":"task"}' })
+  await until(() => f.outputs.length === 1)
+  f.emit({ type: 'response.done', response: { id: 'failed-follow-up', status: 'completed' } })
+  await until(() => h.events.some(e => e.type === 'error' && e.message === 'continuation transport failure'))
+  const task = h.manager.list({ active: true })[0]
+  await until(() => h.runs.has(task.id))
+  h.runs.get(task.id).resolve({ content: 'completed result' })
+  await h.manager.wait(task.id)
+  await until(() => f.deliveries.some(d => d.origin === 'announcement'))
+})
+
+test('an older tool output failure cannot release a newer user turn', async t => {
+  const h = harness(t)
+  const f = await h.connect()
+  let rejectOutput
+  f.sendFunctionOutput = () => new Promise((_resolve, reject) => { rejectOutput = reject })
+  h.send({ type: Input.TEXT_MESSAGE, text: 'run a background task' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'old-tool' } })
+  f.emit({ type: 'response.function_call_arguments.done', response_id: 'old-tool',
+    call_id: 'spawn', name: 'spawn_thinking', arguments: '{"objective":"task"}' })
+  await until(() => rejectOutput)
+  f.emit({ type: 'response.done', response: { id: 'old-tool', status: 'completed' } })
+  h.send({ type: Input.TEXT_MESSAGE, text: 'another question' })
+  await until(() => f.inputs.length === 2)
+  rejectOutput(new Error('old tool output failed'))
+  await until(() => h.events.some(e => e.type === 'error' && e.message === 'old tool output failed'))
+  const task = h.manager.list({ active: true })[0]
+  await until(() => h.runs.has(task.id))
+  h.runs.get(task.id).resolve({ content: 'completed result' })
+  await h.manager.wait(task.id)
+  await new Promise(resolve => setTimeout(resolve, 30))
+  assert.equal(f.deliveries.length, 0)
+  f.emit({ type: 'response.created', response: { id: 'new-reply' } })
+  f.emit({ type: 'response.done', response: { id: 'new-reply', status: 'completed' } })
+  await until(() => f.deliveries.some(d => d.origin === 'announcement'))
+})
+
+test('speech clears old audio and invalid speech does not leave task delivery blocked', async t => {
+  const h = harness(t)
+  const f = await h.connect()
+  const task = h.request('work')
+  await until(() => h.runs.has(task.id))
+  h.send({ type: Input.TEXT_MESSAGE, text: 'hello' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'old-audio' } })
+  f.emit({ type: 'response.audio.delta', response_id: 'old-audio', delta: 'AAA=', sampleRate: 24000 })
+  f.emit({ type: 'response.done', response: { id: 'old-audio', status: 'completed' } })
+  f.emit({ type: 'input_audio_buffer.speech_started', item_id: 'noise' })
+  h.runs.get(task.id).resolve({ content: 'completed result' })
+  await h.manager.wait(task.id)
+  await new Promise(resolve => setTimeout(resolve, 30))
+  assert.equal(f.deliveries.length, 0, 'speech must still block delivery')
+  f.emit({ type: 'input_audio_buffer.speech_stopped', item_id: 'noise', reason: 'turn_invalid' })
+  await until(() => f.deliveries.some(d => d.origin === 'announcement'))
+})
+
 test('frontend runtime chats without backend, socket, handshake or provider network', async t => {
   const h = harness(t, { backend: false })
   const f = await h.connect()

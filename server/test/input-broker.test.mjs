@@ -33,3 +33,15 @@ test('ACP elicitation pauses and resumes the same backend work', async () => {
   })
   assert.equal(events[1].type, 'backend.input.resolved')
 })
+
+test('ACP natural answers submit literal content, not an inferred permission decision', async () => {
+  const events = []
+  const broker = new InputBroker({ protocol: 'acp' })
+  const pending = broker.request({ message: '是否按原方案处理？' }, {
+    session: { coordinationRunId: 'task_2', ownerId: 'owner-one', onEvent: event => events.push(event) },
+  })
+  broker.respond(events[0].input.id, { text: '不要这样做，改成新方案' }, { ownerId: 'owner-one' })
+  // Native MCP accept submits the answer contents; it does not approve an
+  // operation or replace the separate ACP permission request protocol.
+  assert.deepEqual(await pending, { action: 'accept', content: { response: '不要这样做，改成新方案' } })
+})

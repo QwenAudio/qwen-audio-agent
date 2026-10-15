@@ -14,6 +14,26 @@ import test from 'node:test'
 import { AcpProcessClient } from '../src/backend/adapters/acp/process-client.mjs'
 import { openClawBackendDriver } from '../src/backend/adapters/acp/drivers/openclaw.mjs'
 
+test('negotiates optional steering without inferring support from an Agent brand', async () => {
+  const client = new AcpProcessClient({ label: 'Generic Agent', command: 'unused' })
+  assert.equal(client.steeringMode('one'), 'restart')
+  assert.deepEqual(client.drainMidTurnQueue({ sessionId: 'unknown' }), { items: [], hasQueuedPrompt: false })
+  assert.equal(client.steeringMode('unknown'), 'restart')
+  client.rememberSession('one', {})
+  client.activePrompts.set('one', { onMidTurnDrain: () => ({ items: [{ content: [{ type: 'text', text: 'adjust' }] }], hasQueuedPrompt: false }) })
+  assert.equal(client.drainMidTurnQueue({ sessionId: 'one' }).items[0].content[0].text, 'adjust')
+  assert.equal(client.steeringMode('one'), 'pull')
+  client.initializeResult = { _meta: { steering: { supported: true } } }
+  assert.equal(client.steeringMode('one'), 'extension')
+  const calls = []
+  client.request = async (...args) => { calls.push(args); return { outcome: 'injected' } }
+  await client.steerSession('one', 'adjust')
+  assert.deepEqual(calls[0], ['_session/steering', {
+    sessionId: 'one', prompt: [{ type: 'text', text: 'adjust' }],
+    _meta: { steering: { idleBehavior: 'promptRequired' } },
+  }, { timeoutMs: 15_000 }])
+})
+
 test('starts a Windows batch ACP command from a directory containing spaces', {
   skip: process.platform !== 'win32',
 }, async () => {
@@ -499,13 +519,12 @@ test('reports a prompt timeout even when the Agent confirms cancellation', async
     command: 'unused',
   })
   client.start = async () => {}
+  let finishPrompt
   client.context = {
-    request: (_method, _params, { signal }) => new Promise(resolve => {
-      signal.addEventListener('abort', () => {
-        resolve({ stopReason: 'cancelled' })
-      }, { once: true })
+    request: () => new Promise(resolve => {
+      finishPrompt = () => resolve({ stopReason: 'cancelled' })
     }),
-    notify: async () => {},
+    notify: async () => finishPrompt(),
   }
   client.sessions.set('session-one', { sessionId: 'session-one' })
 
@@ -522,6 +541,47 @@ test('reports a prompt timeout even when the Agent confirms cancellation', async
   } finally {
     clearTimeout(keepAlive)
   }
+})
+
+test('user cancellation retains the active prompt until the Agent confirms termination', async () => {
+  const client = new AcpProcessClient({ label: 'Test Agent', command: 'unused' })
+  client.start = async () => {}
+  const remote = Promise.withResolvers()
+  const notifications = []
+  client.context = { request: () => remote.promise,
+    notify: async (method, params) => notifications.push({ method, params }) }
+  const controller = new AbortController()
+  const reason = new Error('user cancelled')
+  const prompting = client.prompt('session-one', 'work', { signal: controller.signal, timeoutMs: 0 })
+  const failure = assert.rejects(prompting, error => error === reason)
+  await new Promise(resolve => setImmediate(resolve))
+  controller.abort(reason)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(client.activePrompts.has('session-one'), true)
+  assert.deepEqual(notifications, [{ method: 'session/cancel', params: { sessionId: 'session-one' } }])
+  await assert.rejects(client.prompt('session-one', 'another work'), /已有正在执行/)
+  remote.resolve({ stopReason: 'cancelled' })
+  await failure
+  assert.equal(client.activePrompts.has('session-one'), false)
+})
+
+test('unconfirmed cancellation marks the Session context uncertain', async () => {
+  const client = new AcpProcessClient({ label: 'Test Agent', command: 'unused' })
+  client.start = async () => {}
+  client.context = {
+    request: (_method, _params, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+    }),
+    notify: async () => {},
+  }
+  const controller = new AbortController()
+  const prompting = client.prompt('session-one', 'work', {
+    signal: controller.signal, timeoutMs: 0, cancelTimeoutMs: 5,
+  })
+  const failure = assert.rejects(prompting, error => error.contextUncertain === true)
+  await new Promise(resolve => setImmediate(resolve))
+  controller.abort(new Error('cancel'))
+  await failure
 })
 
 test('keeps Session metadata on the process client boundary', async () => {

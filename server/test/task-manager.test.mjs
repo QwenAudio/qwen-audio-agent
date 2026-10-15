@@ -317,7 +317,7 @@ test('drops stale permissions restored on terminal work', () => {
   assert.equal(manager.get('task_90').authorization, null)
 })
 
-test('keeps delegated work active while releasing its coordinator lane', async () => {
+test('delegated work retains its concurrency slot until the whole work completes', async () => {
   const manager = new TaskManager()
   let finish
   let secondStarted = false
@@ -368,11 +368,12 @@ test('keeps delegated work active while releasing its coordinator lane', async (
   assert.equal(delegated.delegation.title, '已有项目')
   assert.equal('presentation' in delegated.delegation, false)
   assert.ok(events.some(event => event.type === 'task.delegated'))
-  assert.equal(secondStarted, true)
-  assert.equal(manager.get(second.id).status, 'completed')
+  assert.equal(secondStarted, false)
+  assert.equal(manager.get(second.id).status, 'queued')
 
   finish()
   await Promise.all([manager.wait(task.id), manager.wait(second.id)])
+  assert.equal(secondStarted, true)
   assert.equal(manager.get(task.id).status, 'completed')
   assert.equal(manager.get(task.id).result, '目标结果')
 })

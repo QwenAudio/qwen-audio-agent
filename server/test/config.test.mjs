@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -15,6 +18,35 @@ import {
 } from '../../shared/realtime-provider-catalog.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+
+test('defaults Gateway user work to serial execution and preserves explicit limits', t => {
+  const directory = mkdtempSync(resolve(tmpdir(), 'qwa-serial-config-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  const configUrl = new URL('../src/core/config.mjs', import.meta.url).href
+  const script = `
+    import { config } from ${JSON.stringify(configUrl)};
+    process.stdout.write(JSON.stringify([
+      config.taskMaxConcurrent, config.taskMaxConcurrentPerOwner,
+    ]));
+  `
+  for (const [global, owner, expected] of [
+    ['', '', [1, 1]],
+    ['invalid', 'invalid', [1, 1]],
+    ['4', '2', [4, 2]],
+  ]) {
+    const output = execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        QWAUDIO_CONFIG_DIR: directory,
+        QWEN_AUDIO_AGENT_RUNTIME_ROOT: directory,
+        QWEN_AUDIO_AGENT_TASK_MAX_CONCURRENT: global,
+        QWEN_AUDIO_AGENT_TASK_MAX_CONCURRENT_PER_OWNER: owner,
+      },
+    })
+    assert.deepEqual(JSON.parse(output), expected)
+  }
+})
 
 test('treats missing and blank numeric settings as unset', () => {
   for (const value of [null, undefined, '', '   ', '\t\n']) {

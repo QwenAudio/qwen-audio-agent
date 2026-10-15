@@ -916,3 +916,42 @@ test('requires access authentication before a remote WebSocket can enter GCP', a
   assert.equal(accepted.socket.protocol, GATEWAY_WEBSOCKET_PROTOCOL)
   accepted.socket.close()
 })
+
+test('input status follows mute and takeover, clears disconnects and scopes owners', async t => {
+  const { server, gateway } = gatewayHarness({
+    identityManager: { resolveUpgrade: request => ({ ownerId: request.headers['x-test-owner'] }) },
+    realtimeFrontendFactory: options => ({
+      provider: options.provider, ready: false,
+      async connect() { this.ready = true },
+      close() { this.ready = false }, updateAgentContext() {}, cancelResponses() {},
+    }),
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => { await gateway.close(); await new Promise(resolve => server.close(resolve)) })
+  const open = (owner, type, takeover = false) => connect(server, createGatewaySessionHello({
+    clientType: type, clientInstanceId: `${owner}-${type}`,
+    capabilities: [GatewayClientCapability.INPUT_AUDIO, GatewayClientCapability.PLAYBACK_RECEIPTS,
+      ...(takeover ? [GatewayClientCapability.SESSION_TAKEOVER] : [])],
+    connection: { voice_enabled: true, input_enabled: true, output_enabled: true }, takeover,
+  }), { headers: { 'x-test-owner': owner } })
+  const first = await open('user_one', 'cli')
+  const other = await open('user_two', 'web')
+  await waitFor(first.received, event => event.type === 'session.ready')
+  await waitFor(other.received, event => event.type === 'session.ready')
+  await waitUntil(() => gateway.inputStatus().clients.length === 2)
+  assert.deepEqual(gateway.inputStatus({ ownerId: 'user_one' }).clients, [
+    { clientType: 'cli', inputEnabled: true, inputSuspended: false, inputActive: true },
+  ])
+  first.socket.send(JSON.stringify({ type: 'input.mute', event_id: 'evt-input-state-muted' }))
+  await waitUntil(() => gateway.inputStatus({ ownerId: 'user_one' }).inputEnabled === false)
+  assert.equal(gateway.inputStatus({ ownerId: 'user_two' }).inputEnabled, true)
+  const replacement = await open('user_one', 'desktop', true)
+  await waitFor(replacement.received, event => event.type === 'session.ready')
+  await waitUntil(() => gateway.inputStatus({ ownerId: 'user_one' }).clients[0]?.clientType === 'desktop')
+  assert.equal(gateway.inputStatus({ ownerId: 'user_one' }).inputEnabled, true)
+  assert.equal(gateway.inputStatus().clients.length, 2)
+  replacement.socket.close()
+  await waitUntil(() => gateway.inputStatus({ ownerId: 'user_one' }).clients.length === 0)
+  assert.deepEqual(gateway.inputStatus({ ownerId: 'user_one' }), { inputEnabled: null, inputActive: false, clients: [] })
+  other.socket.close()
+})

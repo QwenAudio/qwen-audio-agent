@@ -28,7 +28,7 @@ Delivery、Client Action、参考 Client SDK 与有限回放均落在同一条 W
 线协议 7.0 将权限决定 `once` 替换为明确的 Task 级 `task`，Gateway 与客户端
 需要同步更新。Capability ID 保留历史名称，实际线协议版本通过 `session.hello` 协商。
 
-当前健康契约版本为 `5.9.0`。新增的 `5.9` 能力允许网关主机直接签发设备连接码：
+当前健康契约版本为 `5.10.0`。新增的 `5.10` 能力通过已认证健康接口公开客户端输入状态，远程结果仅限已认证用户。新增的 `5.9` 能力允许网关主机直接签发设备连接码：
 对话客户端只用一条 WS/WSS 完成认证与业务，本机 HTTP 仅保留为宿主管理面。`5.8` 能力通过 capability 协商提供实时 JPEG
 视觉帧，并把厂商线协议保留在 Realtime Provider Adapter 内。`5.7` 能力提供远程 Client 认证、一次性
 设备配对，以及按用户生效的活动 Client 接管与租约代次 fencing。`5.6` 能力为可替换客户端提供
@@ -66,6 +66,7 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `gateway.direct-device-connection` | 仅本机可调用的管理接口签发一个包含可撤销独立设备凭证的短浏览器兼容连接码；原生客户端导入时不需要 HTTP 配对或健康预检，浏览器仅把 fragment Token 换成 HttpOnly Cookie | `server/test/gateway-application.test.mjs`、`test/gateway-remote-access.test.mjs`、`desktop/test/gateway-connection.test.mjs` |
 | `host.electron-entry` | `qwen-audio-agent/electron`：Electron 主进程可直接 `require` 的 CommonJS 入口，一次 `load()` 拿到全部契约 | `test/consumer-install.test.mjs` |
 | `host.gateway-process` | `GatewayProcess` 随包发布：fork、端口回退、就绪握手、重启、计划退出与崩溃分离——桌面版跑的是同一份实现 | `desktop/test/gateway-process.test.mjs` |
+| `input.client-status` | 已认证健康接口公开客户端输入启用、宿主暂停与有效输入状态；远程结果只限所属用户 | `server/test/gateway-application.test.mjs`, `server/test/gateway-client-handshake.test.mjs`, `server/test/realtime-session-runtime.test.mjs` |
 | `input.suspend-protocol` | `POST /api/input/suspend\|resume`、`GET /api/input`；Gateway 通过 `input.suspend` / `input.resume` 把抢占传达给客户端 | `server/test/input-suspend-protocol.test.mjs` |
 | `input.suspend-clears-playback` | 抢占同时清除播报，宿主录音不会录进 Gateway 自己的语音 | `server/test/input-suspend-protocol.test.mjs` |
 | `input.suspend-ttl` | 持有者不主动释放时抢占自行过期 | `server/test/input-arbitration.test.mjs` |
@@ -278,3 +279,18 @@ startedAt, heartbeatAt }`。定位实例的方式：读租约、探活 `origin`�
 发布代码必须能在 `engines` 范围允许的最老 Node 上运行。CI 在该版本上实跑
 测试套件，`test/runtime-baseline.test.mjs` 会在发布代码用到高于基线的 API
 时让构建失败。
+
+## 客户端输入状态
+
+具备 `input.client-status` 能力时，`GET /api/health` 返回 `voiceInput`：
+
+```json
+{"inputEnabled":false,"inputActive":false,"clients":[{"clientType":"cli","inputEnabled":false,"inputSuspended":false,"inputActive":false}]}
+```
+
+`inputEnabled` 是运行时接受的客户端输入设置；`inputSuspended` 单独表示宿主暂停。
+`inputActive` 要求输入启用、没有宿主暂停、运行时处于唤醒状态且持有语音所有权。
+它表示运行时输入通道，不能据此证明物理麦克风是否正在采集。仅列出活动语音客户端；
+没有活动客户端时，`inputEnabled` 为 `null`、`inputActive` 为 `false`，`clients` 为空。
+本机管理者可查看各用户汇总，远程调用只返回已认证用户的状态；查询不会占用客户端租约。
+状态不持久化，不包含用户 ID、设备 ID、凭证或媒体内容。

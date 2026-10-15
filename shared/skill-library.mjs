@@ -75,7 +75,9 @@ export function skillsCliInvocation(args, {
   const cli = [
     prefix ? npmBinFile(prefix, 'npx-cli.js') : '',
     npmBinFile(directory, 'npx-cli.js'),
-    node ? npmBinFile(win32.dirname(node), 'npx-cli.js') : '',
+    // windowsNodeExecutable 可能回退为裸 'node'（依赖 PATH），dirname 会得到
+    // '.'，拼出相对 CWD 的候选路径——必须只接受绝对路径的 node。
+    node && win32.isAbsolute(node) ? npmBinFile(win32.dirname(node), 'npx-cli.js') : '',
     /\bnode\.exe$/i.test(execPath) ? npmBinFile(win32.dirname(execPath), 'npx-cli.js') : '',
   ].find(path => path && exists(path))
   if (!cli) return { command: 'npx', args }

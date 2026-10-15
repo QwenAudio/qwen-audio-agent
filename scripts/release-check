@@ -90,7 +90,7 @@ for (const [launcher, packageName] of [
   }
 }
 if (
-  manifest.devDependencies?.['electron-builder'] !== '26.16.0'
+  manifest.devDependencies?.['electron-builder'] !== '26.17.0'
   || manifest.overrides?.['@electron/asar'] !== '4.2.1'
   || manifest.overrides?.['@electron/universal'] !== '3.0.6'
 ) {

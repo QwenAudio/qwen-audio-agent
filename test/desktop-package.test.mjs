@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { createRequire } from 'node:module'
+import { dirname, join, relative, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { parse } from 'yaml'
 import afterPack from '../scripts/desktop-after-pack.mjs'
@@ -9,9 +11,17 @@ import afterPack from '../scripts/desktop-after-pack.mjs'
 test('desktop packaging uses the lockfile-pinned Electron instead of a second version', () => {
   const config = parse(readFileSync(new URL('../desktop/electron-builder.yml', import.meta.url), 'utf8'))
   const manifest = JSON.parse(readFileSync(new URL('../desktop/package.json', import.meta.url), 'utf8'))
+  const rootManifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   const lock = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url), 'utf8'))
+  const desktopRequire = createRequire(new URL('../desktop/package.json', import.meta.url))
+  const installedManifestPath = desktopRequire.resolve('electron/package.json')
+  const installed = JSON.parse(readFileSync(installedManifestPath, 'utf8'))
+  const lockPath = relative(fileURLToPath(new URL('..', import.meta.url)), dirname(installedManifestPath))
+    .split(sep).join('/')
   assert.equal(config.electronVersion, undefined)
-  assert.equal(manifest.devDependencies.electron, lock.packages['node_modules/electron'].version)
+  assert.equal(rootManifest.devDependencies.electron, manifest.devDependencies.electron)
+  assert.equal(manifest.devDependencies.electron, installed.version)
+  assert.equal(manifest.devDependencies.electron, lock.packages[lockPath]?.version)
   assert.equal(lock.packages.desktop.devDependencies.electron, manifest.devDependencies.electron)
   assert.equal(config.afterPack, 'scripts/desktop-after-pack.mjs')
   // extraResources implicitly excludes its source from ASAR. Do not move

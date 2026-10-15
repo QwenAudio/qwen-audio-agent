@@ -155,6 +155,7 @@ export class ToolCallHandler {
     this.statusResponseByTurn = new Map()
     this.cancelResponseByTurn = new Map()
     this.terminalToolResponses = new Set()
+    this.stoppedToolTurns = new Map()
     this.deferredToolResponses = new Map()
     this.submittedBackendPermissions = new Set()
   }
@@ -217,20 +218,7 @@ export class ToolCallHandler {
     const { tool } = external
     const limit = this.externalToolLoop.admit({ ...context, tool })
     if (!limit.admitted) {
-      await this.sendOutput(
-        context.callId,
-        limit.reason === 'repeated_call'
-          ? {
-              status: 'duplicate',
-              message: '本轮相同操作已经处理，不再重复执行。',
-            }
-          : failure(
-              'tool_loop_limit',
-              '本轮工具调用已达到安全边界，已停止继续执行。',
-              { retryable: true },
-            ),
-        context.turnId,
-      )
+      await this.stopToolLoop(context, limit.reason)
       return { handled: true, executed: false, limit }
     }
     const output = await this.executeExternalSource(external, context.args, context)
@@ -238,6 +226,39 @@ export class ToolCallHandler {
     await this.sendOutput(context.callId, output, context.turnId, null,
       tool.policy?.responseOnSuccess === 'none' ? { createResponse: !silent } : undefined)
     return { handled: true, executed: true, value: output }
+  }
+
+  toolTurnKey(turnId, turnGeneration) {
+    return JSON.stringify([turnId, turnGeneration])
+  }
+
+  async stopToolLoop({ callId, turnId, turnGeneration }, reason) {
+    const key = this.toolTurnKey(turnId, turnGeneration)
+    const responseId = this.activeToolDebugEntries.get(callId)?.responseId || ''
+    const responseKey = responseId || callId
+    const stopped = this.stoppedToolTurns.has(key)
+    if (!stopped) {
+      if (this.stoppedToolTurns.size >= 100) {
+        this.stoppedToolTurns.delete(this.stoppedToolTurns.keys().next().value)
+      }
+      this.stoppedToolTurns.set(key, responseKey)
+    } else if (this.stoppedToolTurns.get(key) !== responseKey) {
+      this.markTerminalToolResponse(responseId)
+    }
+    // Admission only proves an earlier attempt, not success. Preserve the
+    // original result in context and request one final explanation, rather
+    // than claiming the operation completed or silently ending the turn.
+    await this.sendOutput(callId, failure(
+      reason === 'repeated_call' ? 'repeated_tool_call'
+        : reason === 'stopped' ? 'tool_loop_stopped' : 'tool_loop_limit',
+      reason === 'repeated_call'
+        ? '本轮相同调用已尝试，本次未再次执行。请根据已有工具结果说明实际结果或失败原因，不再调用工具。'
+        : '本轮已停止继续调用工具。请根据已有工具结果说明已完成和未完成的部分，不再调用工具。',
+      { status: 'blocked' },
+    ), turnId, null, {
+      createResponse: !stopped,
+      ...(!stopped ? { response: { tool_choice: 'none' } } : {}),
+    })
   }
 
   async respondPermission(context) {
@@ -288,8 +309,13 @@ export class ToolCallHandler {
           return Boolean(current && !isTaskTerminal(current.status))
         }
       : () => true
-    if (batch) batch.responseGuards.push(isCurrent)
-    else frontendOptions.shouldRespond = isCurrent
+    const toolTurnKey = this.toolTurnKey(turnId, batch?.turnGeneration ?? this.getTurnGeneration())
+    const mayRespond = () => isCurrent() && (
+      !this.stoppedToolTurns.has(toolTurnKey)
+      || this.stoppedToolTurns.get(toolTurnKey) === (debug?.responseId || callId)
+    )
+    if (batch) batch.responseGuards.push(mayRespond)
+    else frontendOptions.shouldRespond = mayRespond
     if (batch && frontendOptions.createResponse !== false) {
       // Return every result first. One response may contain several concurrent
       // calls, including a mix of built-in and external tools.
@@ -303,6 +329,7 @@ export class ToolCallHandler {
         debug.responseId,
         frontendOptions.response?.instructions,
       )
+      batch.disableTools ||= frontendOptions.response?.tool_choice === 'none'
       frontendOptions.createResponse = false
     }
     try {
@@ -363,6 +390,7 @@ export class ToolCallHandler {
       suppressResponse: false,
       sourceHasSpeech: false,
       responseRequested: false,
+      disableTools: false,
       requiresResultSummary: false,
       turnId,
       turnGeneration,
@@ -377,6 +405,7 @@ export class ToolCallHandler {
     batch.pending += 1
     batch.responseRequested ||= requestResponse
     batch.requiresResultSummary ||= requiresResultSummary
+    batch.disableTools ||= response?.tool_choice === 'none'
     const instructions = String(response?.instructions || '').trim()
     if (instructions && !batch.responseInstructions.includes(instructions)) {
       batch.responseInstructions.push(instructions)
@@ -451,8 +480,11 @@ export class ToolCallHandler {
           afterToolResults: true,
           shouldCreate: () => !this.isStale(batch.turnId, batch.turnGeneration)
             && (!batch.responseGuards.length || batch.responseGuards.some(check => check())),
-          ...(instructions.length ? {
-            response: { instructions: instructions.join(' ') },
+          ...(instructions.length || batch.disableTools ? {
+            response: {
+              ...(instructions.length ? { instructions: instructions.join(' ') } : {}),
+              ...(batch.disableTools ? { tool_choice: 'none' } : {}),
+            },
           } : {}),
         },
       )
@@ -514,10 +546,16 @@ export class ToolCallHandler {
         ? event.__voiceContext.turnGeneration
         : this.getTurnGeneration()
     let args = {}
+    let invalidArguments = false
     try {
-      args = JSON.parse(event.arguments || '{}')
+      const parsed = JSON.parse(event.arguments === undefined ? '{}' : event.arguments)
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        invalidArguments = true
+      } else {
+        args = parsed
+      }
     } catch {
-      // Invalid arguments are handled as missing fields below.
+      invalidArguments = true
     }
 
     if (this.isStale(turnId, generation)) {
@@ -551,6 +589,15 @@ export class ToolCallHandler {
     })
     let failed = false
     try {
+      if (invalidArguments) {
+        const output = failure('invalid_arguments', '工具参数必须是有效的 JSON 对象。')
+        await this.sendOutput(callId, output, turnId)
+        return { handled: true, executed: false, value: output }
+      }
+      if (this.stoppedToolTurns.has(this.toolTurnKey(turnId, generation))) {
+        await this.stopToolLoop({ callId, turnId, turnGeneration: generation }, 'stopped')
+        return { handled: true, executed: false, limit: { admitted: false, reason: 'stopped' } }
+      }
       if (external) {
         return await this.executeExternalToolCall(external, {
           callId,
@@ -565,6 +612,7 @@ export class ToolCallHandler {
         callId,
         turnId,
         generation,
+        turnGeneration: generation,
         args,
         event,
         callContext,
@@ -583,32 +631,15 @@ export class ToolCallHandler {
         }),
       })
       if (execution.handled && !execution.executed) {
-        const responseId = String(
-          callContext.responseId || event.response_id || '',
-        ).trim()
-        this.markTerminalToolResponse(responseId)
-        await this.sendOutput(
-          callId,
-          execution.limit.reason === 'tool_unavailable'
-            ? failure(
-                'tool_unavailable',
-                '当前前台没有启用这个能力。',
-                { retryable: false },
-              )
-            : execution.limit.reason === 'repeated_call'
-            ? {
-                status: 'duplicate',
-                message: '本轮相同操作已经处理，不再重复执行。',
-              }
-            : failure(
-                'tool_loop_limit',
-                '本轮工具调用已达到安全边界，已停止继续执行。',
-                { retryable: true },
-              ),
-          turnId,
-          null,
-          { createResponse: execution.limit.reason === 'tool_unavailable' },
-        )
+        if (execution.limit.reason === 'tool_unavailable') {
+          await this.sendOutput(callId, failure(
+            'tool_unavailable', '当前前台没有启用这个能力。',
+          ), turnId)
+        } else {
+          await this.stopToolLoop(
+            { callId, turnId, turnGeneration: generation }, execution.limit.reason,
+          )
+        }
         return execution
       }
       if (!execution.handled) {

@@ -12,9 +12,16 @@
  *   submit(task, context?) -> run one Task and return its final outcome
  *     task.continuity may be "shared" (default) or "isolated". It is a
  *     trusted Gateway hint, never a model-controlled field.
- *     An optional outcome.continuation = { adapter, token } is private to the
- *     runtime and persisted verbatim; later submit receives it as resumeContext.
+ *     An optional outcome.continuation = { adapter, token, ...adapterOwnedFields }
+ *     is private to the runtime and persisted verbatim; later submit receives it
+ *     as resumeContext. Extra fields are opaque to the Gateway and validated by
+ *     the adapter. Explicit null revokes a prior continuation; omission retains it.
  *     Tokens identify execution context, not authentication credentials.
+ *     Optional task.conversation is an immutable, bounded user/assistant text
+ *     snapshot captured at admission, or a flat array of snapshots combined
+ *     from queued admissions. Adapters own delivery/cursor semantics and apply
+ *     one shared context budget across the array; isolated utility work never
+ *     receives conversation context. update input.conversation uses the same DTO.
  *   status(taskId?, context?) -> runtime status without an ID, otherwise Task status
  *   cancel(taskId, context?) -> cancel one adapter-owned Task
  *   update(taskId, input, context?) -> admit an update to the exact active Task;

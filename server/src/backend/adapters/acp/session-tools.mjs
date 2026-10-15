@@ -75,7 +75,7 @@ function registerTools(server, context) {
     'qwen_audio_agent_session_send',
     {
       title: 'Continue Agent Session',
-      description: 'Continue an existing project Session asynchronously. Use the exact session_id returned by the Session list; the Gateway restores its original project directory.',
+      description: 'Continue or update an existing project Session asynchronously using its exact session_id. The Gateway preserves its original project directory.',
       inputSchema: {
         session_id: z.string().min(1),
         prompt: z.string().min(1),

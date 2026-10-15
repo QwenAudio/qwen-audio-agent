@@ -1,4 +1,5 @@
 import { projectFrontendConversation } from './frontend-conversation-projection.mjs'
+import { captureCoordinatorConversation } from '../core/work-conversation-context.mjs'
 
 function sessionKey(ownerId, sessionId) {
   return `${ownerId}\u0000${sessionId}`
@@ -88,6 +89,7 @@ export class ConversationSync {
         recorded: new Map(),
         recordSequence: 0,
         recordEpoch: 0,
+        historyPosition: 0,
         consumers: new WeakMap(),
       }
       this.sessions.set(key, state)
@@ -130,9 +132,13 @@ export class ConversationSync {
     inputs = [],
     citations = [],
     createdAt = null,
+    historyPosition = null,
+    final = true,
   }, { notify = true } = {}) {
     const normalized = clean(content)
-    if (!id || !normalized) return null
+    // Runtime sources record final text only. Do not let an accidental partial
+    // create (or overwrite) a durable message or consume its history position.
+    if (final === false || !id || !normalized) return null
     const state = this.state(ownerId, sessionId)
     const existing = state.byId.get(id)
     if (existing) {
@@ -170,7 +176,14 @@ export class ConversationSync {
         ? { citations: citations.map(citation => ({ ...citation })) }
         : {}),
       createdAt: Number(createdAt) || Date.now(),
+      // Unlike seq, this watermark survives Session Journal restoration. Its
+      // clock origin keeps legacy history order; increments handle equal times
+      // and clock rollback. Updating the same final message keeps its position.
+      historyPosition: Number.isSafeInteger(historyPosition) && historyPosition > 0
+        ? historyPosition
+        : Math.max(state.historyPosition + 1, Number(createdAt) || Date.now()),
     }
+    state.historyPosition = Math.max(state.historyPosition, message.historyPosition)
     state.messages.push(message)
     state.byId.set(id, message)
     while (state.messages.length > this.maxMessages) {
@@ -240,9 +253,13 @@ export class ConversationSync {
     }
   }
 
-  restore({ ownerId, sessionId, messages = [] }) {
+  restore({ ownerId, sessionId, messages = [], historyPosition = 0 }) {
     for (const message of messages) {
       this.upsert({ ownerId, sessionId, ...message }, { notify: false })
+    }
+    if (Number.isSafeInteger(historyPosition) && historyPosition > 0) {
+      const state = this.state(ownerId, sessionId)
+      state.historyPosition = Math.max(state.historyPosition, historyPosition)
     }
     return this.frontendContext({ ownerId, sessionId })
   }
@@ -276,6 +293,13 @@ export class ConversationSync {
 
   frontendContext({ ownerId, sessionId }, messages = this.list({ ownerId, sessionId })) {
     return projectFrontendConversation(messages)
+  }
+
+  coordinatorSnapshot({ ownerId, sessionId, excludeTurnId, maxChars } = {}) {
+    this.prune()
+    return captureCoordinatorConversation(this.peek(ownerId, sessionId)?.messages || [], {
+      sessionId, excludeTurnId, maxChars,
+    })
   }
 
 }

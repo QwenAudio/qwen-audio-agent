@@ -63,7 +63,7 @@ test('selects one shared ACP adapter for OpenCode', () => {
   assert.equal(client.protocol, 'opencode')
   assert.equal(client.describe().transport, 'acp')
   assert.equal(client.describe().acpConnection, 'process')
-  assert.equal(client.describe().sessionModel, 'persistent-coordinator-pool')
+  assert.equal(client.describe().sessionModel, 'persistent-coordinator')
 })
 
 test('opens the active OpenCode ACP coordinator Session directly', async () => {

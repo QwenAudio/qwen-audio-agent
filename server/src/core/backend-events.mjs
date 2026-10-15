@@ -13,6 +13,10 @@ export const BackendEventType = Object.freeze({
   AUTHORIZATION_RESOLVED: 'backend.permission.resolved',
   INPUT_REQUESTED: 'backend.input.requested',
   INPUT_RESOLVED: 'backend.input.resolved',
+  // Optional top-level `yielded: true` asserts that the initial execution has
+  // already released its capacity. The Task remains live; adapters must still
+  // await delegated work and serialize any later coordinator turns themselves.
+  // Unmarked delegation retains normal Task concurrency limits.
   DELEGATED: 'backend.delegated',
   DELEGATION_COMPLETED: 'backend.delegation.completed',
 })

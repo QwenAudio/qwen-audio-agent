@@ -46,13 +46,14 @@ async function evaluateRoutingContract() {
     { names },
   )
   requireCondition(
-    /可组合使用本轮提供的工具完成请求/u.test(prompt)
-      && /不要仅因需要多次工具调用就转为后台工作/u.test(prompt),
+    /可组合调用/u.test(prompt)
+      && /仅使用本轮实际提供的工具/u.test(prompt),
     'The frontend prompt no longer permits composing available tools.',
   )
   requireCondition(
-    /`spawn_thinking` description 声明的\s*能力范围/u.test(prompt),
-    'The frontend prompt no longer routes declared backend capabilities.',
+    /其余请求必须调用后台工具尝试/u.test(prompt)
+      && /当前工具列表不代表后台的完整能力/u.test(prompt),
+    'The frontend prompt no longer distinguishes backend capabilities from its own tool list.',
   )
   requireCondition(
     /检索用户已配置的知识库文档/u.test(frontendTools({

@@ -34,13 +34,14 @@ function permissionReceipt(admission, permissionId) {
  * or public protocol events. System jobs keep their own execution entry point.
  */
 export class TaskOperations {
-  constructor({ taskManager, backendRuntime, permissionPolicy, respondAuthorization, respondInput } = {}) {
+  constructor({ taskManager, backendRuntime, permissionPolicy, respondAuthorization, respondInput, conversationSnapshot } = {}) {
     if (!taskManager) throw new TypeError('taskManager is required')
     this.taskManager = taskManager
     this.backendRuntime = backendRuntime
     this.permissionPolicy = permissionPolicy
     this.respondAuthorization = respondAuthorization
     this.respondInput = respondInput
+    this.conversationSnapshot = conversationSnapshot
     // A backend can request several permissions before any is answered. The
     // Task snapshot projects the latest one; retain the live requests as well.
     this.permissions = new Map()
@@ -59,10 +60,13 @@ export class TaskOperations {
   submit({ objective, inputParts = [], submissionKey }, context) {
     const ownerId = owner(context)
     const { sessionId = 'main', turnId } = context
+    const conversation = this.conversationSnapshot?.(context)
     return this.taskManager.create({
       objective, ownerId, sessionId, turnId, submissionKey,
       runner: (_objective, execution) => this.run(inputWithUpdates(
-        this.taskManager.tasks.get(execution.taskId), { objective, inputParts },
+        this.taskManager.tasks.get(execution.taskId), {
+          objective, inputParts, ...(conversation ? { conversation } : {}),
+        },
       ), {
         ...execution, ownerId, sessionId, turnId,
       }),

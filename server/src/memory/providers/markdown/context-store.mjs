@@ -32,15 +32,25 @@ function publicDocument(scope, content, revisionSource = content) {
   }
 }
 
-function countOccurrences(content, needle) {
-  if (!needle) return 0
-  let count = 0
+function exactEditMatches(content, needle) {
+  const comments = [...content.matchAll(/<!--[\s\S]*?(?:-->|$)/g)].map(match => ({
+    start: match.index,
+    end: match.index + match[0].length,
+  }))
+  const matches = []
   let offset = 0
   while ((offset = content.indexOf(needle, offset)) >= 0) {
-    count += 1
+    const end = offset + needle.length
+    // Template comments are not saved facts. Match visible exact fragments,
+    // while still allowing an explicitly selected whole comment to be edited.
+    const partialComment = comments.some(comment => (
+      offset < comment.end && end > comment.start
+      && !(offset <= comment.start && end >= comment.end)
+    ))
+    if (!partialComment) matches.push(offset)
     offset += needle.length
   }
-  return count
+  return matches
 }
 
 function normalizeMarkdown(content) {
@@ -170,15 +180,16 @@ export class MarkdownContextStore {
         error.code = 'invalid_edit'
         throw error
       }
-      const matches = countOccurrences(next, oldText)
-      if (matches !== 1) {
+      const matches = exactEditMatches(next, oldText)
+      if (matches.length !== 1) {
         const error = new Error(
-          matches ? 'old_text must match exactly once' : 'old_text was not found',
+          matches.length ? 'old_text must match exactly once' : 'old_text was not found',
         )
-        error.code = matches ? 'ambiguous_edit' : 'edit_not_found'
+        error.code = matches.length ? 'ambiguous_edit' : 'edit_not_found'
         throw error
       }
-      next = next.replace(oldText, newText)
+      const offset = matches[0]
+      next = next.slice(0, offset) + newText + next.slice(offset + oldText.length)
       changed += 1
     }
     const addition = text(append).trim()

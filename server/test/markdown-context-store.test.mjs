@@ -52,6 +52,101 @@ test('applies multiple exact edits atomically for updates and deletion', () => {
   assert.doesNotMatch(result.document.content, /喜欢篮球/)
 })
 
+test('exact edits ignore template comment duplicates and preserve unrelated bytes', () => {
+  const { store: memory, filePath } = store()
+  const oldText = '- 偏好：安静'
+  const newText = '- 偏好：音乐 $&'
+  const source = [
+    '# MEMORY',
+    `<!-- 示例：${oldText} -->`,
+    '<!-- 多行编辑提示', oldText, '-->',
+    '', '## 偏好', oldText,
+    '', '', '## 保留内容  ', '- 保留条目\t', '- ',
+    `<!-- 内联示例：${oldText} -->`,
+  ].join('\n')
+  memory.persist('user_personal', `${source}\n`)
+  const original = memory.list('user_personal')[0]
+  const expected = source.replace(`## 偏好\n${oldText}`, () => `## 偏好\n${newText}`)
+
+  // Read/edit APIs retain raw comments and revisions for intentional editing.
+  assert.equal(memory.read('user_personal'), source)
+  assert.equal(original.content, source)
+  const result = memory.edit('user_personal', {
+    expectedRevision: original.revision,
+    edits: [{ old_text: oldText, new_text: newText }],
+  })
+
+  assert.equal(result.changed, 1)
+  assert.equal(result.document.content, expected)
+  assert.equal(readFileSync(filePath, 'utf8'), `${expected}\n`)
+  assert.equal(result.document.revision, memory.list('user_personal')[0].revision)
+})
+
+test('real duplicate fragments remain ambiguous even alongside template comments', () => {
+  const { store: memory, filePath } = store()
+  const oldText = '- 重复事实'
+  const source = ['# MEMORY', `<!-- 示例：${oldText} -->`, oldText, oldText].join('\n')
+  memory.persist('user_personal', `${source}\n`)
+
+  assert.throws(() => memory.edit('user_personal', {
+    edits: [{ old_text: oldText, new_text: '- 新事实' }],
+  }), error => error.code === 'ambiguous_edit')
+  assert.equal(readFileSync(filePath, 'utf8'), `${source}\n`)
+})
+
+for (const comment of [
+  '<!-- 示例：- 未保存事实 -->',
+  '<!-- 多行示例\n- 未保存事实\n-->',
+  '<!-- 未闭合示例\n- 未保存事实',
+]) {
+  test(`comment-only fragments are not editable facts: ${JSON.stringify(comment)}`, () => {
+    const { store: memory, filePath } = store()
+    const source = `# MEMORY\n- 保留事实\n${comment}`
+    memory.persist('user_personal', `${source}\n`)
+
+    assert.throws(() => memory.edit('user_personal', {
+      edits: [{ old_text: '- 未保存事实', new_text: '- 新事实' }],
+    }), error => error.code === 'edit_not_found')
+    assert.equal(readFileSync(filePath, 'utf8'), `${source}\n`)
+  })
+}
+
+test('multiline exact edits select the visible block without changing commented examples', () => {
+  const { store: memory, filePath } = store()
+  const oldText = '## 偏好\n- 第一项\n- 第二项'
+  const newText = '## 偏好\n- 更新项'
+  const source = ['# MEMORY', `<!-- 示例\n${oldText}\n-->`, '', oldText, '', '- 保留事实'].join('\n')
+  const expected = ['# MEMORY', `<!-- 示例\n${oldText}\n-->`, '', newText, '', '- 保留事实'].join('\n')
+  memory.persist('user_personal', `${source}\n`)
+
+  const result = memory.edit('user_personal', {
+    edits: [{ old_text: oldText, new_text: newText }],
+  })
+
+  assert.equal(result.changed, 1)
+  assert.equal(readFileSync(filePath, 'utf8'), `${expected}\n`)
+})
+
+test('exact edits may explicitly select whole comments but not partial comment boundaries', () => {
+  const { store: memory, filePath } = store()
+  const comment = '<!-- 编辑提示\n- 示例内容\n-->'
+  const source = `# MEMORY\n${comment}\n- 保留事实`
+  memory.persist('user_personal', `${source}\n`)
+
+  for (const oldText of ['# MEMORY\n<!-- 编辑提示', '- 示例内容\n-->\n- 保留事实']) {
+    assert.throws(() => memory.edit('user_personal', {
+      edits: [{ old_text: oldText, new_text: '' }],
+    }), error => error.code === 'edit_not_found')
+    assert.equal(readFileSync(filePath, 'utf8'), `${source}\n`)
+  }
+
+  const result = memory.edit('user_personal', {
+    edits: [{ old_text: comment, new_text: '<!-- 新提示 -->' }],
+  })
+  assert.equal(result.changed, 1)
+  assert.equal(readFileSync(filePath, 'utf8'), '# MEMORY\n<!-- 新提示 -->\n- 保留事实\n')
+})
+
 for (const append of ['', '- 相同条目']) {
   test(`exact deletion preserves unrelated Markdown${append ? ' when combined with append' : ''}`, () => {
     const { store: memory, filePath } = store()

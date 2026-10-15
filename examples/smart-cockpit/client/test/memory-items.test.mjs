@@ -90,10 +90,12 @@ test('deletes a visible fact even when its exact text also occurs in a hidden te
   ].join('\n'), { scope: 'user' })
   const [item] = memoryItemsFromDocuments([fixture.document])
   assert.ok(Number.isInteger(item.lineIndex))
-  assert.throws(() => fixture.store.prepareEdit('fixture-owner', {
+  const direct = fixture.store.prepareEdit('fixture-owner', {
     expectedRevision: fixture.document.revision,
     edits: [{ old_text: item.oldText, new_text: '' }],
-  }), error => error.code === 'ambiguous_edit', 'the original raw-line deletion must reproduce the bug')
+  })
+  assert.ok(direct.content.includes(`<!-- 例如：${row} -->`))
+  assert.deepEqual(projectedTexts(direct.document), ['另一个偏好'])
 
   const { result } = fixture.prepare(item)
   assert.ok(result.content.includes(`<!-- 例如：${row} -->`))
@@ -154,20 +156,33 @@ test('deletes the last row without requiring a trailing newline', () => {
   assert.deepEqual(projectedTexts(result.document), ['保留条目'])
 })
 
-for (const [name, content, preservedComment] of [
-  ['inline comment', '# MEMORY\n- 删除<!-- 内联说明 -->条目\n- 保留条目', '<!-- 内联说明 -->'],
-  ['multiline comment ending on the selected row', '# MEMORY\n<!-- 前置注释\n内部说明 --> - 删除条目\n- 保留条目', '<!-- 前置注释\n内部说明 -->'],
-  ['multiline comment beginning on the selected row', '# MEMORY\n- 删除条目 <!-- 后置注释\n内部说明\n-->\n- 保留条目', '<!-- 后置注释\n内部说明\n-->'],
+for (const [name, content, preservedComments] of [
+  ['inline comment', '# MEMORY\n- 删除<!-- 内联说明 -->条目\n- 保留条目', ['<!-- 内联说明 -->']],
+  ['multiline comment ending on the selected row', '# MEMORY\n<!-- 前置注释\n内部说明 --> - 删除条目\n- 保留条目', ['<!-- 前置注释\n内部说明 -->']],
+  ['multiline comment beginning on the selected row', '# MEMORY\n- 删除条目 <!-- 后置注释\n内部说明\n-->\n- 保留条目', ['<!-- 后置注释\n内部说明\n-->']],
+  ['multiline comments on both sides of the selected row', '# MEMORY\n<!-- 前置注释\n内部说明 --> - 删除条目 <!-- 后置注释\n内部说明\n-->\n- 保留条目', ['<!-- 前置注释\n内部说明 -->', '<!-- 后置注释\n内部说明\n-->']],
 ]) {
   test(`deleting visible content preserves the ${name}`, () => {
     const fixture = deletionFixture(content)
     const item = memoryItemsFromDocuments([fixture.document]).find(entry => entry.text === '删除条目')
     assert.ok(item)
-    const { result } = fixture.prepare(item)
-    assert.ok(result.content.includes(preservedComment))
+    const { change, result } = fixture.prepare(item)
+    for (const preservedComment of preservedComments) {
+      assert.ok(change.edits[0].old_text.includes(preservedComment), 'exact edits must include each touched comment in full')
+      assert.ok(result.content.includes(preservedComment))
+    }
+    assert.equal(result.content, `# MEMORY\n${preservedComments.join('')}\n- 保留条目`)
     assert.deepEqual(projectedTexts(result.document), ['保留条目'])
   })
 }
+
+test('expanding a duplicate row for uniqueness also includes a neighboring comment in full', () => {
+  const fixture = deletionFixture('# MEMORY\n<!-- 前置注释\n内部说明 -->\n- 相同条目\n- 相同条目\n- 保留条目')
+  const item = memoryItemsFromDocuments([fixture.document]).find(entry => entry.text === '相同条目')
+  const { change, result } = fixture.prepare(item)
+  assert.equal(change.edits[0].old_text, '<!-- 前置注释\n内部说明 -->\n- 相同条目\n')
+  assert.equal(result.content, '# MEMORY\n<!-- 前置注释\n内部说明 -->\n- 相同条目\n- 保留条目')
+})
 
 test('rejects missing revisions, stale items, and invalid row targets without changing a snapshot', () => {
   const fixture = deletionFixture('# MEMORY\n<!-- 隐藏说明 -->\n- 目标条目\n- 保留条目')
@@ -221,4 +236,14 @@ test('refuses deletion of the partial final row cut by the Markdown display budg
   assert.throws(() => memoryDeletionChange([fixture.document], incomplete))
   assert.deepEqual(fixture.document, original)
   assert.match(fixture.store.readRaw(), /未显示的尾部/u)
+})
+
+test('refuses deletion when a comment on a complete row continues beyond the display budget', () => {
+  const fixture = deletionFixture(`# MEMORY\n- 删除条目 <!-- 后置注释\n${'长'.repeat(8200)}\n-->\n- 未显示的尾部`)
+  const original = structuredClone(fixture.document)
+  const item = memoryItemsFromDocuments([fixture.document]).find(entry => entry.text === '删除条目')
+  assert.ok(item)
+  assert.throws(() => memoryDeletionChange([fixture.document], item), /注释未完整加载/u)
+  assert.deepEqual(fixture.document, original)
+  assert.match(fixture.store.readRaw(), /-->\n- 未显示的尾部/u)
 })

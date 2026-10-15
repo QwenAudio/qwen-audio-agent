@@ -18,6 +18,17 @@ const REPLAYABLE_REMINDER = new Set([
   TaskStatus.RUNNING,
 ])
 
+function hasRecoverableDelegation(delegation) {
+  // A multi-target checkpoint is all-or-nothing: never reattach only its valid
+  // children, or fall back to a legacy top-level id when targets is malformed.
+  const targets = delegation && Object.hasOwn(delegation, 'targets')
+    ? delegation.targets : [delegation]
+  return Array.isArray(targets) && targets.length > 0 && targets.every(target => (
+    typeof target?.id === 'string' && target.id.trim()
+    && typeof target?.sessionId === 'string' && target.sessionId.trim()
+  ))
+}
+
 export function taskRecoveryAction(task) {
   if (task?.status === TaskStatus.SCHEDULED) {
     return TaskRecoveryAction.RESCHEDULE
@@ -34,8 +45,7 @@ export function taskRecoveryAction(task) {
   if (
     isUserWork(task)
     && [TaskStatus.DELEGATED, TaskStatus.FINALIZING].includes(task?.status)
-    && task?.delegation?.id
-    && task?.delegation?.sessionId
+    && hasRecoverableDelegation(task?.delegation)
   ) {
     return TaskRecoveryAction.REATTACH
   }

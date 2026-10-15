@@ -19,14 +19,32 @@ Work runs asynchronously, so you can keep chatting. Identify the work you mean, 
 identifier, particularly when several items are active. Native session restoration, independent
 work, and individual tools depend on the backend; one backend's capabilities are not universal guarantees.
 
-By default, the runtime executes one user task at a time; later work queues until the current
-task ends. Starting new work never implicitly cancels existing work.
-A task waiting for input or permission, or executing delegated work, still occupies its slot until
-the whole task ends. You can still answer its questions or steer that same work without creating
-another task. The defaults are `QWEN_AUDIO_AGENT_TASK_MAX_CONCURRENT_PER_OWNER=1` and
-`QWEN_AUDIO_AGENT_TASK_MAX_CONCURRENT=1`; both limits remain explicitly configurable.
-ACP defaults to one coordinator slot and reuses the task's recorded context for updates and
-continuation. Sessions do not isolate files, working directories, or external resources.
+ACP uses one persistent coordinator Session per owner and backend. Its turns run sequentially;
+starting new work never implicitly cancels existing work. It uses a project Session for work with
+a distinct goal that benefits from sustained, independent execution. Brief operations, clarification,
+and result synthesis stay in the coordinator Session. Related follow-ups continue in the original
+project Session rather than creating another; the user does not need to request a separate Session.
+The coordinator can dispatch several independent tasks in one turn. Backends without delegation
+handle the request directly.
+
+After dispatching or continuing independent work, the coordinator ends its turn without waiting,
+polling, or repeating the work locally, and becomes available for another request. The project
+Sessions keep running; their verified results return through the same coordinator queue for a
+final reply. Sessions do not isolate files, working directories, or external resources.
+
+`QWEN_AUDIO_AGENT_TASK_MAX_CONCURRENT_PER_OWNER=1` and `QWEN_AUDIO_AGENT_TASK_MAX_CONCURRENT=1`
+remain the default task-admission limits, not limits on the number of project Sessions. A directly
+executed task holds its admission slot, including while awaiting input or permission. ACP delegation
+releases that slot after the coordinating turn ends, so the default does not restrict all independent
+work to one running Session. Increasing these limits does not create more coordinator Sessions.
+
+### Conversation Context
+
+Alongside the current instruction, the runtime supplies up to 2,000 characters of new user/assistant
+dialogue to help the coordinator resolve references. It tracks delivered dialogue rather than repeatedly
+attaching the whole history. This background is not a new request and does not copy tool calls, tool
+results, raw backend output, the frontend persona, or durable memory. Attachments remain native protocol
+parts. No additional frontend tool is needed.
 
 ### Update Work in Progress
 
@@ -42,15 +60,23 @@ It clarifies ambiguous references instead of choosing based on whether the backe
   Changing conditions does not approve the old preview.
 - Running: use a verified ACP injection extension when available; otherwise cancel the current
   turn, wait for it to finish, and continue in the same session.
-- Completed: continue under the same ID when the original context remains available. Earlier
+- Independent ACP work: send changes to the coordinator, which forwards them to the original
+  project session with `session_send`, even when there is only one project. Routing waits if the
+  coordinator is busy; it never steers an unrelated task. A spoken acknowledgement alone is not delivery.
+- Completed, directly executed work: continue under the same ID when the original context remains available. Earlier
   results remain in history. If its original session is busy with another task, wait for that
   session rather than steering the other task.
+- Completed framework-owned ACP delegation: continue under the same work ID through the original
+  coordinator, which uses `session_send` only for the project sessions bound to that work. It does
+  not create replacement sessions or rerun unchanged sibling projects.
 
 Acceptance does not mean the change has taken effect, and interruption does not undo actions.
 Steering changes reset per-task permission grants; session-wide “Always allow” remains effective. Unsupported
 updates, unavailable contexts, and results still being delivered return explicit errors.
-Backend-native delegations and completed delegated work cannot yet be resumed automatically;
-running framework-owned ACP delegations support targeted updates. After a Gateway restart,
+Backend-native delegations without a reliable targeted continuation entry point do not provide
+continuation context. Older ACP continuation contexts without versioned project bindings fail
+explicitly; targets are not guessed or automatically migrated. Running framework-owned ACP
+delegations support targeted updates. After a Gateway restart,
 unconfirmed updates are not replayed automatically. To stop the whole task, use `cancel_agent_task`;
 backend permission decisions still use `respond_permission`.
 

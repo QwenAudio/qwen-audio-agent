@@ -177,6 +177,165 @@ test('completed continuation reuses the Task, keeps prior result, and ignores st
   assert.equal('backendContext' in publicTask(h.manager.tasks.get(a.id)), false)
 })
 
+for (const restarted of [false, true]) {
+  test(`completed delegated work resumes the same Task with opaque context${restarted ? ' after persistence and restart' : ''}`, async t => {
+    const original = setup(t)
+    const task = original.create('delegated project work')
+    const delegation = { id: 'child-task', sessionId: 'project-session' }
+    const opaqueContext = { adapter: 'fake', version: 837, payload: { arbitrary: ['adapter-owned'] } }
+    await tick()
+    original.calls[0].execution.onEvent({ type: 'backend.delegated', delegation })
+    original.calls[0].execution.onEvent({ type: 'backend.delegation.completed', delegation })
+    original.calls[0].resolve({ content: 'delegated first result', continuation: opaqueContext })
+    await original.manager.wait(task.id)
+    assert.equal(original.ops.get(task.id, context).status, 'completed')
+    assert.deepEqual(original.manager.tasks.get(task.id).delegation, { ...delegation, status: 'completed' })
+
+    const saved = JSON.parse(JSON.stringify(persistedTask(original.manager.tasks.get(task.id))))
+    const h = restarted ? setup(t, { store: { load: () => [saved], save() {} } }) : original
+    const current = h.manager.tasks.get(task.id)
+    const resumeContext = current.backendContext
+    const executionsBefore = h.calls.length
+    assert.deepEqual(resumeContext, opaqueContext)
+    if (!restarted) assert.equal(resumeContext, opaqueContext)
+    assert.equal(current.delegation.status, 'completed')
+
+    assert.deepEqual(h.update(task.id, 'continue delegated project work'), {
+      status: 'accepted', taskId: task.id,
+    })
+    // Resume clears execution metadata, not the adapter-owned continuation.
+    assert.equal(current.delegation, null)
+    assert.equal(current.backendContext, resumeContext)
+    await tick()
+    assert.equal(h.ops.list(context).length, 1)
+    assert.equal(h.calls.length, executionsBefore + 1)
+    const resumed = h.calls.at(-1)
+    assert.equal(resumed.execution.taskId, task.id)
+    assert.equal(resumed.input.resumeContext, resumeContext)
+    assert.match(resumed.input.instruction, /continue delegated project work/u)
+    assert.deepEqual(current.previousResults.map(result => ({ result: result.result, status: result.status })), [
+      { result: 'delegated first result', status: 'completed' },
+    ])
+    assert.equal('backendContext' in publicTask(current), false)
+    resumed.resolve({ content: 'delegated continued result', continuation: opaqueContext })
+    await h.manager.wait(task.id)
+    assert.equal(h.ops.get(task.id, context).result, 'delegated continued result')
+    assert.equal(current.previousResults[0].result, 'delegated first result')
+  })
+}
+
+test('completed delegated work without continuation still rejects updates before recording intent', async t => {
+  const h = setup(t)
+  const task = h.create('delegated work without context')
+  await tick()
+  h.calls[0].execution.onEvent({
+    type: 'backend.delegated', delegation: { id: 'child-task', sessionId: 'project-session' },
+  })
+  h.calls[0].resolve({ content: 'finished without continuation' })
+  await h.manager.wait(task.id)
+
+  assert.throws(() => h.update(task.id, 'continue this work'), { code: 'context_unavailable' })
+  assert.equal(h.calls.length, 1)
+  assert.equal(h.ops.get(task.id, context).status, 'completed')
+  assert.equal(h.manager.tasks.get(task.id).updates, undefined)
+  assert.equal(h.manager.tasks.get(task.id).delegation.id, 'child-task')
+})
+
+test('an explicit null continuation revokes old context after resumed work delegates', async t => {
+  const h = setup(t)
+  const task = h.create('direct work with continuation')
+  await tick()
+  h.calls[0].resolve({ content: 'direct first result', continuation })
+  await h.manager.wait(task.id)
+  assert.equal(h.manager.tasks.get(task.id).backendContext, continuation)
+
+  h.update(task.id, 'continue in delegated work')
+  await tick()
+  assert.equal(h.calls[1].input.resumeContext, continuation)
+  const delegation = { id: 'native-child-task', sessionId: 'native-session' }
+  h.calls[1].execution.onEvent({ type: 'backend.delegated', delegation })
+  h.calls[1].execution.onEvent({ type: 'backend.delegation.completed', delegation })
+  h.calls[1].resolve({ content: 'delegated result without resumable context', continuation: null })
+  await h.manager.wait(task.id)
+
+  const current = h.manager.tasks.get(task.id)
+  assert.equal(current.status, 'completed')
+  assert.equal(current.backendContext, null)
+  assert.equal(current.previousResults[0].result, 'direct first result')
+  assert.equal(Object.hasOwn(persistedTask(current), 'backendContext'), false)
+  assert.throws(() => h.update(task.id, 'must not reuse the old direct context'), {
+    code: 'context_unavailable',
+  })
+  assert.equal(current.updates.length, 1)
+  assert.equal(h.calls.length, 2)
+  assert.equal(current.delegation.id, 'native-child-task')
+})
+
+for (const status of ['failed', 'cancelled']) {
+  test(`resumed direct work that delegates then ${status} cannot reuse its old context`, async t => {
+    const h = setup(t)
+    const task = h.create('direct work with continuation')
+    await tick()
+    h.calls[0].resolve({ content: 'direct first result', continuation })
+    await h.manager.wait(task.id)
+    h.update(task.id, 'continue through delegation')
+    await tick()
+    assert.equal(h.calls[1].input.resumeContext, continuation)
+    h.calls[1].execution.onEvent({
+      type: 'backend.delegated', delegation: { id: 'child-task', sessionId: 'project-session' },
+    })
+    const current = h.manager.tasks.get(task.id)
+    assert.equal(current.backendContext, null)
+    assert.equal(Object.hasOwn(persistedTask(current), 'backendContext'), false)
+
+    if (status === 'failed') h.calls[1].reject(new Error('delegated child failed'))
+    else await h.ops.cancel(task.id, context)
+    await h.manager.wait(task.id)
+
+    assert.equal(current.status, status)
+    assert.equal(current.backendContext, null)
+    assert.throws(() => h.update(task.id, 'must not reuse the earlier direct context'), {
+      code: 'context_unavailable',
+    })
+    assert.equal(current.updates.length, 1)
+    assert.equal(h.calls.length, 2)
+    assert.equal(current.previousResults[0].result, 'direct first result')
+  })
+}
+
+test('omitting continuation from a resumed result preserves the earlier opaque context', async t => {
+  const h = setup(t)
+  const task = h.create('direct work with continuation')
+  await tick()
+  h.calls[0].resolve({ content: 'first result', continuation })
+  await h.manager.wait(task.id)
+  h.update(task.id, 'continue once')
+  await tick()
+  h.calls[1].resolve({ content: 'second result' })
+  await h.manager.wait(task.id)
+
+  assert.equal(h.manager.tasks.get(task.id).backendContext, continuation)
+  assert.equal(h.update(task.id, 'continue again').status, 'accepted')
+  await tick()
+  assert.equal(h.calls[2].input.resumeContext, continuation)
+  assert.equal(h.calls[2].execution.taskId, task.id)
+})
+
+test('delegated work cannot resume while its final result is still being prepared', async t => {
+  const h = setup(t)
+  const task = h.create('delegated work finalizing')
+  const delegation = { id: 'child-task', sessionId: 'project-session' }
+  await tick()
+  h.calls[0].execution.onEvent({ type: 'backend.delegated', delegation })
+  h.calls[0].execution.onEvent({ type: 'backend.delegation.completed', delegation })
+
+  assert.throws(() => h.update(task.id, 'continue this work'), { code: 'update_busy' })
+  assert.equal(h.ops.get(task.id, context).status, 'finalizing')
+  assert.equal(h.manager.tasks.get(task.id).updates, undefined)
+  assert.equal(h.updates.length, 0)
+  assert.equal(h.calls.length, 1)
+})
+
 test('a late cancelled execution cannot clear permissions from a newer continuation', async t => {
   const h = setup(t)
   const task = h.create('work')

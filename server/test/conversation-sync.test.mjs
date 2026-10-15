@@ -248,7 +248,7 @@ test('pending records exclude restored history and unchanged replayed messages',
   assert.equal(pending.seq, 3, 'learning versions do not alter public sequence numbers')
   assert.equal(pending.createdAt, 123)
   assert.deepEqual(Object.keys(pending).sort(), [
-    'seq', 'id', 'role', 'content', 'source', 'turnId', 'taskId', 'taskIds', 'inputs', 'createdAt',
+    'seq', 'id', 'role', 'content', 'source', 'turnId', 'taskId', 'taskIds', 'inputs', 'createdAt', 'historyPosition',
   ].sort())
   assert.equal(sync.frontendContext(recordedContext).length, 3)
 })

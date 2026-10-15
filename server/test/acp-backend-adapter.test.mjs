@@ -7,6 +7,7 @@ import {
   AcpBackendAdapter,
   acpBackendProfile,
 } from '../src/backend/adapters/acp/backend-adapter.mjs'
+import { COORDINATOR_STABLE_INSTRUCTIONS } from '../src/backend/adapters/acp/coordinator-instructions.mjs'
 
 function completed(speech = '完成') {
   return speech
@@ -176,7 +177,7 @@ function fakeAcpClient({
           response: { stopReason: 'end_turn' },
         }
       }
-      if (prompt.includes('刚才交给独立任务处理的工作已经完成')) {
+      if (prompt.includes('独立工作已结束')) {
         return {
           content: completed('第三层结果已整理'),
           response: { stopReason: 'end_turn' },
@@ -1071,9 +1072,9 @@ test('keeps a cached coordinator MCP connection valid across turns', async () =>
   assert.equal(tools.updateCalls, 1)
   assert.equal(tools.releaseCalls, 0)
   assert.deepEqual(resumedDescriptors, [])
-  assert.equal(second.run.delegation.taskId, 'work-two')
-  assert.equal(second.run.delegation.ownerId, 'owner-one')
-  await second.run.delegation.promise
+  assert.equal(second.run.delegations[0].taskId, 'work-two')
+  assert.equal(second.run.delegations[0].ownerId, 'owner-one')
+  await second.run.delegations[0].promise
   await adapter.close()
   assert.equal(tools.releaseCalls, 1)
 })
@@ -1141,12 +1142,111 @@ test('moves stable coordinator rules into MCP instructions for verified backends
 
   assert.equal(adapter.coordinatorUsesMcpInstructions(), true)
   assert.match(tools.registerOptions[0].instructions, /Session routing:/)
-  assert.match(tools.registerOptions[0].instructions, /qwen-audio-agent's backend/)
+  assert.ok(tools.registerOptions[0].instructions.includes(COORDINATOR_STABLE_INSTRUCTIONS))
   assert.doesNotMatch(prompts[0], /Session routing:/)
-  assert.doesNotMatch(prompts[0], /qwen-audio-agent's backend/)
+  assert.ok(!prompts[0].includes(COORDINATOR_STABLE_INSTRUCTIONS))
   assert.match(prompts[0], /dynamic/)
   await adapter.close()
 })
+
+for (const restored of [false, true]) {
+  test(`Qwen ${restored ? 'restored' : 'fresh'} coordinator registers MCP instructions without repeating rules in each prompt`, async t => {
+    const tools = fakeToolServer()
+    const sessionCalls = []
+    const prompts = []
+    const client = {
+      async newSession(options) {
+        sessionCalls.push({ method: 'new', options })
+        return { sessionId: 'coordinator-session', cwd: options.cwd, response: {} }
+      },
+      async resumeSession(sessionId, options) {
+        sessionCalls.push({ method: 'resume', options })
+        return { sessionId, cwd: options.cwd, response: {} }
+      },
+      async prompt(sessionId, prompt) {
+        prompts.push({ sessionId, prompt })
+        return { content: 'done', response: { stopReason: 'end_turn' } }
+      },
+      async close() {},
+    }
+    // Use the real driver profile to verify the selected delivery channel.
+    const adapter = new AcpBackendAdapter({
+      protocol: 'qwen',
+      directory: '/coordinator',
+      client,
+      sessionToolServer: tools,
+      builtinMcp: [],
+      sessionStatePath: null,
+    })
+    t.after(() => adapter.close())
+    if (restored) {
+      adapter.registry.set('qwen:owner-one:backend', {
+        sessionId: 'coordinator-session',
+        cwd: '/coordinator',
+        contractVersion: 8,
+      })
+    }
+
+    for (const id of ['first', 'second']) {
+      const result = await adapter.submit({
+        id,
+        ownerId: 'owner-one',
+        objective: `${id} user request`,
+      })
+      assert.equal(result.content, 'done')
+    }
+
+    assert.equal(adapter.coordinatorUsesMcpInstructions(), true)
+    assert.deepEqual(sessionCalls.map(call => call.method), [restored ? 'resume' : 'new'])
+    assert.equal(sessionCalls[0].options.role, 'coordinator')
+    assert.deepEqual(sessionCalls[0].options.mcpServers, [tools.registrations[0].descriptor])
+    assert.equal(tools.registerCalls, 1)
+    assert.equal(tools.updateCalls, 1)
+    assert.equal(tools.registerOptions[0].instructions.split(COORDINATOR_STABLE_INSTRUCTIONS).length, 2)
+    for (const name of ['listSessions', 'startSession', 'sendSession', 'sessionStatus', 'cancelSession']) {
+      assert.equal(typeof tools.registrations[0].context[name], 'function')
+    }
+    assert.equal(prompts.length, 2)
+    for (const [index, { sessionId, prompt }] of prompts.entries()) {
+      assert.equal(sessionId, 'coordinator-session')
+      assert.ok(!prompt.includes(COORDINATOR_STABLE_INSTRUCTIONS))
+      assert.ok(prompt.includes(`${index === 0 ? 'first' : 'second'} user request`))
+    }
+  })
+}
+
+for (const action of ['start', 'send']) {
+  test(`Qwen ${action === 'start' ? 'new' : 'resumed'} project Session does not inherit coordinator-only rules or tools`, async t => {
+    const client = fakeAcpClient({ action })
+    const tools = fakeToolServer()
+    client.bind(tools)
+    const builtin = { type: 'http', name: 'project-tool', url: 'http://127.0.0.1/project-mcp', headers: [] }
+    const adapter = new AcpBackendAdapter({
+      protocol: 'qwen',
+      directory: '/coordinator',
+      client,
+      sessionToolServer: tools,
+      builtinMcp: [builtin],
+      sessionStatePath: null,
+    })
+    t.after(() => adapter.close())
+
+    await adapter.submit({ id: 'work-one', ownerId: 'owner-one', objective: 'implement the project' })
+
+    const coordinator = client.calls.find(call => call[0] === 'prompt' && call[1] === 'coordinator-session')
+    assert.ok(!coordinator[2].includes(COORDINATOR_STABLE_INSTRUCTIONS))
+    const projectId = action === 'start' ? 'project-1' : 'previous-session'
+    const projectPrompts = client.calls.filter(call => call[0] === 'prompt' && call[1] === projectId)
+    assert.equal(projectPrompts.length, 1)
+    assert.equal(projectPrompts[0][2], action === 'start' ? 'build project' : 'continue previous work')
+    const projectOptions = action === 'start'
+      ? client.calls.find(call => call[0] === 'new' && call[1].role === 'project')[1]
+      : client.calls.find(call => call[0] === 'resume' && call[1] === projectId)[2]
+    assert.deepEqual(projectOptions.mcpServers, [builtin])
+    assert.equal(tools.registerCalls, 1)
+    assert.equal(tools.registerOptions[0].instructions.split(COORDINATOR_STABLE_INSTRUCTIONS).length, 2)
+  })
+}
 
 test('replaces a persisted coordinator without the current coordinator contract', async () => {
   const tools = fakeToolServer()
@@ -1201,7 +1301,7 @@ test('replaces a persisted coordinator without the current coordinator contract'
   assert.equal(creates, 1)
   assert.equal(deleted.length, 1)
   assert.equal(saved[0][1].sessionId, 'fresh-coordinator')
-  assert.equal(saved[0][1].contractVersion, 7)
+  assert.equal(saved[0][1].contractVersion, 8)
   await adapter.close()
 })
 
@@ -1218,7 +1318,13 @@ test('isolates coordinator MCP registrations by owner and releases them', async 
         response: {},
       }
     },
-    async prompt() {
+    async prompt(sessionId) {
+      if (sessionId.startsWith('coordinator-')) {
+        const index = sessionId === 'coordinator-owner-one' ? 0 : 1
+        await tools.registrations[index].call('startSession', {
+          prompt: `${sessionId} project`,
+        })
+      }
       return {
         content: completed(),
         response: { stopReason: 'end_turn' },
@@ -1241,12 +1347,12 @@ test('isolates coordinator MCP registrations by owner and releases them', async 
     ownerId: 'owner-two',
     coordinationRunId: 'work-owner-two',
   })
-  await tools.registrations[0].call('startSession', {
-    prompt: 'owner one project',
-  })
-  await tools.registrations[1].call('startSession', {
-    prompt: 'owner two project',
-  })
+  assert.throws(() => tools.registrations[0].call('startSession', {
+    prompt: 'late owner one project',
+  }), /已失效/)
+  assert.throws(() => tools.registrations[1].call('startSession', {
+    prompt: 'late owner two project',
+  }), /已失效/)
 
   assert.equal(tools.registerCalls, 2)
   assert.notEqual(
@@ -1254,24 +1360,24 @@ test('isolates coordinator MCP registrations by owner and releases them', async 
     tools.registrations[1].descriptor.url,
   )
   assert.equal(
-    adapter.coordinationRuns.get('work-owner-one').delegation.ownerId,
+    adapter.coordinationRuns.get('work-owner-one').delegations[0].ownerId,
     'owner-one',
   )
   assert.equal(
-    adapter.coordinationRuns.get('work-owner-two').delegation.ownerId,
+    adapter.coordinationRuns.get('work-owner-two').delegations[0].ownerId,
     'owner-two',
   )
   assert.equal(
-    adapter.coordinationRuns.get('work-owner-one').delegation.directory,
+    adapter.coordinationRuns.get('work-owner-one').delegations[0].directory,
     '/coordinator',
   )
   assert.equal(
-    adapter.coordinationRuns.get('work-owner-two').delegation.directory,
+    adapter.coordinationRuns.get('work-owner-two').delegations[0].directory,
     '/coordinator',
   )
   await Promise.all([
-    adapter.coordinationRuns.get('work-owner-one').delegation.promise,
-    adapter.coordinationRuns.get('work-owner-two').delegation.promise,
+    adapter.coordinationRuns.get('work-owner-one').delegations[0].promise,
+    adapter.coordinationRuns.get('work-owner-two').delegations[0].promise,
   ])
   await adapter.close()
   assert.equal(tools.releaseCalls, 2)
@@ -1597,7 +1703,7 @@ test('busy-coordinator cancellation uses ACP directly and reconciles on the next
   ))
   assert.match(
     followUp[2],
-    /上一请求已取消，不要续接其未完成内容/,
+    /先前请求已取消，不要续接其未完成内容/,
   )
   assert.doesNotMatch(followUp[2], /work-one|request_id|delegation_id/)
   assert.equal(
@@ -1664,7 +1770,7 @@ test('ordinary coordinator cancellation terminates the old request before the ne
     coordinationRequestId: 'job_2',
   })
   assert.equal(second.content, '第二个请求已完成')
-  assert.match(prompts[1], /上一请求已取消，不要续接其未完成内容/)
+  assert.match(prompts[1], /先前请求已取消，不要续接其未完成内容/)
   assert.doesNotMatch(prompts[1], /job_1|work-one|request_id/)
   assert.match(prompts[1], /仅处理以下新请求/)
   assert.deepEqual(
@@ -1761,7 +1867,7 @@ test('delivers persisted cancellation reconciliation after a Gateway restart', a
 
     // Restoring the Session already supplies its MCP definitions.
     assert.equal(resumes, 1)
-    assert.match(prompts[0], /上一请求已取消，不要续接其未完成内容/)
+    assert.match(prompts[0], /先前请求已取消，不要续接其未完成内容/)
     assert.doesNotMatch(
       prompts[0],
       /job_21|work-before-restart|request_id/,
@@ -2242,6 +2348,8 @@ test('OpenClaw routes each owner to the configured coordinator Agent through ACP
   assert.deepEqual(adapter.coordinatorMeta('Owner One'), {
     sessionKey: 'agent:voice-coordinator:qwen-audio-agent:owner%20one:backend',
   })
+  assert.match(adapter.profile.sessionInstructions, /^OpenClaw native Session tools: sessions_spawn to create work, sessions_list to locate prior Sessions, sessions_send to continue one, and sessions_history for status\.$/u)
+  assert.doesNotMatch(adapter.profile.sessionInstructions, /explicitly requires|only when/u)
 })
 
 test('OpenClaw reattaches a persisted native delegation after Gateway restart', async () => {
@@ -2501,7 +2609,7 @@ test('injects builtin MCP servers into coordinator and project sessions', async 
     ownerId: 'owner-one',
     coordinationRunId: 'work-one',
   })
-  await result.run.delegation?.promise
+  await result.run.delegations[0]?.promise
 
   const coordinator = sessionMcp.get('coordinator-session')
   assert.equal(coordinator.length, 2)

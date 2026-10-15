@@ -75,7 +75,7 @@ test('ACP adapter implements the complete BackendPort surface', () => {
   assert.equal(assertBackendPort(backend), backend)
 })
 
-test('active delegated updates target the project Session, not the shared coordinator', async () => {
+test('delegated updates pass through the coordinator before restarting the original project Session', async () => {
   const client = fakeClient()
   const backend = adapter({ client })
   const prompts = []
@@ -94,6 +94,16 @@ test('active delegated updates target the project Session, not the shared coordi
       if (projectTurns++ === 0) return firstProject.promise
       return { content: 'updated project result', response: { stopReason: 'end_turn' } }
     }
+    const run = backend.coordinationRuns.get('task_1')
+    if (run.phase === 'update') {
+      assert.match(JSON.stringify(prompt), /change project/u)
+      assert.equal(cancels.length, 0, 'routing must precede cancellation of the project prompt')
+      const delivered = await backend.continueProjectSession(run, {
+        session_id: 'session-2', prompt: 'change project',
+      })
+      assert.equal(delivered.status, 'updated')
+      return { content: 'requirements forwarded', response: { stopReason: 'end_turn' } }
+    }
     assert.match(JSON.stringify(prompt), /updated project result/u)
     return { content: 'final updated result', response: { stopReason: 'end_turn' } }
   }
@@ -108,8 +118,8 @@ test('active delegated updates target the project Session, not the shared coordi
     await receipt.completion
     assert.equal((await done).content, 'final updated result')
     assert.deepEqual(cancels, ['session-2'])
-    assert.deepEqual(prompts.map(call => call.sessionId), ['session-1', 'session-2', 'session-2', 'session-1'])
-    assert.match(JSON.stringify(prompts[2].prompt), /change project/u)
+    assert.deepEqual(prompts.map(call => call.sessionId), ['session-1', 'session-2', 'session-1', 'session-2', 'session-1'])
+    assert.match(JSON.stringify(prompts[3].prompt), /change project/u)
   } finally { await backend.close() }
 })
 
@@ -119,7 +129,7 @@ test('continuation never silently switches to a different coordinator Session', 
   try {
     await assert.rejects(backend.submit({
       id: 'task_1', ownerId: 'owner', objective: 'continue',
-      resumeContext: { adapter: 'acp', token: 'unavailable-original' },
+      resumeContext: { adapter: 'acp', version: 1, token: 'unavailable-original', projects: [] },
     }), { code: 'context_unavailable' })
     assert.equal(client.prompts.length, 0)
   } finally { await backend.close() }
@@ -127,7 +137,7 @@ test('continuation never silently switches to a different coordinator Session', 
 
 test('cancel confirms settlement before the same task can resume and receive updates', async () => {
   const client = fakeClient()
-  const backend = adapter({ client, maxConcurrentTasks: 1 })
+  const backend = adapter({ client })
   const stopping = Promise.withResolvers()
   const resumed = Promise.withResolvers()
   const calls = []
@@ -187,7 +197,7 @@ test('cancel confirms settlement before the same task can resume and receive upd
 
 test('unresponsive cancellation is bounded and does not release the active Session', async () => {
   const client = fakeClient()
-  const backend = adapter({ client, maxConcurrentTasks: 1, cancelTimeoutMs: 20 })
+  const backend = adapter({ client, cancelTimeoutMs: 20 })
   const stopping = Promise.withResolvers()
   let calls = 0
   client.prompt = async () => {
@@ -288,7 +298,7 @@ test('ACP submit exposes Work values while Session details stay private', async 
   assert.deepEqual(outcome, {
     content: '已经完成。',
     artifacts: [],
-    continuation: { adapter: 'acp', token: 'session-1' },
+    continuation: { adapter: 'acp', version: 1, token: 'session-1', projects: [] },
   })
   assert.equal('metadata' in outcome, false)
   assert.equal('sessionId' in outcome, false)
@@ -409,6 +419,44 @@ test('ACP isolated work uses a fresh one-shot Session without coordinator instru
   assert.equal(outcome.metadata.backendRef.role, 'utility')
   assert.equal(backend.coordinatorSessions.size, 0)
   await backend.close()
+})
+
+test('Qwen isolated work retains builtin tools without coordinator rules or routing tools', async t => {
+  const client = fakeClient()
+  client.start = async () => {
+    client.ready = true
+    return { agentCapabilities: { mcpCapabilities: { http: true } } }
+  }
+  const builtin = { type: 'http', name: 'utility-tool', url: 'http://127.0.0.1/utility-mcp', headers: [] }
+  const backend = new AcpBackendAdapter({
+    protocol: 'qwen',
+    directory: '/project',
+    client,
+    builtinMcp: [builtin],
+    sessionStatePath: null,
+    sessionToolServer: {
+      async register() { assert.fail('isolated work must not register coordinator routing tools') },
+      async close() {},
+    },
+  })
+  t.after(() => backend.close())
+
+  const outcome = await backend.submit({
+    id: 'ingest-qwen',
+    ownerId: 'owner-one',
+    instruction: '把文件转换成 Markdown。',
+    continuity: 'isolated',
+  })
+
+  assert.equal(backend.coordinatorUsesMcpInstructions(), true)
+  assert.equal(client.sessions.length, 1)
+  assert.equal(client.sessions[0].options.role, 'utility')
+  assert.deepEqual(client.sessions[0].options.mcpServers, [builtin])
+  assert.deepEqual(client.prompts, ['把文件转换成 Markdown。'])
+  assert.deepEqual(client.closedSessions, ['session-1'])
+  assert.equal(outcome.metadata.backendRef.role, 'utility')
+  assert.equal(backend.coordinatorSessions.size, 0)
+  assert.equal(backend.coordinatorToolRegistrations.size, 0)
 })
 
 test('ACP isolated work closes its Session when configuration fails', async () => {

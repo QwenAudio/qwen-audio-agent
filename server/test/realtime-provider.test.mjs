@@ -93,10 +93,6 @@ test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
   assert.deepEqual(spawn.function.parameters.required, ['objective'])
   assert.equal(spawn.function.parameters.properties.input_refs.type, 'array')
   assert.equal(spawn.function.parameters.properties.input_refs.maxItems, 8)
-  assert.match(
-    spawn.function.parameters.properties.objective.description,
-    /忠实、完整且自包含地转达用户要做什么及其明确约束/,
-  )
   assert.ok(spawn.function.description.trim())
   const instructions = buildFrontendInstructions()
   assert.match(instructions, /不要重复提交已经覆盖的目标/)
@@ -106,15 +102,59 @@ test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
   assert.match(instructions, /不要预测、模拟或代替后台提出权限请求/)
 })
 
+test('both realtime schemas share one faithful handoff rule and preserve request fields', () => {
+  const handoffRules = [
+    /忠实保留用户目标与明确约束，包括否定要求/,
+    /只消解有依据的指代/,
+    /不扩写需求或指定实现方案/,
+    /可由工具查明的信息交给工具获取/,
+    /未指定的实现细节交由后台判断/,
+    /缺少必须由用户决定的关键信息时才询问/,
+  ]
+
+  for (const provider of [REALTIME_PROVIDERS.qwen, REALTIME_PROVIDERS.s2s]) {
+    const session = provider.buildSession({ configured: false })
+    const routing = session.instructions.match(/# Routing\r?\n([\s\S]*?)(?=\r?\n# |$)/)?.[1]
+    assert.ok(routing)
+    for (const rule of handoffRules) assert.match(routing, rule)
+    assert.equal(session.instructions.match(/转交工作时，/g)?.length, 1)
+
+    const definitions = session.tools.map(tool => tool.function || tool)
+    const spawn = definitions.find(tool => tool.name === 'spawn_thinking').parameters
+    const update = definitions.find(tool => tool.name === 'update_agent_task').parameters
+    assert.deepEqual(spawn.properties.objective, {
+      type: 'string',
+      description: '用户本次请求，必要时结合上下文补全指代；不添加用户未提出的要求。',
+    })
+    assert.deepEqual(update.properties.instruction, {
+      type: 'string',
+      description: '用户本次补充、修改的要求或对追问的回答。',
+    })
+    assert.deepEqual(Object.keys(spawn.properties), ['objective', 'input_refs'])
+    assert.deepEqual(Object.keys(update.properties), [
+      'task_id', 'instruction', 'input_request_id', 'values', 'input_refs',
+    ])
+    assert.deepEqual(spawn.required, ['objective'])
+    assert.deepEqual(update.required, ['task_id', 'instruction'])
+    assert.equal(spawn.additionalProperties, false)
+    assert.equal(update.additionalProperties, false)
+    assert.deepEqual(update.properties.input_refs, spawn.properties.input_refs)
+    assert.doesNotMatch(
+      `${session.instructions}\n${JSON.stringify(definitions)}`,
+      /完整且自包含|后台不会收到前台的完整对话/,
+    )
+  }
+})
+
 for (const lineEnding of ['\n', '\r\n']) {
   test(`core routing distinguishes discussion from execution and keeps receipt guidance generic (${JSON.stringify(lineEnding)})`, () => {
     const instructions = buildFrontendInstructions().replace(/\r?\n/g, lineEnding)
     const routing = instructions.match(/# Routing\r?\n([\s\S]*?)(?=\r?\n# |$)/)?.[1]
     assert.ok(routing)
-    assert.match(routing, /讨论|解释|建议/)
+    assert.match(routing, /仅当直接回答就能满足用户请求时，才直接回答/)
     assert.match(routing, /执行/)
     assert.match(routing, /专用工具/)
-    assert.match(routing, /`spawn_thinking`[^。]*description[^。]*能力范围/)
+    assert.match(routing, /其余请求必须调用后台工具尝试[^。]*即使不确定后台是否支持/)
     assert.match(routing, /新增|新工作|新目标/)
     assert.match(routing, /已有|原目标|原工作/)
     assert.match(routing, /(?:已完成|工作完成后).*续接/)
@@ -961,7 +1001,7 @@ test('uses a trusted session Assistant Profile without changing core policy', ()
   assert.match(prompt, /<assistant_profile authority="persona_only">[\s\S]*行动派座舱伙伴/u)
   assert.doesNotMatch(prompt, /默认自然、直接、可靠/u)
   assert.match(prompt, /与用户进行全双工语音交互的统一助手/u)
-  assert.match(prompt, /工具 description 和 schema 是各项能力的调用契约/u)
+  assert.match(prompt, /仅使用本轮实际提供的工具，并遵守其 description 和 schema/u)
 })
 
 test('builds cache-friendly policy, identity, memory and reconnect context', () => {
@@ -993,8 +1033,8 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.match(prompt, /不要要求用户额外说“记住”或“以后”/)
   assert.match(prompt, /“这次”、“今天”或“暂时”[\s\S]*不保存为长期记忆/)
   assert.match(prompt, /清除冲突或归类错误的旧内容/)
-  assert.match(prompt, /工具声明的能力也是你的能力/)
-  assert.match(prompt, /不要把自己无法直接执行，等同于无法通过工具完成/)
+  assert.match(prompt, /仅使用本轮实际提供的工具，并遵守其 description 和 schema/)
+  assert.match(prompt, /不要未经尝试就声称做不到/)
   assert.match(prompt, /可由工具查明的信息交给工具获取/)
   assert.match(prompt, /不要因一次工具\s*调用而忽略其余请求/)
   assert.match(prompt, /避免空泛承接、重复用户要求/)
@@ -1070,24 +1110,6 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.match(notes.function.parameters.properties.action.description, /clear[\s\S]*保留清单[\s\S]*drop 删除整个清单/)
   assert.deepEqual(notes.function.parameters.required, ['action'])
 
-  const spawnThinking = REALTIME_PROVIDERS.qwen
-    .buildSession({ configured: false })
-    .tools.find(tool => (
-      tool.function.name === SPAWN_THINKING_TOOL_NAME
-    ))
-  assert.ok(spawnThinking.function.description.trim())
-  assert.match(
-    spawnThinking.function.parameters.properties.objective.description,
-    /保留执行方式及与既有工作的关系.*不要规定用户未要求的具体工具、Agent 或 Session/,
-  )
-  assert.match(
-    spawnThinking.function.parameters.properties.objective.description,
-    /忠实、完整且自包含地转达用户要做什么及其明确约束/,
-  )
-  assert.match(
-    spawnThinking.function.parameters.properties.objective.description,
-    /后台不会收到前台的完整对话、个性化偏好或长期记忆/,
-  )
   const status = REALTIME_PROVIDERS.qwen
     .buildSession({ configured: false })
     .tools.find(tool => tool.function.name === 'get_agent_task_status')

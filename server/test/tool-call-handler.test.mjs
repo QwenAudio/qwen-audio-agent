@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { TaskManager } from '../src/task/task-manager.mjs'
 import { ToolCallHandler } from '../src/frontend/tools/tool-call-handler.mjs'
@@ -7,6 +10,8 @@ import { PermissionPolicy } from '../src/task/permission-policy.mjs'
 import { TurnTranscripts } from '../src/frontend/tools/turn-transcripts.mjs'
 import { REALTIME_PROVIDERS, RealtimeFrontend } from '../src/voice/realtime-provider.mjs'
 import { ClientToolSource } from '../src/frontend/tools/client-tool-source.mjs'
+import { MarkdownContextStore } from '../src/memory/providers/markdown/context-store.mjs'
+import { MarkdownMemoryProvider } from '../src/memory/providers/markdown/provider.mjs'
 import { desktopClientTools } from '../../web/src/desktop/client-tools.js'
 
 const WORK_ACCEPTED_MESSAGE = '请求已受理，执行结果另行返回。本次只需自然确认受理。'
@@ -626,7 +631,16 @@ test('fails closed when a stale model calls an unavailable retrieval tool', asyn
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
   assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
-  assert.equal(kit.outputs[0][3].createResponse, true)
+  assert.equal(kit.outputs[0][1].status, 'failed')
+  assert.equal(kit.outputs[0][1].error, true)
+  assert.notEqual(kit.outputs[0][3].createResponse, false)
+  assert.notEqual(kit.outputs[0][3].response?.tool_choice, 'none')
+
+  await responseToolCall(kit.handler, 'time-after-unavailable', 'get_current_time', 'response-after-unavailable')
+  await kit.handler.finishToolResponse('response-after-unavailable')
+  assert.equal(kit.outputs[1][1].status, 'ok')
+  assert.equal(kit.ensuredResponses.length, 1)
+  assert.notEqual(kit.ensuredResponses[0][1].response?.tool_choice, 'none')
 })
 
 test('executes capability-gated knowledge retrieval with trusted context', async () => {
@@ -713,8 +727,109 @@ test('blocks an exact repeated inline tool call within one turn', async () => {
   }, context)
 
   assert.equal(kit.outputs[0][1].status, 'ok')
-  assert.equal(kit.outputs[1][1].status, 'duplicate')
-  assert.equal(kit.outputs[1][3].createResponse, false)
+  assert.equal(kit.outputs[1][1].status, 'blocked')
+  assert.equal(kit.outputs[1][1].error, true)
+  assert.equal(kit.outputs[1][1].error_code, 'repeated_tool_call')
+  assert.equal(kit.outputs[1][3].createResponse, true)
+  assert.equal(kit.outputs[1][3].response.tool_choice, 'none')
+})
+
+for (const kind of ['built-in', 'external']) {
+  test(`${kind} repeated inline calls stop all tools once and reset for a new generation`, async () => {
+    let generation = 1
+    const executions = []
+    const externalName = 'mcp__documents__search'
+    const kit = harness({
+      getTurnGeneration: () => generation,
+      frontendRetrieval: {
+        capabilities: () => ['web-search'],
+        search: async query => {
+          executions.push(['web_search', query])
+          return { status: 'ok', results: [] }
+        },
+      },
+      frontendToolSources: [responseToolSource([externalName], async (name, args) => {
+        executions.push([name, args.query])
+        return { status: 'ok', text: 'Found.' }
+      })],
+    })
+    const name = kind === 'built-in' ? 'web_search' : externalName
+    const otherName = kind === 'built-in' ? externalName : 'web_search'
+    const invoke = (callId, toolName = name, query = 'architecture') => kit.handler.handle({
+      call_id: callId,
+      name: toolName,
+      arguments: JSON.stringify({ query }),
+    }, { turnId: 'turn-one', turnGeneration: generation })
+
+    await invoke('original')
+    await invoke('repeat')
+    const stop = kit.outputs[1]
+    assert.equal(stop[1].status, 'blocked')
+    assert.equal(stop[1].error, true)
+    assert.equal(stop[1].error_code, 'repeated_tool_call')
+    assert.equal(stop[3].createResponse, true)
+    assert.equal(stop[3].response.tool_choice, 'none')
+
+    await invoke('other-family', otherName, 'unrelated')
+    await invoke('different-arguments', name, 'different')
+    assert.deepEqual(executions, [[name, 'architecture']])
+    for (const output of kit.outputs.slice(2)) {
+      assert.equal(output[1].status, 'blocked')
+      assert.equal(output[1].error, true)
+      assert.equal(output[1].error_code, 'tool_loop_stopped')
+      assert.equal(output[3].createResponse, false)
+    }
+    assert.equal(kit.outputs.filter(output => output[3].createResponse === true
+      && output[3].response?.tool_choice === 'none').length, 1)
+    assert.equal(kit.ensuredResponses.length, 0)
+
+    // A reused turn ID must not carry a prior generation's stop or signatures.
+    generation = 2
+    await invoke('next-generation')
+    assert.deepEqual(executions, [[name, 'architecture'], [name, 'architecture']])
+    assert.equal(kit.outputs.at(-1)[1].status, 'ok')
+    await invoke('next-generation-repeat')
+    assert.equal(kit.outputs.at(-1)[1].error_code, 'repeated_tool_call')
+    assert.equal(kit.outputs.at(-1)[3].createResponse, true)
+    assert.equal(kit.outputs.at(-1)[3].response.tool_choice, 'none')
+  })
+}
+
+test('a batched guard limit requests one tool-free summary despite earlier speech', async () => {
+  let executions = 0
+  const name = 'mcp__documents__search'
+  const source = responseToolSource([name], async () => {
+    executions += 1
+    return { status: 'ok', text: 'Found.' }
+  })
+  const tools = source.tools()
+  tools[0].policy.maxCallsPerTurn = 1
+  source.tools = () => tools
+  const kit = harness({ frontendToolSources: [source] })
+
+  await responseToolCall(kit.handler, 'time-before-stop', 'get_current_time')
+  await responseToolCall(kit.handler, 'search-first', name, 'response-tools', { query: 'one' })
+  await responseToolCall(kit.handler, 'search-limit', name, 'response-tools', { query: 'two' })
+  assert.equal(executions, 1)
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'tool_loop_limit')
+  assert.equal(kit.outputs.at(-1)[1].error, true)
+  assert.equal(kit.outputs.at(-1)[1].status, 'blocked')
+  await responseToolCall(kit.handler, 'same-batch-after-stop', 'get_current_time', 'response-tools', { zone: 'UTC' })
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'tool_loop_stopped')
+  assert.ok(kit.outputs.every(output => output[3].createResponse === false))
+  assert.equal(kit.ensuredResponses.length, 0)
+  assert.equal(kit.handler.requiresToolResultSummary('response-tools'), true)
+
+  await kit.handler.finishToolResponse('response-tools', { sourceHasSpeech: true })
+  assert.equal(kit.ensuredResponses.length, 1)
+  assert.equal(kit.ensuredResponses[0][1].response.tool_choice, 'none')
+  await kit.handler.finishToolResponse('response-tools', { sourceHasSpeech: true })
+  await responseToolCall(kit.handler, 'time-after-stop', 'get_current_time', 'response-after-stop', { zone: 'UTC' })
+  await kit.handler.finishToolResponse('response-after-stop')
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'tool_loop_stopped')
+  assert.equal(kit.outputs.at(-1)[3].createResponse, false)
+  assert.equal(kit.ensuredResponses.length, 1)
+  assert.equal(kit.handler.deferredToolResponses.size, 0)
 })
 
 async function permissionHarness({
@@ -1089,6 +1204,8 @@ test('allows one status query per user turn and blocks response-driven repeats',
     responseId: 'response-status-first',
   })
   assert.equal(kit.outputs.at(-1)[1].status, 'ok')
+  await kit.handler.finishToolResponse('response-status-first')
+  assert.equal(kit.ensuredResponses.length, 1)
 
   await kit.handler.handle({
     call_id: 'call-status-repeat',
@@ -1100,8 +1217,12 @@ test('allows one status query per user turn and blocks response-driven repeats',
     turnGeneration: 1,
     responseId: 'response-status-repeat',
   })
-  assert.equal(kit.outputs.at(-1)[1].status, 'duplicate')
+  assert.equal(kit.outputs.at(-1)[1].status, 'blocked')
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'repeated_tool_call')
   assert.equal(kit.outputs.at(-1)[3].createResponse, false)
+  await kit.handler.finishToolResponse('response-status-repeat')
+  assert.equal(kit.ensuredResponses.length, 2)
+  assert.equal(kit.ensuredResponses[1][1].response.tool_choice, 'none')
   assert.deepEqual(activities, [{ activity: 'query', turnId: 'turn-one' }])
 })
 
@@ -1287,6 +1408,7 @@ test('rejects unavailable memory with null arguments and clears call tracking', 
   assert.equal(kit.outputs.length, 1)
   assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
   assert.equal(kit.outputs[0][1].retryable, false)
+  assert.equal(kit.handler.consumeTerminalToolResponse(responseId), false)
   assert.equal(kit.handler.activeToolEntries.size, 0)
   assert.equal(kit.handler.activeToolDebugEntries.size, 0)
 
@@ -1914,9 +2036,13 @@ test('batches targeted cancellations and blocks cancellation follow-ups', async 
     turnGeneration: 1,
     responseId: 'response-cancel-follow-up',
   })
-  assert.equal(kit.outputs.at(-1)[1].status, 'duplicate')
+  assert.equal(kit.outputs.at(-1)[1].status, 'blocked')
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'repeated_tool_call')
   assert.equal(kit.outputs.at(-1)[3].createResponse, false)
   assert.equal(kit.ensuredResponses.length, 1)
+  await kit.handler.finishToolResponse('response-cancel-follow-up')
+  assert.equal(kit.ensuredResponses.length, 2)
+  assert.equal(kit.ensuredResponses[1][1].response.tool_choice, 'none')
 })
 
 test('queries the latest work directly from the realtime task ledger', async () => {
@@ -2663,6 +2789,50 @@ test('replaces one exact Markdown fragment', async () => {
   assert.equal(changes, 1)
 })
 
+test('renames a real Markdown preference once despite a commented template duplicate and summarizes it', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-tool-memory-rename-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  const filePath = join(directory, 'USER.md')
+  const oldText = '- 称呼：老板'
+  const newText = '- 称呼：船长'
+  const templateComment = `<!-- 称呼填写示例：${oldText} -->`
+  const userStore = new MarkdownContextStore({
+    filePath,
+    scope: 'user',
+    personalOwnerId: 'owner',
+    template: '# USER',
+  })
+  userStore.persist('owner', `# USER\n\n${templateComment}\n\n${oldText}\n`)
+  const memoryStore = new MarkdownMemoryProvider({ userStore })
+  const apply = t.mock.method(memoryStore, 'apply')
+  let changes = 0
+  const kit = harness({
+    memoryStore,
+    onMemoryChanged: () => { changes += 1 },
+  })
+
+  await responseToolCall(kit.handler, 'memory-rename', 'memory', 'response-memory-rename', {
+    action: 'replace', document: 'user', old_text: oldText, new_text: newText,
+  })
+  const expected = `# USER\n\n${templateComment}\n\n${newText}\n`
+  assert.equal(apply.mock.calls.length, 1)
+  assert.equal(changes, 1)
+  assert.equal(kit.outputs.length, 1)
+  assert.equal(kit.outputs[0][1].status, 'updated')
+  assert.equal(kit.outputs[0][1].changed, 1)
+  assert.notEqual(kit.outputs[0][1].error, true)
+  assert.equal(kit.outputs[0][1].documents[0].content, expected.trimEnd())
+  assert.equal(readFileSync(filePath, 'utf8'), expected)
+  assert.equal(kit.outputs[0][3].createResponse, false)
+  assert.equal(kit.ensuredResponses.length, 0)
+
+  await kit.handler.finishToolResponse('response-memory-rename', { sourceHasSpeech: false })
+  assert.equal(kit.ensuredResponses.length, 1)
+  assert.notEqual(kit.ensuredResponses[0][1].response?.tool_choice, 'none')
+  assert.equal(kit.ensuredResponses[0][1].shouldCreate(), true)
+  assert.equal(kit.handler.deferredToolResponses.size, 0)
+})
+
 test('appends one memory item', async () => {
   let call
   const kit = harness({
@@ -2758,6 +2928,73 @@ test('returns the latest document when an exact edit no longer matches', async (
   })
   assert.equal(kit.outputs.at(-1)[1].error_code, 'edit_not_found')
   assert.equal(kit.outputs.at(-1)[1].documents[0].revision, 'latest')
+})
+
+test('an ambiguous memory edit followed by a read and repeated edit ends with one truthful summary', async () => {
+  let writes = 0
+  let reads = 0
+  let changes = 0
+  const debugEvents = []
+  const kit = harness({
+    memoryStore: {
+      apply: () => {
+        writes += 1
+        throw Object.assign(new Error('fragment appears twice'), { code: 'ambiguous_edit' })
+      },
+      list: () => {
+        reads += 1
+        return [{ scope: 'user', content: '# USER\n- 称呼：老板\n- 称呼：老板', revision: 'unchanged' }]
+      },
+    },
+    onMemoryChanged: () => { changes += 1 },
+    onToolCallDebug: event => debugEvents.push(event),
+  })
+  const edit = {
+    action: 'replace', document: 'user',
+    old_text: '- 称呼：老板', new_text: '- 称呼：船长',
+  }
+
+  await responseToolCall(kit.handler, 'ambiguous-edit', 'memory', 'response-edit', edit)
+  await kit.handler.finishToolResponse('response-edit')
+  assert.equal(kit.outputs[0][1].status, 'failed')
+  assert.equal(kit.outputs[0][1].error, true)
+  assert.equal(kit.outputs[0][1].error_code, 'ambiguous_edit')
+  assert.equal(kit.ensuredResponses.length, 1)
+
+  await responseToolCall(kit.handler, 'reread', 'memory', 'response-reread', { action: 'read', document: 'user' })
+  await kit.handler.finishToolResponse('response-reread')
+  assert.equal(kit.outputs[1][1].status, 'ok')
+  assert.equal(kit.ensuredResponses.length, 2)
+
+  await responseToolCall(kit.handler, 'repeat-edit', 'memory', 'response-repeat-edit', edit)
+  assert.equal(writes, 1)
+  assert.equal(reads, 2)
+  assert.equal(changes, 0)
+  assert.equal(kit.outputs[2][1].status, 'blocked')
+  assert.equal(kit.outputs[2][1].error, true)
+  assert.equal(kit.outputs[2][1].error_code, 'repeated_tool_call')
+  assert.equal(kit.outputs[2][3].createResponse, false)
+  assert.equal(kit.handler.requiresToolResultSummary('response-repeat-edit'), true)
+  await kit.handler.finishToolResponse('response-repeat-edit', { sourceHasSpeech: true })
+  assert.equal(kit.ensuredResponses.length, 3)
+  assert.equal(kit.ensuredResponses[2][1].response.tool_choice, 'none')
+
+  await responseToolCall(kit.handler, 'write-after-stop', 'memory', 'response-stopped', {
+    action: 'append', document: 'user', content: '- 称呼：船长',
+  })
+  await kit.handler.finishToolResponse('response-stopped')
+  assert.equal(kit.outputs[3][1].error_code, 'tool_loop_stopped')
+  assert.equal(kit.outputs[3][1].error, true)
+  assert.equal(kit.outputs[3][1].status, 'blocked')
+  assert.equal(kit.outputs[3][3].createResponse, false)
+  assert.equal(kit.ensuredResponses.length, 3)
+  assert.equal(writes, 1)
+  assert.equal(changes, 0)
+  assert.deepEqual(kit.toolResultsReady.map(event => event.failed), [true, false, true, true])
+  assert.deepEqual(debugEvents.filter(event => event.status !== 'received').map(event => event.status), [
+    'failed', 'completed', 'failed', 'failed',
+  ])
+  assert.equal(kit.outputs.some(output => ['duplicate', 'updated', 'unchanged'].includes(output[1].status)), false)
 })
 
 test('fails closed when a frontend tool result exceeds its size budget', async () => {

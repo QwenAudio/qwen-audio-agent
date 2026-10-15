@@ -56,11 +56,13 @@ final ASR
 ```
 
 `spawn_thinking` never waits for the requested work. The user can continue
-speaking while work runs. The runtime defaults to one user task globally and one
-per owner; later work queues. Waiting for input or permission and delegated execution
-retain that slot until the whole task ends. Replies and targeted updates continue the
-existing task. New work never implicitly cancels old work. Concurrency limits remain
-explicitly configurable; the default does not start another coordinator Session when busy.
+speaking while work runs. Task admission defaults to one active slot globally and one
+per owner; later requests queue while those slots are occupied. A directly executed task
+retains its slot while awaiting input or permission. After an ACP coordinating turn dispatches
+independent work, it releases both its admission slot and coordinator lease while the child
+Sessions run. Those Sessions are not counted against the task-admission limits. Replies and
+targeted updates continue existing work; new work never implicitly cancels it. ACP uses one
+coordinator Session regardless of the configured admission limits.
 
 ## 3. Realtime boundary
 
@@ -184,11 +186,12 @@ enable its associated tool, and is not persisted into conversation history.
 The `objective` passed to `spawn_thinking` is a conservative interpretation of
 the user's request, not an execution plan. It must resolve references such as
 “continue that page” into one self-contained instruction before submission.
-That instruction is the only model-visible task text sent to the backend; the
-verbatim ASR is not appended as a second task description. The backend Agent
-does not receive the frontend persona, durable memory, or recent chat history.
-Execution-relevant facts must be resolved into the instruction instead of
-forwarding those documents.
+That instruction remains the execution request; verbatim ASR is not appended as a
+second task description. The runtime may supplement it with up to 2,000 characters of
+new user/assistant dialogue. Delivered dialogue is tracked per coordinator Session so
+later turns do not repeatedly append the same history. The dialogue is reference context,
+not new work. Tool calls, tool results, raw backend output, frontend persona, and durable
+memory are not copied into this context. No new frontend tool is introduced.
 
 A backend turn may return a result or ask for information, a choice,
 confirmation, or clarification required to continue. The frontend presents
@@ -209,25 +212,40 @@ not repeated in every prompt; protocol or backend runtime context owns them.
 The coordination Session here belongs to the ACP backend integration, not the framework's Orchestration Runtime.
 The runtime manages work through `BackendPort`; A2A and custom backends need not use the same Session structure.
 
-The ACP adapter maintains persistent coordinator Sessions per owner and backend,
-with one slot by default. New tasks wait for the slot; each active task stays bound
-to its assigned Session. The Gateway records the native ACP Session ID and calls
-`session/resume` on later turns. Project delegation likewise resumes the
-selected native Session in its recorded working directory, so voice-originated
-work remains in the backend's own Session history rather than a Gateway copy.
+The ACP adapter maintains one persistent coordinator Session per owner and backend.
+A FIFO queue serializes its request, update, and result-summary turns. The lease covers
+only the coordinator turn, not independent project execution. The Gateway records the
+native ACP Session ID and restores it when needed; project Session continuations use their
+recorded working directories. History remains owned by the backend.
 
-An update uses the task's recorded original Session, including after completion.
-If another task occupies that Session, the update waits; it never steers the other
-task. Idle slots can be reused across tasks and voice conversations.
+Updates use recorded execution targets rather than whichever Session happens to be idle.
+For independent work, every update goes through the coordinator, which selects the original
+project Session via `session_send`; the adapter then steers or continues that Session.
+Only a successful target submission confirms delivery, not the coordinator's reply text.
+Directly executed work can continue after completion when its original context remains
+available. Completed framework-owned ACP delegation can also continue: the runtime passes opaque
+backend context, and the adapter restores the original coordinator and validates its project bindings
+before side effects. ACP's private continuation contains `version: 1`, the original coordinator
+`token`, and `projects` entries with `sessionId`, `directory`, and `title` (an empty array for direct
+work). A delegated continuation turn allows `session_send` only to those bound projects, forbids
+`session_start`, and must actually submit to a target to succeed. Durable project bindings are
+separate from this turn's executions, so unchanged sibling projects are not rerun. Older ACP contexts
+without this versioned binding fail explicitly, without guessing or migration; native delegations
+without a reliable targeted continuation entry point provide no continuation context. A busy
+coordinator queues the next turn instead of steering another task.
 
-The Gateway bounds task concurrency, and the ACP adapter serializes writes within
-each Session. Explicit configuration may raise the limits, but Session separation
-does not isolate working directories, files, or external resources.
+Task-admission limits do not create additional coordinator Sessions or cap the number of
+independent project Sessions. Separate Sessions do not isolate working directories, files,
+or external resources.
 
-The backend Agent owns its execution strategy. qwen-audio-agent supplies one
-self-contained natural task instruction and current-turn native attachments;
-it does not forward frontend history or preferences, prescribe task-state
-JSON, or instruct the backend Agent how to use backend-specific capabilities.
+The persistent coordinator routes execution and synthesizes results. It uses a project Session for
+work with a distinct goal that benefits from sustained, independent execution. Brief operations,
+clarification, and result synthesis stay in the coordinator Session. Related follow-ups continue in
+the original project Session rather than creating another; the user does not need to request a
+separate Session. It may dispatch several independent tasks in one turn, then ends the turn without
+waiting, polling, or repeating delegated work locally. Backends without delegation handle the request directly.
+The backend receives natural instructions, bounded dialogue context, and native attachments;
+it is not required to emit task-state JSON.
 
 ## 5. Task state
 
@@ -306,21 +324,23 @@ and returns run and Session identifiers validated by the adapter. It is not
 established by a model-authored field. ACP faithfully carries the tool call,
 tool result, and turn termination; the adapter publishes the validated
 correlation to the TaskManager, which moves the original Task to `delegated`.
-The task retains its concurrency slot and ACP coordinator Session lease until
-the entire task reaches a terminal state. Under the default serial configuration,
-later user tasks remain queued while the delegated target Session runs.
+Once the coordinating turn ends, the adapter releases its coordinator lease and marks
+the delegation as yielding task admission. The TaskManager releases that admission slot
+without completing the Task, allowing later requests to reach the same coordinator while
+project Sessions run. Other adapters retain their normal admission behavior unless they
+explicitly yield it.
 
-The coordinator may naturally end its ACP turn after the tool succeeds, but
-that text neither controls task state nor acts as a completion signal.
+After successful dispatch or continuation, the coordinator ends its ACP turn without waiting
+for the delegated work. Its text neither controls task state nor acts as a completion signal.
 Correlation IDs, the target Session, and lifecycle stay in the Gateway Task
 registry and adapter runtime; the model never has to echo them.
 
 The adapter independently keeps the Task lifecycle and event subscription
-alive. Only the matching ACP target prompt completion correlated to the
-delegation ID can advance the Task. The adapter sends the verified result,
-including its native ContentBlocks, to the retained coordinator Session for a
-final natural answer. A busy target, an empty result,
-an unrelated Session update, or an older result cannot complete the Task.
+alive. Only matching ACP target prompt completions correlated to recorded delegations
+can advance the Task. With several targets, the adapter waits for all of them. Verified
+results and native ContentBlocks then enter the same coordinator queue for one final
+natural answer. That result-summary turn cannot dispatch or restart work. A busy target,
+an empty result, an unrelated Session update, or an older result cannot complete the Task.
 
 ACP Agent turns have no artificial wall-clock deadline. An initial coordinator
 turn, a delegated target turn, and the final synthesis turn end only when ACP
@@ -351,19 +371,18 @@ Qoder, Qwen Code, MiniMax Code, and Kimi Code, the Gateway injects the same five
 coordinator: Session list, start, send, status, and cancel. OpenClaw ACP does
 not accept client-supplied MCP servers, so the same coordination contract maps
 to OpenClaw's native Session tools. `session_start` and `session_send` return an
-opaque delegation ID. After either succeeds, the backend Agent must not poll,
-repeat the work, or answer from its own context; the adapter owns waiting,
-cancellation, permission routing, and result correlation.
+opaque delegation ID. The coordinator can dispatch several independent Sessions, then
+ends its turn without polling, repeating work, or claiming completion. The adapter owns
+waiting, cancellation, permission routing, and result correlation.
 
 The coordinator MCP server also publishes the stable coordination contract
 through the MCP initialization `instructions` field. Backends whose drivers
 declare `coordinatorMcpInstructions` receive only the dynamic natural task
 instruction on each turn; this avoids appending the same routing and response
-rules to the persistent Session history. The capability is enabled only after the Agent host
-has been verified to project MCP server instructions into model context; it
-currently applies to OpenCode, Qoder, Qwen Code, and Claude Code. The shared
-payload stays within a 2 KiB portability budget. Unverified Agents—or a future
-payload that exceeds that budget—keep the complete per-turn prompt as a safe
+rules to the persistent Session history. The capability is currently enabled for OpenCode,
+Qoder, Qwen Code, and Claude Code. The shared payload stays within a 2 KiB portability
+budget. Agents without this capability—or a future payload that exceeds that budget—keep
+the complete per-turn prompt as a safe
 fallback. This flag does not describe general MCP support. Project Sessions
 never receive the coordinator MCP server.
 

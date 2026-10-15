@@ -138,8 +138,8 @@ test('work tool descriptions state their own capabilities without cross-tool rou
   const update = frontendToolRegistry.get('update_agent_task').definition.function.description
 
   assert.match(spawn, /(?:新增|新建|创建).*工作/u)
-  assert.match(spawn, /文件|应用|代码/u)
-  assert.match(spawn, /交付物|成果/u)
+  assert.match(spawn, /后台 Agent[^。]*工具与执行环境[^。]*处理请求/u)
+  assert.match(spawn, /新增工作不会替换或取消已有工作/u)
   assert.match(update, /已有工作/u)
   assert.match(update, /补充要求/u)
   assert.match(update, /修改目标/u)

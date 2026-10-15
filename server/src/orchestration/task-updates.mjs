@@ -21,7 +21,6 @@ export function updateTask(operations, { taskId, instruction, inputParts = [], s
   if (task.status === 'finalizing') fail('update_busy', '这项工作正在整理最终结果，请稍后继续。')
   if ((task.updates?.length || 0) >= 100) fail('update_limit', '这项工作的调整记录已达到上限。')
   const terminal = isTaskTerminal(task.status)
-  if (terminal && task.delegation) fail('update_unsupported', '已结束的委托工作暂不支持自动恢复目标会话。')
   if (!terminal && task.delegation && task.backendPhase !== 'active') {
     fail('update_unsupported', '恢复的委托工作暂不支持调整，未提交追加要求。')
   }
@@ -31,17 +30,23 @@ export function updateTask(operations, { taskId, instruction, inputParts = [], s
   if (!terminal && task.backendPhase === 'settled') fail('update_busy', '当前执行正在收尾，请稍后继续。')
 
   let receipt
+  const conversation = operations.conversationSnapshot?.(context)
   if (!terminal && task.status !== 'queued' && task.backendPhase === 'active') {
-    receipt = backend.update(task.id, { instruction: text, inputParts }, { ownerId: task.ownerId })
+    receipt = backend.update(task.id, {
+      instruction: text, inputParts, ...(conversation ? { conversation } : {}),
+    }, { ownerId: task.ownerId })
   }
   const entry = {
     instruction: text, inputParts, submissionKey: submissionKey || null,
     createdAt: Date.now(), status: receipt ? 'pending' : 'queued',
+    ...(conversation ? { conversation } : {}),
   }
   manager.recordUpdate(task, entry)
   // A changed requirement is not permission for newly introduced operations.
   operations.permissionPolicy?.tasks.delete(operations.permissionPolicy.taskKey(task))
   if (terminal) {
+    // Continuation is adapter-owned, including completed delegated work. Capture
+    // it before resume clears the previous execution's delegation state.
     manager.resume(task, operations.executionFor(task, {
       resumeContext: task.backendContext,
     }))
@@ -67,7 +72,10 @@ export function inputWithUpdates(task, input) {
     '以下是用户按时间顺序补充的要求；存在冲突时以较新的要求为准：',
     ...queued.map(entry => entry.instruction),
   ].join('\n\n')
-  return { ...input, instruction, inputParts: [
+  const conversation = [input.conversation, ...queued.map(entry => entry.conversation)].flat().filter(Boolean)
+  return { ...input, instruction,
+    ...(conversation.length ? { conversation } : {}),
+    inputParts: [
     ...(input.inputParts || []), ...queued.flatMap(entry => entry.inputParts || []),
   ] }
 }

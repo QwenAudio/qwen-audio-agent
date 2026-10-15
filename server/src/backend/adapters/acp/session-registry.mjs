@@ -74,6 +74,7 @@ export class AcpSessionRegistry {
       ...(Number.isInteger(session.contractVersion)
         ? { contractVersion: session.contractVersion }
         : {}),
+      ...(session.conversationCursors ? { conversationCursors: { ...session.conversationCursors } } : {}),
       updatedAt: Date.now(),
     }
     this.save()

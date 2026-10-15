@@ -734,8 +734,14 @@ export class TaskManager {
         transitionTask(task, TaskStatus.DELEGATED)
         const { presentation: _presentation, ...delegation } = event.delegation
         task.delegation = delegation
-        // Delegation changes the execution context, not the logical work's
-        // concurrency cost. Keep its slot until the full work settles.
+        // Delegation changes the execution topology. Only a new successful
+        // outcome may checkpoint its adapter-owned continuation again.
+        task.backendContext = null
+        // Only an explicit adapter yield releases admission. Delegation alone
+        // (including ordinary A2A/native delegation) still occupies its slot.
+        // The Task and runner remain live while independent delegated work runs;
+        // releaseScheduler also makes repeated yields and terminal cleanup safe.
+        if (event.yielded === true) this.releaseScheduler(task)
         this.emit(TaskDomainEvent.DELEGATED, task)
         this.drain()
         return
@@ -841,7 +847,11 @@ export class TaskManager {
         this.flushProgress(task)
         transitionTask(task, TaskStatus.COMPLETED)
         task.result = String(outcome?.content ?? outcome ?? '').trim()
-        if (outcome?.continuation) task.backendContext = outcome.continuation
+        // Adapters may revoke an older continuation explicitly; omission keeps
+        // the prior context for backwards-compatible continuation outcomes.
+        if (outcome?.continuation || outcome?.continuation === null) {
+          task.backendContext = outcome.continuation
+        }
         task.artifacts = mergeArtifacts(
           task.artifacts,
           artifactsFromOutcome(outcome),

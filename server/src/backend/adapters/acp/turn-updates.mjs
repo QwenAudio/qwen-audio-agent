@@ -26,17 +26,18 @@ function bounded(promise, milliseconds) {
 
 /** One ACP prompt lifetime, including safe same-Session restarts. No Task or UI policy. */
 export class AcpTurnUpdates {
-  constructor({ client, sessionId, signal, cancelTimeoutMs = 15_000, onRestart = () => {} }) {
-    Object.assign(this, { client, sessionId, signal, cancelTimeoutMs, onRestart })
+  constructor({ client, sessionId, signal, cancelTimeoutMs = 15_000, onRestart = () => {},
+    preparePrompt = prompt => ({ prompt, acknowledge() {} }) }) {
+    Object.assign(this, { client, sessionId, signal, cancelTimeoutMs, onRestart, preparePrompt })
     this.pending = []
     this.wake = deferred()
     this.closed = false
     this.hasUpdates = false
   }
 
-  enqueue(prompt) {
+  enqueue(prompt, { context } = {}) {
     if (this.closed || this.signal?.aborted) throw updateError('task_not_running', '当前执行已结束。')
-    const entry = { prompt: normalizeAcpPrompt(prompt), ...deferred() }
+    const entry = { prompt: normalizeAcpPrompt(prompt), context, ...deferred() }
     this.hasUpdates = true
     this.pending.push(entry)
     this.wake.resolve()
@@ -52,8 +53,13 @@ export class AcpTurnUpdates {
   drain() {
     if (this.closed || this.signal?.aborted) return { items: [], hasQueuedPrompt: false }
     const entries = this.take()
-    entries.forEach(entry => entry.resolve({ status: 'delivered' }))
-    return { items: entries.map(entry => ({ content: entry.prompt })), hasQueuedPrompt: false }
+    const items = entries.map(entry => {
+      const delivery = this.preparePrompt(entry.prompt, [entry.context])
+      delivery.acknowledge()
+      entry.resolve({ status: 'delivered' })
+      return { content: delivery.prompt }
+    })
+    return { items, hasQueuedPrompt: false }
   }
 
   followup(entries) {
@@ -76,8 +82,12 @@ export class AcpTurnUpdates {
         settled = false
         const submitted = inFlightEntries
         inFlightEntries = []
-        const acknowledge = () => submitted.forEach(entry => entry.resolve({ status: 'delivered' }))
-        const execution = this.client.prompt(this.sessionId, prompt, {
+        const delivery = this.preparePrompt(prompt, submitted.map(entry => entry.context))
+        const acknowledge = () => {
+          delivery.acknowledge()
+          submitted.forEach(entry => entry.resolve({ status: 'delivered' }))
+        }
+        const execution = this.client.prompt(this.sessionId, delivery.prompt, {
           ...options, signal: this.signal, timeoutMs: 0,
           onUpdate: update => { acknowledge(); options.onUpdate?.(update) },
           onMidTurnDrain: () => this.drain(),
@@ -119,8 +129,10 @@ export class AcpTurnUpdates {
           }
           if (mode === 'extension' && !settled) {
             inFlightEntries = this.take()
-            const reply = await this.client.steerSession(this.sessionId, this.followup(inFlightEntries), { signal: this.signal })
+            const delivery = this.preparePrompt(this.followup(inFlightEntries), inFlightEntries.map(entry => entry.context))
+            const reply = await this.client.steerSession(this.sessionId, delivery.prompt, { signal: this.signal })
             if (reply?.outcome === 'injected') {
+              delivery.acknowledge()
               inFlightEntries.forEach(entry => entry.resolve({ status: 'delivered' }))
               inFlightEntries = []
               continue

@@ -127,6 +127,9 @@ const taskOperations = new TaskOperations({
   taskManager,
   backendRuntime: workBackend,
   permissionPolicy,
+  conversationSnapshot: ({ ownerId, sessionId = 'main', turnId }) => conversationSync.coordinatorSnapshot({
+    ownerId, sessionId, excludeTurnId: turnId,
+  }),
   respondAuthorization,
   respondInput: (taskId, id, response, options) => agent.respondInput(taskId, id, response, options),
 })

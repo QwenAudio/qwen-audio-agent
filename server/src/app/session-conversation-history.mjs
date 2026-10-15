@@ -45,7 +45,14 @@ export class SessionConversationHistory {
         const messages = projectFrontendConversation(replay.messages, {
           limit: this.limit,
         })
-        this.conversationSync.restore?.({ ownerId, sessionId, messages })
+        // Projection may omit the newest internal result. Preserve the full
+        // journal watermark without restoring its hidden conversation content.
+        const historyPosition = replay.messages.reduce((latest, message) => (
+          Number.isSafeInteger(message.historyPosition)
+            ? Math.max(latest, message.historyPosition)
+            : latest
+        ), 0)
+        this.conversationSync.restore?.({ ownerId, sessionId, messages, historyPosition })
         restored += messages.length
       } catch (error) {
         this.logger?.warn('conversation_history.restore_failed', {
@@ -69,6 +76,7 @@ export class SessionConversationHistory {
         source: message.source || 'conversation-sync',
         payload: {
           messageId: message.id,
+          historyPosition: message.historyPosition,
           content: message.content,
           inputs: message.inputs || [],
           taskIds: message.taskIds || [],

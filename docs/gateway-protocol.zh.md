@@ -55,6 +55,12 @@ HTTPS 换取 Token。浏览器扫码页仅把 fragment 中的 Token 换成 HttpO
 端点发布、设备连接码签发与设备管理等 Host 管理请求不属于交互式 GCP Session。
 它们独立完成认证，也不会取得或替换活动 Client 租约。
 
+Task 结果自动播报限定在当前 owner 和 session 内。同一 session 重连可恢复其待播报
+通知；新 session 不会自动播报旧 session 的结果。可信宿主代码只有在确认接收人一致后，
+才应显式开启跨 session 通知领取。个人身份模式共享一个 owner，假设只有一位可信用户；
+session ID 不是身份认证边界。共享设备或电话接入应为独立用户配置不同的已认证 owner，
+并避免在不同来电用户之间复用同一个会话 session。
+
 ## 3. 连接与能力协商
 
 Client 连接 `ws://<gateway>/api/realtime`，第一条消息必须是 `session.hello`。

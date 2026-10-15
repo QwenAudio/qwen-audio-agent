@@ -146,7 +146,9 @@ export class SessionTaskCoordinator {
     this.announcePendingPermissions()
   }
 
-  claimPendingNotifications(taskIds, { includeOtherSessions = !taskIds?.length } = {}) {
+  // Reconnect/wake must not replay another conversation's results. A trusted
+  // host can explicitly opt in when it knows both sessions share a recipient.
+  claimPendingNotifications(taskIds, { includeOtherSessions = false } = {}) {
     if (!this.canDeliver()) return
     const claimed = this.taskManager.claimNotifications({
       ownerId: this.ownerId,

@@ -21,11 +21,13 @@ async function until(predicate) {
   }
 }
 
-function harness(t, { backend = true, ...overrides } = {}) {
-  const ownerId = 'runtime-owner', sessionId = 'conversation'
+function harness(t, {
+  backend = true, ownerId = 'runtime-owner', sessionId = 'conversation',
+  taskManager = new TaskManager(), ...overrides
+} = {}) {
   const events = [], frontends = [], tasks = [], observations = [], done = []
   const runs = new Map(), memoryListeners = new Set()
-  const manager = new TaskManager()
+  const manager = taskManager
   const conversationSync = new ConversationSync()
   const logger = { info() {}, warn() {}, error() {}, debug() {} }
   const provider = {
@@ -423,3 +425,32 @@ test('rejected restoration quarantines only replay context and stops repeated re
   assert.equal(h.frontends.length, 3)
   assert.ok(h.events.some(e => e.message?.includes('自动恢复已停止')))
 })
+
+for (const completesAfterClose of [true, false]) {
+  test(`new session does not announce previous session results (completes after close: ${completesAfterClose})`, async t => {
+    const a = harness(t, { ownerId: 'user_personal', sessionId: 'call-A' })
+    const frontendA = await a.connect()
+    const task = a.request('private task for A')
+    await until(() => a.runs.has(task.id))
+    if (completesAfterClose) a.runtime.close()
+    a.runs.get(task.id).resolve({ content: 'private result for A' })
+    await a.manager.wait(task.id)
+    if (!completesAfterClose) {
+      await until(() => frontendA.deliveries.some(delivery => delivery.origin === 'announcement'))
+      assert.equal(a.manager.get(task.id).notificationStatus, 'delivering')
+      a.runtime.close()
+    }
+    assert.equal(a.manager.get(task.id).notificationStatus, 'pending')
+    const b = harness(t, { ownerId: 'user_personal', sessionId: 'call-B', taskManager: a.manager })
+    const frontendB = await b.connect()
+    // Allow the zero-delay announcement batch timer to run if onReady claimed it.
+    await new Promise(resolve => setTimeout(resolve, 20))
+    assert.equal(frontendB.deliveries.length, 0)
+    assert.equal(a.manager.get(task.id).notificationStatus, 'pending')
+    b.runtime.close()
+    const resumed = harness(t, { ownerId: 'user_personal', sessionId: 'call-A', taskManager: a.manager })
+    const frontendResumed = await resumed.connect()
+    await until(() => frontendResumed.deliveries.some(delivery => delivery.origin === 'announcement'))
+    assert.match(frontendResumed.deliveries[0].text, /private result for A/u)
+  })
+}

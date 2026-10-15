@@ -66,6 +66,15 @@ creation, and device administration, are outside the interactive GCP Session.
 They authenticate independently and never claim or replace the active Client
 lease.
 
+Automatic Task-result announcements are scoped to the current owner and session.
+Reconnecting to the same session can resume its pending notifications; opening a
+different session does not announce older-session results. Trusted host code may
+explicitly opt into cross-session notification claims after verifying the recipient.
+Personal identity mode shares one owner and assumes a single trusted user; session
+IDs are not an authentication boundary. Shared-device or telephone integrations must
+use separate authenticated owners for independent users and avoid reusing a
+conversation session across callers.
+
 ## 3. Connection and negotiation
 
 The Client connects to `ws://<gateway>/api/realtime`. The first message is `session.hello`.

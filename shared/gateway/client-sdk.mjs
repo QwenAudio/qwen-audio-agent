@@ -14,6 +14,7 @@ const RESULT_TYPES = new Set([
   GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH_RESULT,
   GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED,
   GatewayClientProtocolEvent.TASK_CREATE_RESULT,
+  GatewayClientProtocolEvent.TASK_UPDATE_RESULT,
   GatewayClientProtocolEvent.TASK_GET_RESULT,
   GatewayClientProtocolEvent.TASK_LIST_RESULT,
   GatewayClientProtocolEvent.TASK_CANCEL_RESULT,
@@ -380,7 +381,11 @@ export class GatewayClient {
     this.#rejectPending('connection_closed', 'Gateway connection closed')
     this.onStatus?.({ state: 'unavailable', phase, error })
     try { socket.close?.() } catch { /* The timeout must still schedule recovery. */ }
-    this.#scheduleReconnect()
+    // The expired socket's close event is ignored after clearing this.socket.
+    // Callers such as the TUI own reconnects and still need the terminal status.
+    if (this.stopped || this.socket !== null) return
+    this.onStatus?.({ state: 'disconnected' })
+    if (this.socket === null) this.#scheduleReconnect()
   }
 
   #receive(event) {

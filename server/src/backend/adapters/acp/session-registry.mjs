@@ -61,6 +61,11 @@ export class AcpSessionRegistry {
     return value && typeof value === 'object' ? { ...value } : null
   }
 
+  coordinatorEntries() {
+    this.load()
+    return Object.entries(this.coordinators).map(([key, value]) => [key, { ...value }])
+  }
+
   set(key, session) {
     this.load()
     this.coordinators[String(key)] = {

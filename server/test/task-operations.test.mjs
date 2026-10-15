@@ -16,8 +16,8 @@ function deferred() {
   return { promise, resolve, reject }
 }
 
-function harness(t) {
-  const manager = new TaskManager()
+function harness(t, options) {
+  const manager = new TaskManager(options)
   const policy = new PermissionPolicy({ taskManager: manager })
   const runs = new Map()
   const decisions = []
@@ -70,8 +70,8 @@ function harness(t) {
   return { manager, operations, policy, runs, decisions, inputs, permissionAck, client, voice, outputs, transcripts, create, permission }
 }
 
-test('voice and client submission share one owner lane, deduplication and task identity', async t => {
-  const h = harness(t)
+test('voice and client submission share an explicit two-work limit, deduplication and task identity', async t => {
+  const h = harness(t, { maxConcurrent: 2, maxConcurrentPerOwner: 2 })
   h.transcripts.record(context.turnId, 'read memory')
   await h.voice.handle({ call_id: 'spawn', name: 'spawn_thinking', arguments: '{"objective":"read memory"}' })
   const receipt = h.outputs[0][1]
@@ -82,18 +82,21 @@ test('voice and client submission share one owner lane, deduplication and task i
   assert.equal(first.turnId, context.turnId)
   assert.equal(first.status, 'running')
   assert.equal(h.runs.get(first.id).input.objective, 'read memory')
-  const queued = h.create()
-  assert.equal(h.create().id, queued.id)
+  const parallel = h.create()
+  assert.equal(h.create().id, parallel.id)
+  const queued = h.create('third work')
   await tick()
+  assert.equal(h.client.getTask(parallel.id, context).status, 'running')
   assert.equal(h.client.getTask(queued.id, context).status, 'queued')
-  assert.equal(h.runs.size, 1)
+  assert.equal(h.runs.size, 2)
   await h.voice.handle({ call_id: 'duplicate', name: 'spawn_thinking', arguments: '{"objective":"read memory"}' })
   assert.equal(h.outputs.at(-1)[1].status, 'duplicate')
   assert.equal(h.outputs.at(-1)[1].task_id, first.id)
   h.runs.get(first.id).resolve({ content: '24 GB' })
   await h.manager.wait(first.id)
   await tick()
-  assert.equal(h.runs.size, 2)
+  assert.equal(h.runs.size, 3)
+  assert.equal(h.client.getTask(queued.id, context).status, 'running')
   assert.equal(h.client.getTask(first.id, context).notificationStatus, 'pending')
   const count = h.runs.size
   await h.voice.getAgentTaskStatus('status', context.turnId, { task_id: first.id })
@@ -215,6 +218,23 @@ test('all concurrent permission requests are retained and failed decisions roll 
   assert.deepEqual(joinedFailures.sort(), ['p1', 'p2'])
   assert.equal(h.operations.decisions.size, 0)
   assert.equal(h.operations.pendingPermissions(context).size, 2)
+})
+
+test('task approval stays bound to one of two concurrent works', async t => {
+  const h = harness(t, { maxConcurrent: 2, maxConcurrentPerOwner: 2 })
+  const a = h.create('A')
+  const b = h.create('B')
+  await tick()
+  h.permission(a.id, 'permission-A')
+  h.permission(b.id, 'permission-B')
+  const admitted = h.operations.submitPermission('permission-A', 'task', context)
+  h.permissionAck.resolve()
+  await admitted.completion
+  assert.deepEqual(h.decisions.map(item => item.taskId), [a.id])
+  assert.equal(h.policy.shouldAutoAllow(context.ownerId, context.sessionId, a.id), true)
+  assert.equal(h.policy.shouldAutoAllow(context.ownerId, context.sessionId, b.id), false)
+  assert.equal(h.operations.get(b.id, context).authorization.id, 'permission-B')
+  assert.equal(h.runs.get(b.id).signal.aborted, false)
 })
 
 test('scheduled execution reuses permission forwarding and cleans pending requests on failure', async t => {

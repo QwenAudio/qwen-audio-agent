@@ -57,8 +57,8 @@ export class TaskManager {
   constructor({
     runner = null,
     store = null,
-    maxConcurrent = 4,
-    maxConcurrentPerOwner = 2,
+    maxConcurrent = 1,
+    maxConcurrentPerOwner = 1,
     systemMaxConcurrent = 2,
     // 终态任务保留 3 天而非 24 小时：语音场景里「周五派的活周一问」很常见，
     // 24 小时会让隔天的查询就拿不到状态，用户只能重新派一次。
@@ -183,6 +183,12 @@ export class TaskManager {
         taskId: saved.id,
       })
       const recovery = taskRecoveryAction(saved)
+      for (const update of saved.updates || []) {
+        if (!['queued', 'pending'].includes(update.status)) continue
+        update.status = 'failed'
+        update.error = '网关重启，无法确认追加要求的投递结果；没有自动重发。'
+        recoveryChanged = true
+      }
       if (recovery !== TaskRecoveryAction.RESTORE) recoveryChanged = true
       if (saved.notificationStatus === 'delivering') recoveryChanged = true
       // Scheduled work survives intact. A reminder that was already firing
@@ -339,8 +345,8 @@ export class TaskManager {
       task.canceler = typeof canceler === 'function'
         ? context => canceler(snapshot, context)
         : null
-      this.start(task)
     }
+    this.drain()
   }
 
   persist() {
@@ -353,6 +359,35 @@ export class TaskManager {
 
   allocateTaskId() {
     return this.repository.allocateTaskId()
+  }
+
+  recordUpdate(task, update) {
+    task.updates ||= []
+    task.updates.push(update)
+    this.emit(TaskDomainEvent.UPDATED, task)
+  }
+
+  resume(task, { runner, canceler }) {
+    if (!isTaskTerminal(task.status) || (!task.terminalHandled && task.runner)) {
+      throw new Error('Task has not finished settling')
+    }
+    task.previousResults = [...(task.previousResults || []), {
+      result: task.result, error: task.error, status: task.status, completedAt: task.completedAt,
+    }].slice(-10)
+    transitionTask(task, TaskStatus.QUEUED)
+    Object.assign(task, {
+      runner, canceler, executionVersion: (task.executionVersion || 0) + 1,
+      queuedAt: Date.now(),
+      backendPhase: null,
+      result: null, error: null, message: null, activity: [], delegation: null,
+      startedAt: null, completedAt: null, elapsedMs: 0, terminalHandled: false,
+      authorization: null, inputRequest: null, cancellation: null, cancelPromise: null,
+      notificationStatus: 'none', notificationClaimantId: null, notificationClaimedAt: null,
+      notificationDeliveredAt: null,
+    })
+    task.promise = new Promise(resolve => { task.resolve = resolve })
+    this.emit(TaskDomainEvent.UPDATED, task)
+    queueMicrotask(() => this.drain())
   }
 
   subscribe(listener, { scope = TaskScope.USER } = {}) {
@@ -612,7 +647,7 @@ export class TaskManager {
       .filter(task => task.status === 'queued')
       .sort((left, right) => (
         Number(right.priority || 0) - Number(left.priority || 0)
-        || left.createdAt - right.createdAt
+        || (left.queuedAt || left.createdAt) - (right.queuedAt || right.createdAt)
       ))
     for (const task of queued) {
       if (!this.schedulerFor(task).canStart(task)) continue
@@ -621,6 +656,8 @@ export class TaskManager {
   }
 
   start(task) {
+    const executionVersion = task.executionVersion || 0
+    const resolveExecution = task.resolve
     task.recoveryPersistedStatus = null
     transitionTask(task, TaskStatus.RUNNING)
     task.startedAt = Date.now()
@@ -635,6 +672,7 @@ export class TaskManager {
     }, this.progressEventIntervalMs)
     task.progressTimer.unref?.()
     const onEvent = event => {
+      if ((task.executionVersion || 0) !== executionVersion || task.terminalHandled) return
       if (
         event?.type === BackendEventType.AUTHORIZATION_REQUESTED
         && event.permission
@@ -696,7 +734,8 @@ export class TaskManager {
         transitionTask(task, TaskStatus.DELEGATED)
         const { presentation: _presentation, ...delegation } = event.delegation
         task.delegation = delegation
-        this.releaseScheduler(task)
+        // Delegation changes the execution context, not the logical work's
+        // concurrency cost. Keep its slot until the full work settles.
         this.emit(TaskDomainEvent.DELEGATED, task)
         this.drain()
         return
@@ -796,12 +835,13 @@ export class TaskManager {
       })
       .then(outcome => {
         if (
-          task.terminalHandled
+          (task.executionVersion || 0) !== executionVersion || task.terminalHandled
           || ['cancelling', 'cancelled'].includes(task.status)
         ) return
         this.flushProgress(task)
         transitionTask(task, TaskStatus.COMPLETED)
         task.result = String(outcome?.content ?? outcome ?? '').trim()
+        if (outcome?.continuation) task.backendContext = outcome.continuation
         task.artifacts = mergeArtifacts(
           task.artifacts,
           artifactsFromOutcome(outcome),
@@ -809,7 +849,7 @@ export class TaskManager {
       })
       .catch(error => {
         if (
-          task.terminalHandled
+          (task.executionVersion || 0) !== executionVersion || task.terminalHandled
           || ['cancelling', 'cancelled'].includes(task.status)
         ) return
         this.flushProgress(task)
@@ -817,7 +857,7 @@ export class TaskManager {
         task.error = error?.message || String(error)
       })
       .finally(() => {
-        if (task.terminalHandled) return
+        if ((task.executionVersion || 0) !== executionVersion || task.terminalHandled) return
         clearInterval(task.progressTimer)
         task.progressTimer = null
         if (task.timeoutTimer) { clearTimeout(task.timeoutTimer); task.timeoutTimer = null }
@@ -837,16 +877,17 @@ export class TaskManager {
         task.notificationStatus = shouldNotifyTaskCompletion(task) ? 'pending' : 'none'
         task.terminalHandled = true
         this.releaseScheduler(task)
+        const completedSnapshot = publicTask(task)
         this.emit(
           task.status === 'completed'
             ? TaskDomainEvent.COMPLETED
             : TaskDomainEvent.FAILED,
           task,
         )
-        if (shouldNotifyTaskCompletion(task)) {
+        if ((task.executionVersion || 0) === executionVersion && shouldNotifyTaskCompletion(task)) {
           this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
         }
-        task.resolve?.(publicTask(task))
+        resolveExecution?.(completedSnapshot)
         this.prune()
         this.drain()
       })
@@ -890,6 +931,8 @@ export class TaskManager {
         return this.finishCancellation(task)
       })
       .catch(error => {
+        const executionVersion = task.executionVersion || 0
+        const resolveExecution = task.resolve
         task.abortController?.abort(
           error instanceof Error ? error : new Error(String(error)),
         )
@@ -908,14 +951,15 @@ export class TaskManager {
         task.notificationStatus = shouldNotifyTaskCompletion(task) ? 'pending' : 'none'
         task.terminalHandled = true
         this.releaseScheduler(task)
+        const failedSnapshot = publicTask(task)
         this.emit(TaskDomainEvent.FAILED, task)
-        if (shouldNotifyTaskCompletion(task)) {
+        if ((task.executionVersion || 0) === executionVersion && shouldNotifyTaskCompletion(task)) {
           this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
         }
-        task.resolve?.(publicTask(task))
+        resolveExecution?.(failedSnapshot)
         this.prune()
         this.drain()
-        return publicTask(task)
+        return failedSnapshot
       })
     return task.cancelPromise
   }
@@ -939,6 +983,8 @@ export class TaskManager {
   }
 
   finishCancellation(task) {
+    const resolveExecution = task.resolve
+    task.recoveryPersistedStatus = null
     transitionTask(task, TaskStatus.CANCELLED)
     task.authorization = null
     task.inputRequest = null
@@ -954,11 +1000,12 @@ export class TaskManager {
     if (task.timeoutTimer) { clearTimeout(task.timeoutTimer); task.timeoutTimer = null }
     task.abortController = null
     this.releaseScheduler(task)
+    const cancelledSnapshot = publicTask(task)
     this.emit(TaskDomainEvent.CANCELLED, task)
-    task.resolve?.(publicTask(task))
+    resolveExecution?.(cancelledSnapshot)
     this.prune()
     this.drain()
-    return publicTask(task)
+    return cancelledSnapshot
   }
 
   get(id, { ownerId, scope = TaskScope.USER } = {}) {

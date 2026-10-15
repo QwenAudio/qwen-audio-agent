@@ -74,6 +74,20 @@ export class GatewayClientCommandRuntime {
           ...common,
           task: this.getTask(message.task_id, context),
         }
+      case GatewayClientProtocolEvent.TASK_UPDATE: {
+        const parts = normalizeInputParts(message.message?.parts)
+        const receipt = this.taskOperations.update({
+          taskId: message.task_id,
+          instruction: objectiveFromMessage({ parts }),
+          inputParts: inputPartsFromMessage({ parts }),
+          submissionKey: clean(message.event_id),
+        }, context)
+        return {
+          type: GatewayClientProtocolEvent.TASK_UPDATE_RESULT,
+          ...common, status: receipt.status,
+          task: this.getTask(receipt.taskId, context),
+        }
+      }
       case GatewayClientProtocolEvent.TASK_LIST:
         return {
           type: GatewayClientProtocolEvent.TASK_LIST_RESULT,

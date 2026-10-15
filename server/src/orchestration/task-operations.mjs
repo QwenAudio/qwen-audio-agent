@@ -1,5 +1,7 @@
 import { backendPermissionDecision, PERMISSION_DECISIONS } from '../../../shared/permission-decisions.mjs'
 import { BackendEventType } from '../core/backend-events.mjs'
+import { updateTask, inputWithUpdates } from './task-updates.mjs'
+import { TaskDomainEvent } from '../task/task-events.mjs'
 
 export class TaskOperationError extends Error {
   constructor(code, message) {
@@ -59,9 +61,9 @@ export class TaskOperations {
     const { sessionId = 'main', turnId } = context
     return this.taskManager.create({
       objective, ownerId, sessionId, turnId, submissionKey,
-      laneKey: `backend:${ownerId}`,
-      laneLimit: 1,
-      runner: (_objective, execution) => this.run({ objective, inputParts }, {
+      runner: (_objective, execution) => this.run(inputWithUpdates(
+        this.taskManager.tasks.get(execution.taskId), { objective, inputParts },
+      ), {
         ...execution, ownerId, sessionId, turnId,
       }),
       canceler: async ({ task, previousStatus, abort }) => {
@@ -75,15 +77,46 @@ export class TaskOperations {
     })
   }
 
+  update(input, context) { return updateTask(this, input, context) }
+
+  executionFor(task, input) {
+    return {
+      runner: (_objective, execution) => this.run(inputWithUpdates(task, {
+        objective: task.objective, ...input,
+      }), execution),
+      canceler: async ({ abort }) => {
+        const result = await this.backendRuntime.cancel(task.id, { ownerId: task.ownerId })
+        abort()
+        return result
+      },
+    }
+  }
+
   async run(input, context) {
     const ownerId = owner(context)
+    const task = this.taskManager.tasks.get(context.taskId)
+    const version = task?.executionVersion || 0
+    if (task) task.backendPhase = 'active'
+    const included = (task?.updates || []).filter(entry => entry.status === 'queued')
+    included.forEach(entry => { entry.status = 'pending' })
+    if (included.length) this.taskManager.emit(TaskDomainEvent.UPDATED, task)
     try {
-      return await this.backendRuntime.run(input, {
+      const result = await this.backendRuntime.run(input, {
         ...context, ownerId,
-        onEvent: event => this.forwardBackendEvent(context, event, context.onEvent),
+        onEvent: event => {
+          if (task && (task.terminalHandled || (task.executionVersion || 0) !== version)) return
+          this.forwardBackendEvent(context, event, context.onEvent)
+        },
       })
+      included.forEach(entry => { entry.status = 'delivered' })
+      return result
+    } catch (error) {
+      included.forEach(entry => { entry.status = 'failed'; entry.error = error.message })
+      throw error
     } finally {
-      this.clearPermissions(context.taskId, ownerId)
+      if (task && (task.executionVersion || 0) === version) task.backendPhase = 'settled'
+      if (included.length) this.taskManager.emit(TaskDomainEvent.UPDATED, task)
+      this.clearPermissions(context.taskId, ownerId, version)
     }
   }
 
@@ -112,12 +145,14 @@ export class TaskOperations {
 
   cancel(taskId, context) {
     const ownerId = owner(context)
+    const revision = this.get(taskId, { ownerId })?.revision || 0
     return this.taskManager.cancel(taskId, { ownerId }).finally(() => {
-      this.clearPermissions(taskId, ownerId)
+      this.clearPermissions(taskId, ownerId, revision)
     })
   }
 
-  clearPermissions(taskId, ownerId) {
+  clearPermissions(taskId, ownerId, revision) {
+    if (revision !== undefined && (this.get(taskId, { ownerId })?.revision || 0) !== revision) return
     for (const [id, entry] of this.permissions) {
       if (entry.taskId === taskId && entry.ownerId === ownerId) this.permissions.delete(id)
     }
@@ -128,8 +163,9 @@ export class TaskOperations {
 
   cancelSeries(seriesId, context) {
     const ownerId = owner(context)
+    const revisions = new Map(this.list({ ownerId }).map(task => [task.id, task.revision || 0]))
     return this.taskManager.cancelSeries(seriesId, { ownerId }).then(tasks => {
-      for (const task of tasks) this.clearPermissions(task.id, ownerId)
+      for (const task of tasks) this.clearPermissions(task.id, ownerId, revisions.get(task.id))
       return tasks
     })
   }

@@ -113,7 +113,13 @@ const MOCK_BROWSER_APIS = String.raw`
       const message = JSON.parse(raw)
       state.socketMessages += 1
       document.documentElement.dataset.lastSocketMessage = message.type
-      if (message.type === 'input.message') state.inputMessages.push(message)
+      if (message.type === 'input.message') {
+        if (location.search.includes('send-failure') && !this.failedInput) {
+          this.failedInput = true
+          throw new Error('controlled input send failure')
+        }
+        state.inputMessages.push(message)
+      }
       if (message.type === 'session.hello') {
         if (message.protocol?.min !== protocolVersion || message.protocol?.max !== protocolVersion) {
           throw new Error('Browser smoke received an unexpected Gateway protocol version')
@@ -773,6 +779,166 @@ async function testCameraPermission(context, diagnostics) {
   await finishPage(unsupported, diagnostics)
 }
 
+async function testComposerIme(context, diagnostics) {
+  const page = await preparePage(context, '?browser-smoke=composer-ime', diagnostics)
+  await waitForAttribute(page, 'data-negotiated-socket', value => Number(value) > 0)
+  const composer = page.locator('.multimodal-composer')
+  const input = composer.locator('textarea')
+  await input.fill('你好')
+  for (const keyboard of [{ isComposing: true, keyCode: 13 }, { isComposing: false, keyCode: 229 }]) {
+    await input.evaluate((element, keyboard) => {
+      element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, ...keyboard }))
+    }, keyboard)
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    assert.equal(await input.inputValue(), '你好', 'IME confirmation must retain the draft')
+    assert.deepEqual(await page.evaluate(() => window.browserSmoke.inputMessages()), [])
+  }
+  await input.press('Shift+Enter')
+  assert.equal(await input.inputValue(), '你好\n')
+  assert.deepEqual(await page.evaluate(() => window.browserSmoke.inputMessages()), [])
+  await input.press('Enter')
+  await page.waitForFunction(() => document.querySelector('.multimodal-composer textarea').value === '')
+  assert.equal((await page.evaluate(() => window.browserSmoke.inputMessages())).length, 1)
+  await input.fill('按钮发送')
+  await composer.getByRole('button', { name: '发送', exact: true }).click()
+  const messages = await page.evaluate(() => window.browserSmoke.inputMessages())
+  assert.equal(messages.length, 2)
+  assert.equal(messages[0].parts[0].text, '你好')
+  assert.equal(messages[1].parts[0].text, '按钮发送')
+  await finishPage(page, diagnostics)
+}
+
+async function testComposerSendFailure(context, diagnostics) {
+  const page = await preparePage(context, '?browser-smoke=send-failure', diagnostics)
+  await waitForAttribute(page, 'data-negotiated-socket', value => Number(value) > 0)
+  const composer = page.locator('.multimodal-composer')
+  const input = composer.locator('textarea')
+  await input.fill('keep this draft')
+  await composer.locator('input[type=file]').setInputFiles({
+    name: 'draft.txt', mimeType: 'text/plain', buffer: Buffer.from('keep this attachment'),
+  })
+  await composer.locator('.composer-attachment').waitFor()
+  await composer.getByRole('button', { name: '发送', exact: true }).click()
+  await composer.getByRole('alert').waitFor({ timeout: 5_000 })
+  assert.equal(await input.inputValue(), 'keep this draft')
+  assert.equal(await composer.locator('.composer-attachment').count(), 1)
+  assert.deepEqual(await page.evaluate(() => window.browserSmoke.inputMessages()), [])
+
+  await composer.getByRole('button', { name: '发送', exact: true }).click()
+  await page.waitForFunction(() => document.querySelector('.multimodal-composer textarea').value === '')
+  assert.equal(await composer.locator('.composer-attachment').count(), 0)
+  assert.equal(await composer.getByRole('alert').count(), 0)
+  const messages = await page.evaluate(() => window.browserSmoke.inputMessages())
+  assert.equal(messages.length, 1, 'Retry must send the retained draft exactly once')
+  assert.ok(messages[0].parts.some(part => part.type === 'text' && part.text.includes('keep this draft')))
+  const file = messages[0].parts.find(part => part.type === 'file')
+  assert.equal(file.filename, 'draft.txt')
+  assert.equal(Buffer.from(file.url.split(',')[1], 'base64').toString(), 'keep this attachment')
+  await finishPage(page, diagnostics)
+}
+
+async function testComposerAttachments(context, diagnostics) {
+  const page = await preparePage(context, '?browser-smoke=composer-attachments', diagnostics)
+  await waitForAttribute(page, 'data-negotiated-socket', value => Number(value) > 0)
+  await page.evaluate(() => {
+    const NativeFileReader = window.FileReader
+    const pending = new Map()
+    window.composerInputs = []
+    const send = WebSocket.prototype.send
+    WebSocket.prototype.send = function(raw) {
+      const event = JSON.parse(raw)
+      if (event.type === 'input.message') {
+        window.composerInputs.push(event)
+      }
+      return send.call(this, raw)
+    }
+    window.FileReader = class {
+      readAsDataURL(file) { pending.set(file.name, { file, reader: this }) }
+    }
+    window.composerReads = {
+      async complete(name) {
+        const { file, reader } = pending.get(name)
+        pending.delete(name)
+        await new Promise((resolve, reject) => {
+          const native = new NativeFileReader()
+          native.onerror = reject
+          native.onload = () => { reader.result = native.result; reader.onload(); resolve() }
+          native.readAsDataURL(file)
+        })
+      },
+      fail(name) {
+        const { reader } = pending.get(name)
+        pending.delete(name)
+        reader.error = new Error('stale attachment read failed')
+        reader.onerror()
+      },
+    }
+  })
+  const picker = page.locator('.multimodal-composer input[type=file]')
+  const attachments = page.locator('.composer-attachment')
+  const add = (name, mimeType = 'text/plain') => picker.setInputFiles({
+    name,
+    mimeType,
+    buffer: mimeType === 'image/png'
+      ? Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhT8AAAAASUVORK5CYII=', 'base64')
+      : Buffer.from(name),
+  })
+  const complete = name => page.evaluate(name => window.composerReads.complete(name), name)
+  const names = () => attachments.locator(':scope > span').allTextContents()
+  const waitForCount = count => page.waitForFunction(count => (
+    document.querySelectorAll('.composer-attachment').length === count
+  ), count, { timeout: 5_000 })
+
+  // Finish two independent picker operations in reverse order.
+  await add('first.png', 'image/png')
+  await add('second.png', 'image/png')
+  await complete('second.png')
+  await waitForCount(1)
+  await complete('first.png')
+  await waitForCount(2)
+  assert.deepEqual(await names(), ['[Image 1]', '[Image 2]'])
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await waitForCount(0)
+  assert.deepEqual(await page.evaluate(() => window.composerInputs.at(-1).parts
+    .filter(part => part.type === 'file').map(part => part.filename)), ['second.png', 'first.png'])
+  assert.deepEqual(await page.evaluate(() => window.composerInputs.at(-1).parts
+    .filter(part => part.type === 'file').map(part => part.source.text.value)), ['[Image 1]', '[Image 2]'])
+
+  // A completed read must append to the live draft after a removal.
+  await add('removed.txt')
+  await complete('removed.txt')
+  await waitForCount(1)
+  await add('kept.txt')
+  await page.getByRole('button', { name: '移除附件', exact: true }).click()
+  await waitForCount(0)
+  await complete('kept.txt')
+  await waitForCount(1)
+  assert.deepEqual(await names(), ['@kept.txt'])
+
+  // Neither a late success nor a late failure may affect a submitted draft.
+  await add('late.txt')
+  await add('late-error.txt')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await waitForCount(0)
+  await page.locator('.multimodal-composer textarea').fill('new draft')
+  await add('new.txt')
+  await complete('new.txt')
+  await waitForCount(1)
+  await complete('late.txt')
+  await page.evaluate(() => window.composerReads.fail('late-error.txt'))
+  // Wait through a paint so asynchronous React updates have been committed.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  assert.deepEqual(await names(), ['@new.txt'])
+  assert.equal(await page.locator('.multimodal-composer textarea').inputValue(), 'new draft')
+  assert.equal(await page.locator('.multimodal-composer [role=alert]').count(), 0)
+
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await waitForCount(0)
+  assert.deepEqual(await page.evaluate(() => window.composerInputs.at(-1).parts
+    .filter(part => part.type === 'file').map(part => part.filename)), ['new.txt'])
+  await finishPage(page, diagnostics)
+}
+
 async function testPhotoCapture(context, diagnostics) {
   const page = await preparePage(context, '?browser-smoke=photo-capture', diagnostics)
   await waitForAttribute(page, 'data-negotiated-socket', value => Number(value) > 0)
@@ -862,6 +1028,9 @@ try {
   await context.tracing.start({ screenshots: true, snapshots: true, sources: true })
   tracingActive = true
   await testPhotoCapture(context, diagnostics)
+  await testComposerIme(context, diagnostics)
+  await testComposerSendFailure(context, diagnostics)
+  await testComposerAttachments(context, diagnostics)
   await testHappyPath(context, diagnostics)
   await testBrowserLanguage(context, diagnostics)
   await testReconnectInterruptsPlayback(context, diagnostics)
@@ -877,7 +1046,7 @@ try {
   tracingActive = false
   await context.close()
   context = null
-  console.log('Browser WebUI smoke passed: one-shot photo capture, voice lifecycle, native AudioWorklet capture, desktop CSP, sleep/wake cycles, video-call entry, camera toggle, reconnect, responsive dock and permission recovery.')
+  console.log('Browser WebUI smoke passed: one-shot photo capture, testComposerIme, testComposerSendFailure, composer attachment races, voice lifecycle, native AudioWorklet capture, desktop CSP, sleep/wake cycles, video-call entry, camera toggle, reconnect, responsive dock and permission recovery.')
 } catch (error) {
   await mkdir(diagnosticsDirectory, { recursive: true })
   const pages = context?.pages?.() || []

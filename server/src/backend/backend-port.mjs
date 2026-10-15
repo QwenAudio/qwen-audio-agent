@@ -12,8 +12,14 @@
  *   submit(task, context?) -> run one Task and return its final outcome
  *     task.continuity may be "shared" (default) or "isolated". It is a
  *     trusted Gateway hint, never a model-controlled field.
+ *     An optional outcome.continuation = { adapter, token } is private to the
+ *     runtime and persisted verbatim; later submit receives it as resumeContext.
+ *     Tokens identify execution context, not authentication credentials.
  *   status(taskId?, context?) -> runtime status without an ID, otherwise Task status
  *   cancel(taskId, context?) -> cancel one adapter-owned Task
+ *   update(taskId, input, context?) -> admit an update to the exact active Task;
+ *     optional, requires capabilities.workUpdates. Returns { completion } for
+ *     delivery acknowledgement, not work completion. No implicit task creation.
  *   respondAuthorization(taskId, authorizationId, decision, context?)
  *   respondInput(taskId, inputRequestId, response, context?)
  *   subscribe(listener) -> unsubscribe function for normalized backend events

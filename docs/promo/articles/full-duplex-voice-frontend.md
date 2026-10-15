@@ -56,7 +56,7 @@ qwen-audio-agent 把系统切成两层：
 {
   status: 'accepted',
   task_id: '…',
-  message: '工作已受理，请自然确认一次，不要再次调用工具。'
+  message: '请求已受理，执行结果另行返回。本次只需自然确认受理。'
 }
 ```
 

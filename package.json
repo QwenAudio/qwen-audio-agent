@@ -337,27 +337,30 @@
     "release:check": "./scripts/release-check"
   },
   "dependencies": {
-    "@a2a-js/sdk": "1.1.0",
-    "@agentclientprotocol/sdk": "1.4.0",
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@a2a-js/sdk": "1.3.0",
+    "@agentclientprotocol/sdk": "1.8.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@qwen-code/open-computer-use": "^0.2.3",
     "electron-updater": "6.8.9",
     "express": "^4.22.2",
     "qrcode": "1.5.4",
-    "sherpa-onnx": "1.13.7",
-    "tar-stream": "3.2.1",
+    "sherpa-onnx": "1.13.8",
+    "tar-stream": "3.2.2",
     "unbzip2-stream": "1.4.3",
     "ws": "^8.21.3",
-    "yaml": "2.9.0",
+    "yaml": "2.9.1",
     "zod": "^4.5.4"
   },
   "devDependencies": {
     "concurrently": "^9.2.0",
-    "electron-builder": "26.16.0",
-    "eslint": "10.9.1",
+    "electron": "43.7.9",
+    "electron-builder": "26.17.0",
+    "eslint": "10.12.0",
     "eslint-plugin-react-hooks": "7.1.1",
-    "globals": "17.12.0",
+    "globals": "17.13.0",
     "playwright": "^1.63.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "vitepress": "^1.6.4"
   },
   "overrides": {
@@ -365,8 +368,10 @@
     "@hono/node-server": "2.0.12",
     "@electron/asar": "4.2.1",
     "@electron/universal": "3.0.6",
-    "fast-uri": "3.1.6",
+    "fast-uri": "3.1.8",
     "qs": "6.16.0",
-    "uuid": "11.1.1"
+    "uuid": "11.1.1",
+    "global-agent": "4.1.3",
+    "shell-quote": "1.12.0"
   }
 }

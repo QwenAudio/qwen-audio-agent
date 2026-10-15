@@ -162,10 +162,14 @@ MCP 工具，还包含 Gateway 内置工具和按能力动态启用的工具。
 
 | Function 工具来源 | 数量 | 工具 |
 |---|---:|---|
-| Gateway 内置默认工具 | 7 | `spawn_thinking`、`schedule_reminder`、`cancel_agent_task`、`get_agent_task_status`、`get_current_time`、`memory`、`notes` |
-| Gateway 内置条件工具 | 最多 +7 | `knowledge`、`recall`、`respond_permission`、`respond_agent_input`、`web_search`、`fetch_url`、`enter_sleep`；仅在对应知识库、会话摘要、检索、待确认权限、待补充输入或客户端休眠动作可用时暴露 |
+| Gateway 内置默认工具 | 8 | `spawn_thinking`、`update_agent_task`、`schedule_reminder`、`cancel_agent_task`、`get_agent_task_status`、`get_current_time`、`memory`、`notes` |
+| Gateway 内置条件工具 | 最多 +6 | `knowledge`、`recall`、`respond_permission`、`web_search`、`fetch_url`、`enter_sleep`；仅在对应知识库、会话摘要、检索、待确认权限或客户端休眠动作可用时暴露 |
 | 座舱前台 MCP 工具 | 37 | `vehicle`、`navigation`、`music`、`weather` 及 3 个 `custom-skills` 工具，模型中以 `mcp__cockpit__*` 名称出现 |
-| **默认 Realtime 基础合计** | **44** | 7 个 Gateway 内置工具 + 37 个座舱前台 MCP 工具，不含按能力加入的条件工具 |
+| **默认 Realtime 基础合计** | **45** | 8 个 Gateway 内置工具 + 37 个座舱前台 MCP 工具，不含按能力加入的条件工具 |
+
+`update_agent_task` 把用户对后台追问的回答交回同一任务；没有待回答问题时，
+调整已有工作需要后台支持 steering。
+Gateway 默认一次执行一项用户任务，后续后台工作排队；前台仍可继续对话。
 
 默认情况下，`vehicle`、`navigation`、`music`、`weather` 和 `custom-skills` 走前台
 Realtime 路径，Service 只有 `flashbuy` 暴露给后台。前台加载工作流后直接执行前台步骤，

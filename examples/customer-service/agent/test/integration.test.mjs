@@ -48,12 +48,13 @@ function cancelModel() {
   }
 }
 
-test('缺少结构化批准时，即使文本说同意也不进入模型', async () => {
+test('纯文本确认但没有语义授权能力时，保留预览并澄清，不能默认同意', async t => {
   let modelCalls = 0
   const executor = new ServiceAgentExecutor({
     tools: { list: async () => [], call: async () => assert.fail('不应调用工具') },
     model: { complete: async () => { modelCalls += 1; assert.fail('不应调用模型') } },
   })
+  t.after(() => executor.reset())
   executor.suspended.set('task', { contextId: 'context', objective: '取消订单', preview: '待确认', at: Date.now() })
   const events = []
   await executor.execute({
@@ -61,7 +62,8 @@ test('缺少结构化批准时，即使文本说同意也不进入模型', async
     userMessage: { parts: [{ content: { $case: 'text', value: '同意' } }] },
   }, { publish: event => events.push(event) })
   assert.equal(modelCalls, 0)
-  assert.equal(executor.suspended.size, 0)
+  assert.equal(executor.suspended.size, 1)
+  assert.match(JSON.stringify(events.at(-1)), /尚未确认/)
   assert.ok(events.length > 0)
 })
 

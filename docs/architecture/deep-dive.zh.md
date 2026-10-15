@@ -37,7 +37,7 @@ final ASR
       Task accepted
           │ response returns to Realtime immediately
           ▼
-      owner FIFO queue
+      bounded owner queue
           │
           ▼
       configured BackendPort
@@ -49,8 +49,11 @@ final ASR
       Realtime naturally speaks the result
 ```
 
-`spawn_thinking` 永不等待所请求的工作完成。用户可以在多个 Task 项排队期间继续
-说话。对于每个 owner，一次只有一个 Task 项被发送到配置的 BackendPort。
+`spawn_thinking` 永不等待所请求的工作完成。后台执行期间用户仍可继续说话。
+运行时默认用户工作全局上限为一项、每个 owner 上限为一项，后续工作排队。
+等待输入、权限或处于委派阶段的工作仍占用任务槽位，直到整项任务结束；
+回答追问或定向调整继续作用于原任务。新工作不会隐式取消已有工作。
+并发上限仍可显式配置；默认不会因为忙碌就启动另一个协调 Session。
 
 ## 3. 实时边界
 
@@ -59,7 +62,7 @@ final ASR
 
 | 契约 | 工具 |
 | --- | --- |
-| 核心契约 | `spawn_thinking`、`get_agent_task_status`、`cancel_agent_task`、`respond_permission`、`respond_agent_input`、`get_current_time` |
+| 核心契约 | `spawn_thinking`、`update_agent_task`、`get_agent_task_status`、`cancel_agent_task`、`respond_permission`、`get_current_time` |
 | 可选能力 | `memory`、`web_search`、`fetch_url`、`knowledge`、`recall`、`notes`、`schedule_reminder`、`enter_sleep`；动态 MCP 工具同样随配置提供 |
 
 固定的 `config/frontend-agent/PROMPT.md` 只可点名核心契约工具，维护对话、工作受理与结果、
@@ -72,12 +75,18 @@ Prompt 或核心工具中反向引用；可选工具之间也不写死对方的�
 
 核心与可选是提示词维护约定，不是运行时分类；核心工具名单仅保留在边界测试中。
 注册表只保存工具定义和实际生效的可选策略，例如能力要求、结果大小限制和重复调用处理，
-不要求工具声明分组或执行模式。未配置后台时不提供 `spawn_thinking`，待确认工具仅在
-存在真实请求时提供；即使属于核心契约，未提供的工具也不能调用。测试检查固定 Prompt、
-工具引用和能力开关，防止新增可选能力重新耦合进核心规则。
+不要求工具声明分组或执行模式。未配置后台时不提供 `spawn_thinking` 和 `update_agent_task`，
+`respond_permission` 仅在存在真实待确认权限时提供；即使属于核心契约，未提供的工具也不能调用。
+测试检查固定 Prompt、工具引用和能力开关，防止新增可选能力重新耦合进核心规则。
 
 当 Gateway 存在待确认的后台权限时，提供 `respond_permission`。
 模型只回答权限请求；Gateway 负责查找请求及其关联 Task，再转发决定。
+
+`update_agent_task` 把用户的指令交回已有工作；有待补充输入时，同一工具直接回答该请求，
+可通过 `input_request_id` 绑定具体请求。确认、拒绝或修改要求都以自然语言写入 `instruction`，
+由后台结合原上下文解释；Gateway 不按关键词分类，也不把缺省决定当作批准。
+没有待补充输入时，能否调整工作取决于后台的 steering 能力。
+终止整项工作使用 `cancel_agent_task`。客户端 Gateway 协议仍保留独立的 `task.input.respond` 命令。
 
 `memory` 通过一个扁平接口维护两份普通 Markdown 文档。每次调用只执行一个
 原子操作：`read`、`append` 或 `replace`；`replace` 使用唯一匹配的原文定位，
@@ -142,7 +151,7 @@ PermissionPolicy 由语音、客户端命令和定时工作共用，以 BackendP
 转发这些文档。
 
 一次后台轮次可以返回结果，也可以提出继续工作所需的问题、选择、确认或补充信息。
-前台自然转达后者；用户随后回答时，再通过 `spawn_thinking` 以同一工作的续办关系提交，
+前台自然转达后者；用户随后回答时，通过 `update_agent_task` 交回同一工作 ID，
 而不是在前台推测或模拟后续执行。这一语义不依赖具体问题内容或关键词。
 
 当前轮附件由 Gateway 自动作为协议原生 Part 随任务传递，而不是放入模型可见的 JSON
@@ -151,26 +160,22 @@ Gateway 分配的会话内输入 ID。Task ID、owner、生命周期、时间戳
 Gateway/BackendPort 的结构化数据，不进入后台 Agent 的任务指令。工作目录和用户
 时区也不重复拼入每轮文本；协议或后台自身的运行上下文负责这些信息。
 
-## 4. 固定后端 Agent Session
+## 4. 持久后端 Agent Session
 
 这里的“协调 Session”属于 ACP 后台接入，不是框架的编排运行时。
 编排运行时通过 `BackendPort` 管理工作，不要求 A2A 或自定义后台提供同样的 Session 结构。
 
-ACP 适配器为每个 owner 和后端拥有一个持久协调器 Session 身份：
-
-```text
-qwen-audio-agent:<owner>:backend
-```
-
-Gateway 在该稳定键之后存储原生 ACP Session ID，并在后续轮次调用
+ACP 适配器为每个 owner 和后端维护持久协调 Session，默认只有一个槽位。
+新任务等待该槽位空闲，每项活动任务绑定到分配给它的 Session。
+Gateway 记录原生 ACP Session ID，并在后续轮次调用
 `session/resume`。项目委派同样在其记录的工作目录中恢复选定的原生 Session，
 因此语音发起的工作保留在后端自己的 Session 历史中，而非 Gateway 副本中。
 
-语音浏览器会话 ID 和 Task ID 不会更改该身份。因此，新的语音对话会继续使用
-相同的后端 Agent 上下文。
+调整工作时使用该任务记录的原 Session，完成后续接也不例外。原 Session 正被另一项
+任务占用时等待，不能把调整发给另一项任务。空闲槽位可以跨任务、跨语音对话复用。
 
-Gateway 队列和 ACP 适配器都对写入进行串行化。这种双重保护防止并发消息在一个
-后端 Session 内部发生竞争。
+Gateway 限制任务并发，ACP 适配器在每个 Session 内串行写入。
+上限可以显式调高，但 Session 分开并不隔离工作目录、文件或外部资源。
 
 后端 Agent 拥有自己的执行策略。qwen-audio-agent 只提供一条自包含自然任务指令和
 当前轮次的协议原生附件；它不转发前台历史或偏好，不规定状态 JSON，也不指导后端
@@ -236,16 +241,16 @@ Agent 请求次数耗尽分别进入 Gateway 的取消或失败路径。Gateway 
 Session 工具已经成功创建或续接目标任务，并返回 Adapter 验证过的运行与 Session
 标识，而不是模型输出的某个字段。ACP 只负责如实传递工具调用、工具结果和当前回合的
 终止；Adapter 将验证后的关联发布给 TaskManager，后者据此把原始 Task 移至
-`delegated`，并释放后端 Agent 串行化锁和 Task 调度通道。因此，其他语音请求可以在
-目标 Session 运行期间使用协调器。
+`delegated`。该任务继续占用任务并发名额和 ACP 协调 Session 租约，直到整项任务进入终态。
+默认串行配置下，目标 Session 执行期间，后续用户任务继续排队。
 
 协调 Agent 可以在工具成功后自然结束当前 ACP 回合，但该文本不控制任务状态，也不会
 被解释为完成信号。关联 ID、目标 Session 和生命周期完全保留在 Gateway 的 Task
 Registry 与 Adapter 运行时中，不要求模型回显。
 
 适配器独立地保持 Task 生命周期和事件订阅存活。只有与委派 ID 关联的匹配 ACP
-目标提示完成才能完成 Task。然后适配器短暂重新获取后端 Agent 锁，并将经验证的
-结果及其原生 ContentBlock 发送给它整理最终答复。繁忙的目标、空结果、无关的
+目标提示完成才能推进 Task。然后适配器将经验证的结果及其原生 ContentBlock
+发送给仍由该任务保留的协调 Session，整理最终答复。繁忙的目标、空结果、无关的
 Session 更新或旧结果
 都无法完成 Task。
 
@@ -442,4 +447,4 @@ macOS 桌面渲染器打包在应用程序内部。Electron 从私有的随机�
 5. 完成播报是否仅来自最终后端 Agent 结果？
 6. UI 是否通过宿主生命周期接口管理本机 Gateway，且不绕过它直接管理后台进程？
 7. 打断是否能在不取消已提交 Task 的情况下推迟语音？
-8. 测试是否覆盖 FIFO 串行化、固定 Session 复用、工具动画和交付重试？
+8. 测试是否覆盖有界并发、任务绑定 Session 的复用、工具动画和交付重试？

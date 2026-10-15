@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import * as frontendExports from '../src/frontend/frontend-tools.mjs'
+import * as agentTaskExports from '../src/frontend/tools/features/agent-task-tools.mjs'
 import {
   PERMISSION_RESPONSE_CAPABILITY,
-  BACKEND_INPUT_RESPONSE_CAPABILITY,
   FETCH_URL_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
@@ -19,6 +20,7 @@ import { loadFrontendPrompt } from '../src/conversation/frontend-agent-context.m
 
 const DEFAULT_TOOL_NAMES = [
   'spawn_thinking',
+  'update_agent_task',
   'schedule_reminder',
   'cancel_agent_task',
   'get_agent_task_status',
@@ -32,8 +34,9 @@ function names(tools) {
 
 // Prompt-maintenance convention, not a runtime tool classification.
 const CORE_PROMPT_TOOLS = new Set([
+  'update_agent_task',
   'spawn_thinking', 'get_agent_task_status', 'cancel_agent_task',
-  'respond_permission', 'respond_agent_input', 'get_current_time',
+  'respond_permission', 'get_current_time',
 ])
 
 function optionalToolNames() {
@@ -130,6 +133,29 @@ test('registers every default frontend tool once in stable order', () => {
   }
 })
 
+test('work tool descriptions state their own capabilities without cross-tool routing', () => {
+  const spawn = frontendToolRegistry.get('spawn_thinking').definition.function.description
+  const update = frontendToolRegistry.get('update_agent_task').definition.function.description
+
+  assert.match(spawn, /(?:新增|新建|创建).*工作/u)
+  assert.match(spawn, /文件|应用|代码/u)
+  assert.match(spawn, /交付物|成果/u)
+  assert.match(update, /已有工作/u)
+  assert.match(update, /补充要求/u)
+  assert.match(update, /修改目标/u)
+  assert.match(update, /回答追问/u)
+  assert.match(update, /(?:已完成|完成的).*成果.*后续操作/u)
+  assert.match(update, /(?:保留|沿用).*上下文/u)
+
+  for (const name of ['spawn_thinking', 'update_agent_task']) {
+    const { description } = frontendToolRegistry.get(name).definition.function
+    for (const other of frontendToolRegistry.names()) {
+      if (other === name) continue
+      assert.doesNotMatch(description, new RegExp(`\\b${other}\\b`, 'u'), `${name} routes to ${other}`)
+    }
+  }
+})
+
 test('customizes only the spawn_thinking capability description', () => {
   const description = '只处理座舱车辆、导航、音乐、天气和闪购任务。'
   const customized = frontendTools({
@@ -178,11 +204,45 @@ test('exposes the unified permission response only for a real request capability
   )
 })
 
-test('exposes backend input response only for a real pending request', () => {
-  assert.equal(names(frontendTools()).includes('respond_agent_input'), false)
-  assert.deepEqual(names(frontendTools({
-    frontend: { capabilities: [BACKEND_INPUT_RESPONSE_CAPABILITY] },
-  })), [...DEFAULT_TOOL_NAMES, 'respond_agent_input'])
+test('removes the separate backend input tool and its obsolete exports and capability', () => {
+  assert.equal(frontendToolRegistry.has('respond_agent_input'), false)
+  for (const exports of [frontendExports, agentTaskExports]) {
+    assert.equal(Object.hasOwn(exports, 'RESPOND_AGENT_INPUT_TOOL_NAME'), false)
+    assert.equal(Object.hasOwn(exports, 'BACKEND_INPUT_RESPONSE_CAPABILITY'), false)
+  }
+  const frontend = buildFrontendToolContext({ inputPending: true })
+  assert.deepEqual(frontend.capabilities, [])
+  assert.deepEqual(names(frontendTools({ frontend })), DEFAULT_TOOL_NAMES)
+})
+
+test('update schema unifies work adjustments and pending replies without a decision field', () => {
+  const tool = frontendToolRegistry.get('update_agent_task').definition.function
+  assert.deepEqual(tool.parameters.required, ['task_id', 'instruction'])
+  assert.deepEqual(Object.keys(tool.parameters.properties).sort(), [
+    'input_refs', 'input_request_id', 'instruction', 'task_id', 'values',
+  ])
+  assert.equal(Object.hasOwn(tool.parameters.properties, 'decision'), false)
+  assert.equal(Object.hasOwn(tool.parameters.properties, 'action'), false)
+  assert.equal(tool.parameters.properties.input_request_id.type, 'string')
+  assert.equal(tool.parameters.properties.values.type, 'object')
+  assert.equal(tool.parameters.properties.input_refs.type, 'array')
+  assert.equal(tool.parameters.additionalProperties, false)
+  assert.doesNotMatch(JSON.stringify(tool), /respond_agent_input/)
+})
+
+test('pending input retains update without an available backend but never enables spawn', () => {
+  const frontend = buildFrontendToolContext({
+    backendAvailability: { snapshot: () => ({ configured: false }) },
+    inputPending: true,
+  })
+  assert.deepEqual(names(frontendTools({ frontend })), DEFAULT_TOOL_NAMES.filter(name => name !== 'spawn_thinking'))
+  assert.deepEqual(frontend.capabilities, [])
+  const disabled = buildFrontendToolContext({
+    backendAvailability: { snapshot: () => ({ configured: false }) },
+    inputPending: true,
+    disabledTools: ['update_agent_task'],
+  })
+  assert.equal(names(frontendTools({ frontend: disabled })).includes('update_agent_task'), false)
 })
 
 test('client action capability alone cannot create a model-visible tool', () => {
@@ -248,7 +308,7 @@ test('frontend-only mode retains reminder controls but not backend execution', (
     backendAvailability: { snapshot: () => ({ configured: false }) },
   }) }
   const tools = frontendTools(context)
-  assert.deepEqual(names(tools), DEFAULT_TOOL_NAMES.filter(name => name !== 'spawn_thinking'))
+  assert.deepEqual(names(tools), DEFAULT_TOOL_NAMES.filter(name => !['spawn_thinking', 'update_agent_task'].includes(name)))
   const schedule = tools.find(tool => tool.function.name === 'schedule_reminder')
   assert.deepEqual(schedule.function.parameters.properties.type.enum, ['reminder'])
   // Filtering one session must not mutate another session's schemas.
@@ -268,13 +328,14 @@ test('availability projection combines configured features and pending requests'
   })
   assert.deepEqual(frontend.capabilities, [
     'web-search', 'url-fetch', 'knowledge', 'recall',
-    PERMISSION_RESPONSE_CAPABILITY, BACKEND_INPUT_RESPONSE_CAPABILITY,
+    PERMISSION_RESPONSE_CAPABILITY,
   ])
   const visible = names(frontendTools({ frontend }))
   assert.equal(visible.includes('notes'), false)
   assert.equal(visible.includes('spawn_thinking'), true, 'temporary failure is not no-backend mode')
   assert.equal(visible.includes('respond_permission'), true)
-  assert.equal(visible.includes('respond_agent_input'), true)
+  assert.equal(visible.includes('update_agent_task'), true)
+  assert.equal(visible.includes('respond_agent_input'), false)
 })
 
 test('status query exposes only parameters the Gateway actually consumes', () => {
@@ -294,7 +355,7 @@ test('disabled tools cannot execute or consume the tool-loop budget', async () =
     generation: 1,
     frontend: {
       capabilities: ['web-search', 'url-fetch', 'knowledge', 'recall',
-        PERMISSION_RESPONSE_CAPABILITY, BACKEND_INPUT_RESPONSE_CAPABILITY],
+        PERMISSION_RESPONSE_CAPABILITY],
       disabledTools: frontendToolRegistry.names(),
     },
     client: { actions: ['desktop.presence.enter_sleep'] },

@@ -2,6 +2,7 @@ import {
   CANCEL_AGENT_TASK_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
   SPAWN_THINKING_TOOL_NAME,
+  UPDATE_AGENT_TASK_TOOL_NAME,
   frontendToolRegistry,
 } from '../frontend-tools.mjs'
 import { buildFrontendToolContext } from './frontend-tool-context.mjs'
@@ -70,6 +71,7 @@ function needsToolResultSummary(toolName, args) {
   }
   return ![
     SPAWN_THINKING_TOOL_NAME,
+    UPDATE_AGENT_TASK_TOOL_NAME,
     RESPOND_PERMISSION_TOOL_NAME,
     CANCEL_AGENT_TASK_TOOL_NAME,
   ].includes(toolName)
@@ -478,6 +480,10 @@ export class ToolCallHandler {
     return this.agentTaskRuntime.executeSpawnThinkingToolCall(...args)
   }
 
+  executeUpdateToolCall(...args) {
+    return this.agentTaskRuntime.executeUpdateToolCall(...args)
+  }
+
   async handle(event, callContext = {}) {
     const callId = event.call_id || event.item?.call_id || ''
     const toolName = event.name || event.item?.name || ''
@@ -614,10 +620,6 @@ export class ToolCallHandler {
 
   respondAgentPermission(...args) {
     return this.agentTaskRuntime.respondAgentPermission(...args)
-  }
-
-  respondAgentInput(...args) {
-    return this.agentTaskRuntime.respondAgentInput(...args)
   }
 
   cancelAgentTask(...args) {

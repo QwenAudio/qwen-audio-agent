@@ -63,3 +63,16 @@ test('maps list and remove through the configured provider', async () => {
     documentId: 'doc-one',
   })).removed, true)
 })
+
+test('exposes failed ingestion as a failed task with an error for the library panel', async () => {
+  const manager = new TaskManager()
+  const message = '文档转换失败，导入未完成；原始文件和已收录资料保持不变，请重试。'
+  const service = new KnowledgeLibraryService({
+    taskManager: manager,
+    provider: provider({ async ingest() { throw new Error(message) } }),
+  })
+  const { task } = service.startIngestion({ ownerId: 'owner-one', sourcePath: '/docs/manual.pdf' })
+  await manager.wait(task.id)
+  assert.equal(manager.get(task.id).status, 'failed')
+  assert.equal(manager.get(task.id).error, message)
+})

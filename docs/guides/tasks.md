@@ -4,8 +4,8 @@ With a configured [Backend Agent](../backends/overview.md), ask the assistant to
 information, edit files, write software, or use the backend's tools and Skills. Execution capabilities,
 authentication, and accessible resources depend on that backend environment.
 
-Without a configured backend, the frontend does not expose `spawn_thinking` or support scheduled
-backend execution. Chat, available frontend tools, and scheduled reminders remain usable. Status
+Without a configured backend, the frontend does not expose `spawn_thinking` or `update_agent_task`,
+or support scheduled backend execution. Chat, available frontend tools, and scheduled reminders remain usable. Status
 and cancellation tools stay available to manage reminders and other existing records.
 
 ## Start and Continue
@@ -18,6 +18,41 @@ and cancellation tools stay available to manage reminders and other existing rec
 Work runs asynchronously, so you can keep chatting. Identify the work you mean, or use its card
 identifier, particularly when several items are active. Native session restoration, independent
 work, and individual tools depend on the backend; one backend's capabilities are not universal guarantees.
+
+By default, the runtime executes one user task at a time; later work queues until the current
+task ends. Starting new work never implicitly cancels existing work.
+A task waiting for input or permission, or executing delegated work, still occupies its slot until
+the whole task ends. You can still answer its questions or steer that same work without creating
+another task. The defaults are `QWEN_AUDIO_AGENT_TASK_MAX_CONCURRENT_PER_OWNER=1` and
+`QWEN_AUDIO_AGENT_TASK_MAX_CONCURRENT=1`; both limits remain explicitly configurable.
+ACP defaults to one coordinator slot and reuses the task's recorded context for updates and
+continuation. Sessions do not isolate files, working directories, or external resources.
+
+### Update Work in Progress
+
+“Also draw a cat” queues new work without cancelling the dog drawing. “Change that dog to a cat”
+updates the existing work. The frontend uses `spawn_thinking` for new work and `update_agent_task`
+for targeted changes and replies, keeping the same work ID and original backend context.
+It clarifies ambiguous references instead of choosing based on whether the backend is busy.
+
+- Queued: include new requirements in that work's first execution, without steering another item.
+- Awaiting input: send the user's answer as `instruction` on the same task; an optional
+  `input_request_id` identifies the exact request. Preserve confirmation, refusal, and changed
+  conditions in the user's natural language; the backend interprets them in the original context.
+  Changing conditions does not approve the old preview.
+- Running: use a verified ACP injection extension when available; otherwise cancel the current
+  turn, wait for it to finish, and continue in the same session.
+- Completed: continue under the same ID when the original context remains available. Earlier
+  results remain in history. If its original session is busy with another task, wait for that
+  session rather than steering the other task.
+
+Acceptance does not mean the change has taken effect, and interruption does not undo actions.
+Steering changes reset per-task permission grants; session-wide “Always allow” remains effective. Unsupported
+updates, unavailable contexts, and results still being delivered return explicit errors.
+Backend-native delegations and completed delegated work cannot yet be resumed automatically;
+running framework-owned ACP delegations support targeted updates. After a Gateway restart,
+unconfirmed updates are not replayed automatically. To stop the whole task, use `cancel_agent_task`;
+backend permission decisions still use `respond_permission`.
 
 ## Understand Work State
 

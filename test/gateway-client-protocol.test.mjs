@@ -165,6 +165,13 @@ test('negotiates one supported 7.0 version and the capability intersection', () 
 })
 
 test('validates runtime commands, Client Actions and correlated results', () => {
+  const update = parseGatewayClientProtocolMessage({
+    type: 'task.update', event_id: 'update-1', task_id: 'task_1',
+    message: { parts: [{ type: 'text', text: 'adjust requirements' }] },
+  })
+  assert.equal(update.task_id, 'task_1')
+  assert.equal(gatewayClientProtocolCapabilityFor(update.type), GatewayClientCapability.TASK_COMMANDS)
+  assert.throws(() => parseGatewayClientProtocolMessage({ ...update, task_id: undefined }))
   const create = parseGatewayClientProtocolMessage({
     type: GatewayClientProtocolEvent.TASK_CREATE,
     event_id: 'evt_create_1',

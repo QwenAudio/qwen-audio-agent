@@ -26,6 +26,8 @@ Options:
 | `--session ID` | Resume a specific voice session |
 | `--no-open` | Print the URL only, without opening a browser |
 
+Use “Take photo” in the composer to open a camera-only preview. Capture a bounded JPEG, review or retake it, then choose “Add to draft”. The photo remains a normal attachment until you click Send; it can be removed from the draft. Cancel or close the photo dialog to release the camera. This does not start the microphone or continuous visual input. Ordinary photo attachments use the existing attachment processing and retention rules.
+
 ## What you can do
 
 - **Full-duplex voice** — speak and interrupt naturally, with live transcripts.

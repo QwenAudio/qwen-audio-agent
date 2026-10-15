@@ -48,6 +48,8 @@ const TERMINAL = new Set([
 ])
 const KNOWN = new Set(Object.values(TaskStatus))
 const TRANSITIONS = new Map([
+  ...[TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]
+    .map(status => [status, new Set([TaskStatus.QUEUED])]),
   [TaskStatus.SCHEDULED, new Set([
     TaskStatus.QUEUED,
     TaskStatus.FAILED,
@@ -151,6 +153,12 @@ export function publicTask(task, { now = Date.now() } = {}) {
     ...(task.seriesId ? { seriesId: task.seriesId } : {}),
     parentTaskId: task.parentTaskId || null,
     objective: task.objective,
+    ...(task.executionVersion ? { revision: task.executionVersion } : {}),
+    ...(task.updates?.length ? {
+      updates: task.updates.map(({ instruction, status, error, createdAt }) => ({
+        instruction, status, ...(error ? { error } : {}), createdAt,
+      })),
+    } : {}),
     ownerId: task.ownerId,
     sessionId: task.sessionId,
     turnId: task.turnId,
@@ -196,6 +204,11 @@ export function persistedTask(task) {
     saved.status = task.recoveryPersistedStatus
   }
   saved.submissionKey = task.submissionKey || null
+  if (task.updates?.length) saved.updates = task.updates.map(entry => ({ ...entry }))
+  if (task.backendContext) saved.backendContext = task.backendContext
+  if (task.previousResults?.length) saved.previousResults = task.previousResults
+  if (task.executionVersion) saved.executionVersion = task.executionVersion
+  if (task.queuedAt) saved.queuedAt = task.queuedAt
   saved.delegation = task.delegation
     ? { ...task.delegation }
     : null

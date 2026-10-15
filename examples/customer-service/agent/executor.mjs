@@ -389,6 +389,7 @@ async function runServiceAgent({ objective, model, tools, signal, onToolCall,
           input.committedOperations = committedOperations
           input.committedEffects = committedEffects
           input.operationChoice = operationChoice
+          input.authorizationEvidence = authorizationEvidence
           throw input
         }
         if (operationChoice && availableTools.find(tool => tool.name === name)?.annotations?.readOnlyHint === false
@@ -495,7 +496,7 @@ export class ServiceAgentExecutor {
     )
     let history = null
 
-    // 只允许恢复同一 taskId 的批准，不重新拼接自然语言来决定是否提交。
+    // 只允许恢复同一 taskId 的预览；自然答复必须与该预览及保存的操作比较。
     const pending = this.suspended.get(taskId)
     const resumed = Boolean(pending)
     if (resumed) {
@@ -546,18 +547,84 @@ export class ServiceAgentExecutor {
         throw new Error('原任务已结束或确认已过期，请重新发起操作。')
       }
       if (pending && pending.contextId !== contextId) {
-        await this.tools.revokeApproval?.(pending.operation?.token)
         throw new Error('任务上下文不匹配，请重新发起操作。')
       }
+      if (pending && pending.conversationId !== undefined
+        && pending.conversationId !== this.conversationId) {
+        throw new Error('客户会话已变更，请重新发起操作。')
+      }
 
-      // The frontend model resolves the natural-language reply into the
-      // structured inputResponse. The backend only enforces that protocol
-      // decision and never re-classifies the same text with keyword rules.
+      // UI buttons may carry an explicit action. Natural replies need no A2A
+      // extension metadata (the gateway optionally adds kind: authorization).
+      // Compare the literal reply with this exact preview, never with keyword
+      // rules or an implied default approval.
       const inputResponse = requestContext.userMessage?.metadata?.qwenAudioInputResponse
-      if (resumed && pending.kind !== 'customer-input' && (
-        inputResponse?.kind !== 'authorization'
-        || inputResponse.action !== 'accept'
-      )) {
+      let authorizationResponse = 'decline'
+      if (resumed && pending.kind !== 'customer-input') {
+        if (Date.now() - pending.at >= this.approvalTtlMs) {
+          throw new Error('确认已过期，请重新发起操作。')
+        }
+        if (inputResponse?.kind === 'authorization' && inputResponse.action === 'accept') {
+          authorizationResponse = 'approve'
+        } else if (inputResponse === undefined || (
+          inputResponse && typeof inputResponse === 'object' && !Array.isArray(inputResponse)
+          && [undefined, 'authorization'].includes(inputResponse.kind)
+          && inputResponse.action === undefined
+        )) {
+          const decision = objective && typeof this.model.authorizePriorPlan === 'function'
+            ? await this.model.authorizePriorPlan({
+                evidence: { proposal: pending.preview, customerReply: objective },
+                operation: { name: pending.operation.name, arguments: structuredClone(pending.operation.args) },
+                preview: pending.preview,
+                signal: controller.signal,
+              })
+            : { authorized: false, response: 'clarify' }
+          authorizationResponse = decision?.authorized === true && decision.response === 'approve'
+            ? 'approve'
+            : ['decline', 'revise'].includes(decision?.response) && decision.authorized === false
+              ? decision.response : 'clarify'
+        }
+        controller.signal.throwIfAborted()
+        // Classification may have taken time; it must not extend the saved
+        // capability's lifetime or make an expired preview usable again.
+        if (Date.now() - pending.at >= this.approvalTtlMs) {
+          throw new Error('确认已过期，请重新发起操作。')
+        }
+        if (authorizationResponse === 'clarify') {
+          pending.eventBus = eventBus
+          pending.timer = setTimeout(() => { this.cancelTask(taskId).catch(() => {}) },
+            this.approvalTtlMs - (Date.now() - pending.at))
+          pending.timer.unref?.()
+          this.suspended.set(taskId, pending)
+          eventBus.publish(statusUpdate(taskId, contextId, TaskState.TASK_STATE_AUTH_REQUIRED,
+            `尚未确认是否办理，这笔操作还没有执行。请明确是否同意以下操作，或说明需要怎样调整：\n${pending.preview}`,
+            { qwenAudioApprovalExpiresAt: pending.at + this.approvalTtlMs }))
+          return
+        }
+        if (authorizationResponse === 'revise') {
+          await this.tools.revokeApproval?.(pending.operation.token)
+          // Close every outstanding call from the superseded plan. Neither the
+          // old token nor queued calls can authorize or execute the new request.
+          for (const callId of [pending.operation.toolCallId,
+            ...(pending.operation.remainingCalls || []).map(call => call.id)]) {
+            pending.messages.push({ role: 'tool', tool_call_id: callId,
+              content: 'Not executed: the customer changed the request and the previous approval preview was revoked.' })
+          }
+          pending.messages.push({ role: 'system', content: 'The customer revised the request below. Discard conflicting previous requirements and all unexecuted planned actions. Preserve already committed effects, verify current state as needed, and plan from the literal new requirements. No previous authorization applies: every new write needs a fresh runtime preview and approval.' },
+            { role: 'user', content: objective })
+          pending.objective = `${pending.objective}\n\n客户更新要求（替换冲突的旧要求，旧预览未批准）：${objective}`
+          pending.authorizationEvidence = null
+          pending.operationChoice = null
+          const output = await runServiceAgent({ objective: pending.objective, model: this.model,
+            tools: this.tools, signal: controller.signal, initialMessages: pending.messages,
+            committedOperations: pending.committedOperations,
+            committedEffects: pending.committedEffects })
+          history.append(contextId, pending.objective, output.content)
+          publishCompleted(eventBus, taskId, contextId, output)
+          return
+        }
+      }
+      if (resumed && pending.kind !== 'customer-input' && authorizationResponse !== 'approve') {
         await this.tools.revokeApproval?.(pending.operation?.token)
         history.append(contextId, `${pending.objective}\n\n客户补充：${objective}`,
           '客户未批准待确认操作，未执行数据变更。')
@@ -571,7 +638,7 @@ export class ServiceAgentExecutor {
         return
       }
 
-      // 批准后提交已保存的操作，不再让模型选择工具、改写参数或读取令牌。
+      // 补充信息继续规划；批准后仍只提交保存的操作，模型不能改写参数或读取令牌。
       if (resumed && pending.kind === 'customer-input') {
         if (Date.now() - pending.at >= this.approvalTtlMs) throw new Error('补充信息请求已过期，请重新发起操作。')
         if (inputResponse?.action === 'cancel') {
@@ -612,7 +679,6 @@ export class ServiceAgentExecutor {
       }
       if (resumed) {
         if (Date.now() - pending.at >= this.approvalTtlMs) {
-          await this.tools.revokeApproval?.(pending.operation.token)
           throw new Error('确认已过期，请重新发起操作。')
         }
         const { name, args, token } = pending.operation
@@ -642,7 +708,7 @@ export class ServiceAgentExecutor {
         return
       }
 
-      // 只有新任务进入模型；恢复执行走上面的确定性提交。
+      // 新任务开始规划；恢复请求已在上面按信息、审批或修改要求处理。
       const output = await runServiceAgent({
         objective,
         history: history.messages(contextId),
@@ -660,7 +726,7 @@ export class ServiceAgentExecutor {
       publishCompleted(eventBus, taskId, contextId, output)
     } catch (error) {
       if (error instanceof CustomerInputNeeded) {
-        const entry = { kind: 'customer-input', contextId, eventBus,
+        const entry = { kind: 'customer-input', contextId, eventBus, conversationId: this.conversationId,
           objective: pending?.objective || objective, messages: error.messages,
           committedOperations: error.committedOperations,
           committedEffects: error.committedEffects,
@@ -668,9 +734,9 @@ export class ServiceAgentExecutor {
         entry.choiceRequest = error.choiceRequest || false
         entry.choiceOrderId = error.choiceOrderId || pending?.choiceOrderId || null
         entry.operationChoice = error.operationChoice || pending?.operationChoice || null
-        entry.authorizationEvidence = error.authorizationEvidence
-          || pending?.authorizationEvidence
-          || requestAuthorizationEvidence
+        entry.authorizationEvidence = error.authorizationEvidence !== undefined
+          ? error.authorizationEvidence : pending
+            ? pending.authorizationEvidence : requestAuthorizationEvidence
         entry.timer = setTimeout(() => { this.cancelTask(taskId).catch(() => {}) }, this.approvalTtlMs)
         entry.timer.unref?.()
         this.suspended.set(taskId, entry)
@@ -681,6 +747,7 @@ export class ServiceAgentExecutor {
         // 内部操作和客户预览分开保存，令牌不进入 A2A 文本或模型消息。
         const suspendedEntry = {
           contextId,
+          conversationId: this.conversationId,
           eventBus,
           objective: pending?.objective || objective,
           committedOperations: error.committedOperations,
@@ -689,9 +756,9 @@ export class ServiceAgentExecutor {
           preview: error.preview,
           operation: error.operation,
           messages: error.messages,
-          authorizationEvidence: error.authorizationEvidence
-            || pending?.authorizationEvidence
-            || requestAuthorizationEvidence,
+          authorizationEvidence: error.authorizationEvidence !== undefined
+            ? error.authorizationEvidence : pending
+              ? pending.authorizationEvidence : requestAuthorizationEvidence,
           at: Date.now(),
         }
         suspendedEntry.timer = setTimeout(() => {
@@ -706,6 +773,12 @@ export class ServiceAgentExecutor {
           TaskState.TASK_STATE_AUTH_REQUIRED, error.preview,
           { qwenAudioApprovalExpiresAt: suspendedEntry.at + this.approvalTtlMs }))
         return
+      }
+      // Revoke a failed/cancelled check's detached capability. If the service is
+      // unavailable, still emit the terminal task state; the local continuation
+      // is already gone and the service's own capability expiry remains binding.
+      if (pending?.operation?.token) {
+        try { await this.tools.revokeApproval?.(pending.operation.token) } catch {}
       }
       if (controller.signal.aborted) {
         history?.append(contextId, pending?.objective || objective,

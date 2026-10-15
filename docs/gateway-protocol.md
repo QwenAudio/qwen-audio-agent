@@ -403,6 +403,7 @@ The active Client uses the same WebSocket for runtime commands and queries. Each
 | Command | Direction | Meaning |
 |---|---|---|
 | `task.create` | C→G | Explicitly create an asynchronous Task without impersonating conversational user input |
+| `task.update` | C→G | Update a specified Task with `task_id` and `message.parts`; returns `task.update.result` with `status: accepted/duplicate` and a Task snapshot |
 | `task.get` / `task.list` | C→G | Read one Task or a bounded filtered Task snapshot |
 | `task.cancel` | C→G | Request cancellation of one Task; subsequent lifecycle events report the final state |
 | `permission.respond` | C→G | Resolve the currently pending authorization request |
@@ -450,6 +451,18 @@ to BackendPort. Grants are not persisted across Gateway restarts. Wire 7.0 repla
 This is the Client runtime control plane. Equivalent internal REST/SSE routes remain migration aliases until every first-party Client uses the WebSocket commands and replay path. REST remains appropriate for startup discovery, health, static configuration, and host-management operations that are not part of an active Client session.
 
 `task.create` is an explicit integration command, not the normal voice-chat path. Conversational requests still reach Task creation through the frontend Agent's tools, preserving its routing and acknowledgement behavior.
+
+`task.update` uses the same `tasks.commands` capability. Its `event_id` deduplicates admission
+within the retained Task record. Acceptance is not delivery or completion. The Task's optional
+`updates` list exposes `instruction`, `createdAt`, `status` (`queued`, `pending`, `delivered`,
+`failed`) and an optional `error`. A completed Task continued under the same ID has an incremented
+`revision`; private backend continuation tokens never appear in client snapshots.
+
+Backend input events may report `input.status: 'answered'` when the frontend model's
+`update_agent_task` tool forwards a natural-language reply; this is neither approval nor completion.
+The separate `task.input.respond` UI command still requires an explicit `action` (`accept`,
+`decline`, or `cancel`), resolving to `accepted`, `declined`, or `cancelled` respectively.
+The wire `task.update` command remains a work-update API, not a pending-input reply API.
 
 ### 5.5 Gateway state and presentation
 

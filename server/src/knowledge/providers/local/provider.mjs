@@ -1,5 +1,7 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { KNOWLEDGE_PROVIDER_PROTOCOL_VERSION } from '../../provider.mjs'
-import { classifySource, normalizeSourcePath } from './library.mjs'
+import { classifySource, KnowledgeImportError, normalizeSourcePath } from './library.mjs'
 
 const MAX_SEARCH_DOCUMENT_CHARS = 240_000
 const MAX_CHUNK_CHARS = 1_600
@@ -149,11 +151,28 @@ export class LocalKnowledgeProvider {
         throw error
       }
       const target = this.library.conversionTarget({ ownerId, sourcePath })
-      await this.documentConverter.convert({
-        sourcePath,
-        targetPath: target.path,
-      }, context)
-      entry = this.library.import({ ownerId, sourcePath: target.path })
+      // Keep partial output away from indexed documents. Import validates the
+      // finished file and resolves its final name under the shared index lock.
+      const stagingDirectory = mkdtempSync(join(dirname(target.path), '.conversion-'))
+      try {
+        const stagedPath = join(stagingDirectory, basename(target.path))
+        try {
+          context.signal?.throwIfAborted()
+          await this.documentConverter.convert({ sourcePath, targetPath: stagedPath }, context)
+          context.signal?.throwIfAborted()
+        } catch (cause) {
+          if (context.signal?.aborted) throw cause
+          const error = new KnowledgeImportError(
+            'document_conversion_failed',
+            '文档转换失败，导入未完成；原始文件和已收录资料保持不变，请重试。',
+          )
+          error.cause = cause
+          throw error
+        }
+        entry = this.library.import({ ownerId, sourcePath: stagedPath, originalSource: sourcePath })
+      } finally {
+        rmSync(stagingDirectory, { recursive: true, force: true })
+      }
     } else {
       entry = this.library.import({ ownerId, sourcePath })
     }

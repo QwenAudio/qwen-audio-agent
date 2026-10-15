@@ -46,7 +46,7 @@ Adapter 必须实现全部方法：
 
 `start` 和 `close` 必须幂等。`status()` 不带 Task ID 时返回运行时状态；带 ID 时只查询
 该 Gateway Task。`submit`、`status`、`cancel`、`respondAuthorization` 和 `respondInput` 共享同一个
-`taskId`。后台私有 Session、远程 Task ID 和拓扑不能越过边界。
+`taskId`。后台私有 Session、远程 Task ID 和拓扑由 Adapter 管理；运行时只原样传递不透明的续接引用。
 
 `submit(task)` 接收结构化内部 Task 和唯一的规范字段 `instruction`。Adapter
 可以在内部使用路由与关联字段，但面向 Agent 的 ACP Prompt、A2A 文本 Part 或同类
@@ -67,8 +67,27 @@ Adapter 必须实现全部方法：
 不得另行指定播报话术。文件、图片和结构化结果使用 `artifacts`；BackendPort
 不规定 Conversation Client 的具体展示方式。
 
-不要返回原始协议对象、Session ID、Token 或凭据。运行进度通过 `subscribe` 发布
+不要在公开结果中暴露原始协议对象、Session ID、认证 Token 或凭据。运行进度通过 `subscribe` 发布
 `taskId`、`ownerId` 关联的标准后台事件；监听器异常不能中断任务。
+
+### 可选的工作调整
+
+Adapter 可以声明 `describe().capabilities.workUpdates: true`，并实现
+`update(taskId, { instruction, inputParts }, { ownerId })`。该方法同步受理对指定活动执行的调整，
+返回 `{ completion: Promise }`。确认投递后 resolve，不必等待工作完成；失败或结果不明时 reject。
+不得静默新建其他 Task、重放不确定的请求，或修改别的执行。未实现该能力的 Adapter 仍然有效，
+运行时明确返回 `update_unsupported`。
+
+为了续接已结束的工作，`submit` 可额外返回私有 `continuation: { adapter, token }`。
+运行时持久化该不透明引用，显式续接时原样通过 `task.resumeContext` 交回。
+只有 Adapter 解释 token，必须校验原上下文仍可用，否则拒绝；它不是认证凭据，
+也不进入前台工具结果和客户端快照。已有 Adapter 无需实现此可选能力。
+
+ACP 实现优先使用握手声明的 `_session/steering`，其次使用已观察到的
+`craft/drainMidTurnQueue` 回调。两者都是扩展，不是 ACP 标准方法。
+否则使用标准取消，等待原 `session/prompt` 结束后，再向同一 Session 提交新要求。
+取消结果不明时隔离该会话，直到后台重启；这种回退保留历史，但不能撤销已发生的操作，
+也不等价于原生的执行中注入。
 
 Adapter 可以发布协议无关的可选观测信息，无需扩展 `BackendPort` 方法面：
 
@@ -105,6 +124,14 @@ Adapter 可以发布协议无关的可选观测信息，无需扩展 `BackendPor
 `backend.input.resolved`。请求只携带有界问题及 `text`、`form` 或 `url` 模式；
 协议原生对象与远程 ID 留在 Adapter 内。不支持交互输入的 Adapter 必须明确拒绝
 `respondInput`。
+
+自然语言答复使用 `respondInput(taskId, inputRequestId, { text, values }, { ownerId })`，
+不携带 `action`。确认、拒绝或修改要求由后台结合原上下文解释，不能把缺省动作当作批准。
+A2A Adapter 将这种投递解析为 `input.status: 'answered'`，而不是 `accepted`；
+显式客户端动作仍对应 `accepted`、`declined`、`cancelled`。
+模型工具回执中的 `accepted` 只表示投递受理，不表示业务批准或完成。
+原生权限仍通过独立的 `respondAuthorization` 处理。
+协议层的表单接受只确认内容已提交，不代表权限批准。
 
 ## 接入 Gateway
 

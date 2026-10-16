@@ -74,6 +74,9 @@ export class AcpSessionRegistry {
       ...(Number.isInteger(session.contractVersion)
         ? { contractVersion: session.contractVersion }
         : {}),
+      ...(Number.isSafeInteger(session.coordinatorPromptTurns) && session.coordinatorPromptTurns >= 0
+        ? { coordinatorPromptTurns: session.coordinatorPromptTurns }
+        : {}),
       ...(session.conversationCursors ? { conversationCursors: { ...session.conversationCursors } } : {}),
       updatedAt: Date.now(),
     }

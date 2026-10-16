@@ -288,12 +288,20 @@ send、status 和 cancel。OpenClaw ACP 不接受客户端提供的 MCP 服务�
 和 `session_send` 返回不透明的委派 ID。协调 Agent 可派出多个独立 Session，随后结束
 当前轮次，不轮询、不重复执行，也不宣称完成；适配器负责等待、取消、权限路由和结果关联。
 
-协调 MCP Server 还会通过 MCP 初始化响应的 `instructions` 字段发布稳定协调契约。
-声明 `coordinatorMcpInstructions` 的后台 Driver 每轮只接收动态自然任务指令，避免把
-相同的路由与返回规则反复追加到持久 Session 历史。目前为 OpenCode、Qoder、Qwen Code
-和 Claude Code 启用此能力。共享内容控制在 2 KiB 的可移植预算内。未声明此能力的后台，或未来
-超过预算的内容，继续使用完整的逐轮 Prompt 安全回退。该标志不表示后台是否普遍支持
-MCP。项目 Session 不会连接协调 MCP Server。
+所有 ACP 协调 Session 统一在第 1、21、41……轮的 Prompt 前缀中注入完整稳定指令；
+其他轮次只携带动态任务指令，不附加该前缀。已受理的逻辑轮次按 Session 计数并持久化，
+重启后继续。执行、更新路由和结果整理均计数；内部工具迭代、同一轮的 steer 和重启不计数。
+没有计数的旧 Session 在下一个受理轮次补充前缀。间隔 20 是全局内部常量，不新增用户配置；
+刷新不重建 Session，也不变更契约版本。
+
+公共规则与后台专属说明只有一个来源，由定期前缀和可选的 MCP 初始化响应 `instructions`
+字段共用；不支持委派的后台省略项目路由规则。只有 Driver 声明 `coordinatorMcpInstructions`，
+且内容不超过 2 KiB 可移植预算时，才发布 MCP instructions。目前为 OpenCode、Qoder、
+Qwen Code、Claude Code 和 Codex 启用此能力。其他后台或超出预算的内容仍使用相同的
+定期前缀，不回退到每轮注入完整规则。该标志不控制通用 MCP 支持或工具可用性。
+项目及隔离 Session 保持不变，既不连接协调 MCP Server，也不接收这些刷新。
+
+这是定期提醒，不是后台上下文压缩检测，也不保证规则在压缩后仍然保留；尚未证实 Token 节省。
 
 `session_status` 仅用于观察。如果查询失败，后端 Agent 必须报告失败；
 不得使用原生工具检查目标目录或复制委派的工作。

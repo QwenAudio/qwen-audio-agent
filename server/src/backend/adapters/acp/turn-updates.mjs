@@ -76,7 +76,7 @@ export class AcpTurnUpdates {
     ]
   }
 
-  async run(initialPrompt, options = {}) {
+  async run(initialPrompt, { onAccepted = () => {}, ...options } = {}) {
     let inFlightEntries = this.take()
     let prompt = inFlightEntries.length
       ? [...normalizeAcpPrompt(initialPrompt), ...this.followup(inFlightEntries)]
@@ -92,6 +92,7 @@ export class AcpTurnUpdates {
         const delivery = this.preparePrompt(prompt, submitted.map(entry => entry.context))
         const acknowledge = () => {
           delivery.acknowledge()
+          onAccepted()
           submitted.forEach(entry => entry.resolve({ status: 'delivered' }))
         }
         const execution = this.client.prompt(this.sessionId, delivery.prompt, {

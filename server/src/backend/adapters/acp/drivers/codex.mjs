@@ -14,7 +14,7 @@ export const codexBackendDriver = {
     externalMcp: true,
     nativeDelegation: false,
     sessionMcp: true,
-    coordinatorMcpInstructions: false,
+    coordinatorMcpInstructions: true,
   },
 
   createProfile({

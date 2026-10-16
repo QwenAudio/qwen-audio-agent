@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { AgentError } from '../../agent-error.mjs'
 import { BackendEventType, backendEvent } from '../../../core/backend-events.mjs'
+import { logger } from '../../../core/logger.mjs'
 import {
   acpBackendProfile,
   endpointAvailable,
@@ -42,13 +43,16 @@ import {
 } from './content.mjs'
 import { assertMcpServerCapabilities } from './capabilities.mjs'
 import { buildAcpCoordinatorInstruction } from './coordinator-contract.mjs'
+import {
+  COORDINATOR_PROMPT_REFRESH_INTERVAL,
+  coordinatorUsesMcpInstructions,
+  stableCoordinatorInstructions,
+} from './coordinator-instructions.mjs'
 import { conversationDelta, COORDINATOR_CONVERSATION_MAX_CHARS } from '../../../core/work-conversation-context.mjs'
 import {
   configureAcpSession,
   coordinatorMeta,
-  coordinatorUsesMcpInstructions,
   normalizeAcpModel,
-  stableCoordinatorInstructions,
 } from './session-configuration.mjs'
 
 const MAX_SESSION_RESULTS = 100
@@ -527,6 +531,7 @@ export class AcpBackendAdapter {
           } else {
             session.isNew = false
             session.conversationCursors = stored.conversationCursors
+            session.coordinatorPromptTurns = stored.coordinatorPromptTurns
           }
         } catch {
           if (expectedSessionId) {
@@ -1033,17 +1038,37 @@ export class AcpBackendAdapter {
     }
   }
 
-  coordinatorInstructions(message) {
-    if (this.coordinatorUsesMcpInstructions()) return message
-    const sessionInstructions = clean(this.profile.sessionInstructions)
-    if (!sessionInstructions) return message
-    return transformPromptText(message, content => [
-      '<qwen_audio_agent_backend_profile>',
-      sessionInstructions,
-      '</qwen_audio_agent_backend_profile>',
-      '',
-      content,
-    ].join('\n'))
+  prepareCoordinatorInstructions(session, message) {
+    const turns = Number.isSafeInteger(session.coordinatorPromptTurns) && session.coordinatorPromptTurns >= 0
+      ? session.coordinatorPromptTurns : 0
+    const instructions = turns % COORDINATOR_PROMPT_REFRESH_INTERVAL === 0
+      ? this.stableCoordinatorInstructions() : ''
+    let acknowledged = false
+    return {
+      prompt: instructions ? transformPromptText(message, content => [
+        '<qwen_audio_agent_backend_profile>',
+        instructions,
+        '</qwen_audio_agent_backend_profile>',
+        '',
+        content,
+      ].join('\n')) : message,
+      acknowledge: () => {
+        if (acknowledged) return
+        acknowledged = true
+        // Count accepted coordinator rounds, not tool/LLM iterations or steer
+        // inputs within the same round. Failed delivery must not consume a refresh.
+        session.coordinatorPromptTurns = turns + 1
+        this.registry.set(coordinatorKey(session.ownerId, this.protocol), session)
+        logger.debug('acp.coordinator.instructions', {
+          backend: this.protocol,
+          sessionId: session.sessionId,
+          round: turns + 1,
+          mcpInstructions: this.coordinatorUsesMcpInstructions(),
+          promptRefreshed: Boolean(instructions),
+          reason: instructions ? (turns === 0 ? 'initial' : 'periodic') : 'retained',
+        })
+      },
+    }
   }
 
   prepareConversation(session, snapshot, prompt) {
@@ -1091,6 +1116,12 @@ export class AcpBackendAdapter {
     onUpdate,
     onAccepted = () => {},
   } = {}) {
+    const delivery = this.prepareCoordinatorInstructions(session, prompt)
+    const acknowledge = () => {
+      if (run.turnClosed || run.closed) return
+      delivery.acknowledge()
+      onAccepted()
+    }
     let attempt = 0
     while (true) {
       try {
@@ -1100,13 +1131,12 @@ export class AcpBackendAdapter {
             // hours. Connection setup and control RPCs remain bounded, but a
             // live coding turn has no artificial wall-clock deadline.
             timeoutMs: 0,
-            onUpdate: update => { onAccepted(); onUpdate?.(update) },
+            onUpdate: update => { acknowledge(); onUpdate?.(update) },
           }
-        const content = this.coordinatorInstructions(prompt)
         const result = run.turnUpdates
-          ? await run.turnUpdates.run(content, options)
-          : await this.client.prompt(session.sessionId, content, options)
-        onAccepted()
+          ? await run.turnUpdates.run(delivery.prompt, { ...options, onAccepted: acknowledge })
+          : await this.client.prompt(session.sessionId, delivery.prompt, options)
+        acknowledge()
         return assertCompletedAcpTurn(result, {
           signal,
           label: `${this.label} 协调 Session`,
@@ -1475,7 +1505,6 @@ export class AcpBackendAdapter {
       const prompt = buildAcpCoordinatorInstruction({
         ...work,
         objective,
-        includeStableInstructions: !this.coordinatorUsesMcpInstructions(),
       })
       const run = message => this.runCoordinator(message, {
         ownerId,

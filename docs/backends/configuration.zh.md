@@ -272,9 +272,9 @@ CODEX_BASE_URL=
 
 ## Claude Code
 
-Claude Code 通过 Zed 维护的
-[@zed-industries/claude-code-acp](https://github.com/zed-industries/claude-code-acp)
-接入。启动脚本优先使用已安装的 `claude-code-acp`；缺失时 CLI 可通过 `npx`
+Claude Code 通过
+[@agentclientprotocol/claude-agent-acp](https://github.com/agentclientprotocol/claude-agent-acp)
+接入，它是 Zed 已弃用的 `@zed-industries/claude-code-acp` 的后继维护版本。启动脚本优先使用已安装的 `claude-agent-acp`；缺失时 CLI 可通过 `npx`
 使用最新版本，桌面版提供“安装适配器”按钮，不重装已有的 Claude Code。
 Claude Code 本体仍需完成认证。
 
@@ -289,7 +289,7 @@ QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native
 
 ```dotenv
 CLAUDE_CODE_ACP_BIN=
-CLAUDE_CODE_ACP_PACKAGE=@zed-industries/claude-code-acp@0.16.2
+CLAUDE_CODE_ACP_PACKAGE=@agentclientprotocol/claude-agent-acp@0.93.0
 CLAUDE_CODE_ACP_RUNTIME=auto
 CLAUDE_WORKSPACE=
 CLAUDE_CODE_EXECUTABLE=

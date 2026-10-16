@@ -18,6 +18,8 @@
 
 - ACP 续接记录改为带版本的私有上下文，绑定协调会话及项目目标；旧版记录明确返回不兼容，不猜测迁移或自动重做。原生内部委派缺少可靠定向入口时不提供续接。
 
+- Claude Code 后台默认改用维护中的 `@agentclientprotocol/claude-agent-acp`（原 `@zed-industries/claude-code-acp` 已弃用）：用户拒绝权限后本轮正常结束，不再报 ACP 内部错误；并支持任务执行中的原生补充要求。已全局安装的旧版 `claude-code-acp` 不再自动使用，仍可通过 `CLAUDE_CODE_ACP_BIN` 指定。
+
 ## 2.0.1
 
 ### 修复与改进

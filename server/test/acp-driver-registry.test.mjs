@@ -12,6 +12,9 @@ import {
 import {
   backendRuntimeDriver,
 } from '../src/process/backend-drivers/registry.mjs'
+import {
+  COORDINATOR_PROMPT_REFRESH_INTERVAL,
+} from '../src/backend/adapters/acp/coordinator-instructions.mjs'
 
 const acpBackendNames = () => backendNames().filter(protocol => (
   backendDefinition(protocol)?.setup?.integration !== 'msp'
@@ -71,20 +74,32 @@ test('profile construction applies the immutable driver capability contract', ()
   assert.equal(Object.isFrozen(profile.capabilities), true)
 })
 
-test('enables MCP coordinator instructions only for verified Agent hosts', () => {
-  for (const protocol of ['opencode', 'qoder', 'qwen', 'claude']) {
+test('enables MCP coordinator instructions only for declared Agent hosts', () => {
+  for (const protocol of ['opencode', 'qoder', 'qwen', 'claude', 'codex']) {
     assert.equal(
       backendDriver(protocol).capabilities.coordinatorMcpInstructions,
       true,
     )
   }
   for (const protocol of acpBackendNames().filter(
-    value => !['opencode', 'qoder', 'qwen', 'claude'].includes(value),
+    value => !['opencode', 'qoder', 'qwen', 'claude', 'codex'].includes(value),
   )) {
     assert.equal(
       backendDriver(protocol).capabilities.coordinatorMcpInstructions,
       false,
     )
+  }
+})
+
+test('all ACP coordinators use a shared cadence without driver-specific refresh settings', () => {
+  assert.equal(COORDINATOR_PROMPT_REFRESH_INTERVAL, 20)
+  for (const protocol of acpBackendNames()) {
+    const profile = createBackendProfile(protocol, {
+      root: '/repo', directory: '/work', permissionMode: 'native',
+      baseUrl: 'http://127.0.0.1:3999',
+      cliPath: '/test-acp',
+    })
+    assert.equal(Object.hasOwn(profile, 'coordinatorPromptRefreshInterval'), false, protocol)
   }
 })
 

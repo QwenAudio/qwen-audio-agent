@@ -74,13 +74,16 @@ test('native promptRequired race resumes once after the prior prompt settles', a
 
 test('failed followup initialization does not falsely acknowledge delivery', async () => {
   const { updates, calls, client } = harness()
-  const done = updates.run('original')
+  let accepted = 0
+  const done = updates.run('original', { onAccepted: () => { accepted += 1 } })
   const receipt = updates.enqueue('adjust')
   client.cancelSession = async () => calls[0].resolve({ content: 'cancelled' })
   await tick()
+  assert.equal(accepted, 1, 'the original prompt was accepted even though its result was superseded')
   calls[1].reject(new Error('followup rejected'))
   await assert.rejects(receipt.completion, /followup rejected/u)
   await assert.rejects(done, /followup rejected/u)
+  assert.equal(accepted, 1, 'a rejected followup does not acknowledge another delivery')
 })
 
 test('Agent pull drains ordered content only at the Agent loop boundary', async () => {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { AcpBackendAdapter } from '../src/backend/adapters/acp/backend-adapter.mjs'
+import { COORDINATOR_STABLE_INSTRUCTIONS } from '../src/backend/adapters/acp/coordinator-instructions.mjs'
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
 const work = (id, extra = {}) => ({ id, ownerId: 'owner', objective: `work ${id}`, ...extra })
@@ -78,6 +79,52 @@ function harness(options = {}) {
   return { backend, client, calls, sessions, registrations, steering, cancellations, finish, submit }
 }
 
+test('Codex native steering does not advance the periodic coordinator rule counter', async t => {
+  const h = harness({ protocol: 'codex', profile: undefined })
+  t.after(() => h.backend.close())
+  h.backend.registry.set('codex:owner:backend', {
+    sessionId: 'saved-coordinator', cwd: '/project', contractVersion: 8,
+    coordinatorPromptTurns: 19,
+  })
+  const a = h.submit('a')
+  await tick()
+  assert.ok(!JSON.stringify(h.calls[0].prompt).includes('Project Session routing:'))
+  await h.backend.update('a', { instruction: 'change the requirement' }, { ownerId: 'owner' }).completion
+  assert.equal(h.calls.length, 1)
+  assert.equal(h.steering.length, 1)
+  assert.ok(!JSON.stringify(h.steering[0].prompt).includes('Project Session routing:'))
+  h.finish(0)
+  await a
+  assert.equal(h.backend.registry.get('codex:owner:backend').coordinatorPromptTurns, 20)
+
+  const b = h.submit('b')
+  await tick()
+  assert.ok(h.calls[1].prompt.includes(COORDINATOR_STABLE_INSTRUCTIONS))
+  h.finish(1)
+  await b
+  assert.equal(h.backend.registry.get('codex:owner:backend').coordinatorPromptTurns, 21)
+})
+
+test('Codex counts a coordinator round once when its restart fails after the original response', async t => {
+  const h = harness({ protocol: 'codex', profile: undefined })
+  t.after(() => h.backend.close())
+  h.client.steeringMode = () => 'restart'
+  h.client.cancelSession = async () => h.calls[0].gate.resolve({
+    content: 'stopped', response: { stopReason: 'cancelled' },
+  })
+  const a = h.submit('a')
+  await tick()
+  const receipt = h.backend.update('a', { instruction: 'adjust' }, { ownerId: 'owner' })
+  await tick()
+  assert.equal(h.calls.length, 2)
+  assert.equal(h.backend.registry.get('codex:owner:backend').coordinatorPromptTurns, 1)
+  assert.ok(!JSON.stringify(h.calls[1].prompt).includes('Project Session routing:'))
+  h.calls[1].gate.reject(new Error('followup unavailable'))
+  await assert.rejects(a, /followup unavailable/)
+  await assert.rejects(receipt.completion, /followup unavailable/)
+  assert.equal(h.backend.registry.get('codex:owner:backend').coordinatorPromptTurns, 1)
+})
+
 test('submissions serialize through one coordinator Session and refresh its MCP context', async t => {
   const h = harness()
   t.after(() => h.backend.close())
@@ -92,6 +139,7 @@ test('submissions serialize through one coordinator Session and refresh its MCP 
   h.finish(0, 'first result')
   const first = await a
   await tick()
+  assert.equal(h.backend.registry.get('acp:owner:backend').coordinatorPromptTurns, 1)
   assert.equal(h.calls.length, 2)
   assert.equal(h.calls[1].sessionId, h.calls[0].sessionId)
   assert.equal(h.sessions.size, 1)
@@ -101,8 +149,12 @@ test('submissions serialize through one coordinator Session and refresh its MCP 
   assert.throws(() => oldContext.startSession({ prompt: 'stale request' }), /已失效/)
   h.calls[0].input.onUpdate({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'late' } })
   assert.equal(events.length, 0)
+  assert.equal(h.backend.registry.get('acp:owner:backend').coordinatorPromptTurns, 1)
   h.finish(1, 'second result')
   const second = await b
+  assert.equal(h.backend.registry.get('acp:owner:backend').coordinatorPromptTurns, 2)
+  assert.ok(h.calls[0].prompt.includes(COORDINATOR_STABLE_INSTRUCTIONS))
+  assert.ok(!h.calls[1].prompt.includes(COORDINATOR_STABLE_INSTRUCTIONS))
   assert.equal(first.content, 'first result')
   assert.equal(second.content, 'second result')
   assert.deepEqual(second.continuation, first.continuation)

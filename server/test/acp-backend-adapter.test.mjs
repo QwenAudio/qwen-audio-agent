@@ -344,6 +344,7 @@ test('reports backend status without starting the ACP process', () => {
 
 test('retries an empty ACP coordinator response in a fresh Session', async () => {
   const prompts = []
+  const instructions = []
   let nextSession = 0
   const client = {
     async newSession(options) {
@@ -353,8 +354,9 @@ test('retries an empty ACP coordinator response in a fresh Session', async () =>
         response: {},
       }
     },
-    async prompt(sessionId) {
+    async prompt(sessionId, prompt) {
       prompts.push(sessionId)
+      instructions.push(prompt)
       return {
         content: prompts.length === 1 ? '' : completed('新 Session 已恢复'),
         response: { stopReason: 'end_turn' },
@@ -375,6 +377,8 @@ test('retries an empty ACP coordinator response in a fresh Session', async () =>
   })
 
   assert.deepEqual(prompts, ['coordinator-1', 'coordinator-2'])
+  assert.ok(instructions.every(prompt => prompt.includes(adapter.stableCoordinatorInstructions())))
+  assert.equal(adapter.registry.get('openclaw:owner-one:backend').coordinatorPromptTurns, 1)
   assert.equal(
     result.content,
     '新 Session 已恢复',
@@ -384,6 +388,7 @@ test('retries an empty ACP coordinator response in a fresh Session', async () =>
 
 test('retries an OpenClaw reply initialization conflict in the same Session', async () => {
   const prompts = []
+  const instructions = []
   let nextSession = 0
   const client = {
     async newSession(options) {
@@ -393,8 +398,9 @@ test('retries an OpenClaw reply initialization conflict in the same Session', as
         response: {},
       }
     },
-    async prompt(sessionId) {
+    async prompt(sessionId, prompt) {
       prompts.push(sessionId)
+      instructions.push(prompt)
       if (prompts.length === 1) {
         const error = new Error(
           'OpenClaw ACP session/prompt 失败：Internal error',
@@ -422,6 +428,9 @@ test('retries an OpenClaw reply initialization conflict in the same Session', as
   })
 
   assert.deepEqual(prompts, ['coordinator-1', 'coordinator-1'])
+  assert.equal(instructions[0], instructions[1])
+  assert.ok(instructions[0].includes(adapter.stableCoordinatorInstructions()))
+  assert.equal(adapter.registry.get('openclaw:owner-one:backend').coordinatorPromptTurns, 1)
   assert.equal(nextSession, 1)
   assert.equal(
     result.content,
@@ -468,6 +477,7 @@ test('does not replay an OpenClaw conflict after response activity', async () =>
     /reply session initialization conflicted/,
   )
   assert.equal(prompts, 1)
+  assert.equal(adapter.registry.get('openclaw:owner-one:backend').coordinatorPromptTurns, 1)
   await adapter.close()
 })
 
@@ -1083,6 +1093,7 @@ test('restores a coordinator only after its ACP connection generation changes', 
   const tools = fakeToolServer()
   let newSessions = 0
   const resumes = []
+  const prompts = []
   const client = {
     connectionGeneration: 1,
     async newSession(options) {
@@ -1093,7 +1104,10 @@ test('restores a coordinator only after its ACP connection generation changes', 
       resumes.push(options)
       return { sessionId, cwd: options.cwd, response: {}, connectionGeneration: this.connectionGeneration }
     },
-    async prompt() { return { content: 'ok', response: { stopReason: 'end_turn' } } },
+    async prompt(_sessionId, prompt) {
+      prompts.push(prompt)
+      return { content: 'ok', response: { stopReason: 'end_turn' } }
+    },
     async close() {},
   }
   const adapter = new AcpBackendAdapter({ protocol: 'deepseek', directory: '/coordinator', client, sessionToolServer: tools, builtinMcp: [] })
@@ -1106,10 +1120,12 @@ test('restores a coordinator only after its ACP connection generation changes', 
     assert.equal(resumes.length, 1)
     assert.equal(resumes[0].mcpServers.length, 1)
     assert.equal(tools.registerCalls, 1)
+    assert.deepEqual(prompts.map(prompt => prompt.includes(adapter.stableCoordinatorInstructions())), [true, false, false, false])
+    assert.equal(adapter.registry.get('deepseek:owner:backend').coordinatorPromptTurns, 4)
   } finally { await adapter.close() }
 })
 
-test('moves stable coordinator rules into MCP instructions for verified backends', async () => {
+test('shares stable coordinator rules between MCP instructions and the initial prompt', async () => {
   const tools = fakeToolServer()
   const prompts = []
   const client = {
@@ -1143,8 +1159,8 @@ test('moves stable coordinator rules into MCP instructions for verified backends
   assert.equal(adapter.coordinatorUsesMcpInstructions(), true)
   assert.match(tools.registerOptions[0].instructions, /Session routing:/)
   assert.ok(tools.registerOptions[0].instructions.includes(COORDINATOR_STABLE_INSTRUCTIONS))
-  assert.doesNotMatch(prompts[0], /Session routing:/)
-  assert.ok(!prompts[0].includes(COORDINATOR_STABLE_INSTRUCTIONS))
+  assert.match(prompts[0], /^<qwen_audio_agent_backend_profile>/)
+  assert.ok(prompts[0].includes(COORDINATOR_STABLE_INSTRUCTIONS))
   assert.match(prompts[0], /dynamic/)
   await adapter.close()
 })
@@ -1202,27 +1218,29 @@ for (const restored of [false, true]) {
     assert.deepEqual(sessionCalls[0].options.mcpServers, [tools.registrations[0].descriptor])
     assert.equal(tools.registerCalls, 1)
     assert.equal(tools.updateCalls, 1)
-    assert.equal(tools.registerOptions[0].instructions.split(COORDINATOR_STABLE_INSTRUCTIONS).length, 2)
+    assert.equal(tools.registerOptions[0].instructions, COORDINATOR_STABLE_INSTRUCTIONS)
     for (const name of ['listSessions', 'startSession', 'sendSession', 'sessionStatus', 'cancelSession']) {
       assert.equal(typeof tools.registrations[0].context[name], 'function')
     }
     assert.equal(prompts.length, 2)
     for (const [index, { sessionId, prompt }] of prompts.entries()) {
       assert.equal(sessionId, 'coordinator-session')
-      assert.ok(!prompt.includes(COORDINATOR_STABLE_INSTRUCTIONS))
+      assert.equal(prompt.includes(COORDINATOR_STABLE_INSTRUCTIONS), index === 0)
       assert.ok(prompt.includes(`${index === 0 ? 'first' : 'second'} user request`))
     }
   })
 }
 
-for (const action of ['start', 'send']) {
-  test(`Qwen ${action === 'start' ? 'new' : 'resumed'} project Session does not inherit coordinator-only rules or tools`, async t => {
+for (const { protocol, action } of ['qwen', 'codex'].flatMap(protocol => (
+  ['start', 'send'].map(action => ({ protocol, action }))
+))) {
+  test(`${protocol} ${action === 'start' ? 'new' : 'resumed'} project Session does not inherit coordinator-only rules or tools`, async t => {
     const client = fakeAcpClient({ action })
     const tools = fakeToolServer()
     client.bind(tools)
     const builtin = { type: 'http', name: 'project-tool', url: 'http://127.0.0.1/project-mcp', headers: [] }
     const adapter = new AcpBackendAdapter({
-      protocol: 'qwen',
+      protocol,
       directory: '/coordinator',
       client,
       sessionToolServer: tools,
@@ -1234,7 +1252,7 @@ for (const action of ['start', 'send']) {
     await adapter.submit({ id: 'work-one', ownerId: 'owner-one', objective: 'implement the project' })
 
     const coordinator = client.calls.find(call => call[0] === 'prompt' && call[1] === 'coordinator-session')
-    assert.ok(!coordinator[2].includes(COORDINATOR_STABLE_INSTRUCTIONS))
+    assert.ok(coordinator[2].includes(COORDINATOR_STABLE_INSTRUCTIONS))
     const projectId = action === 'start' ? 'project-1' : 'previous-session'
     const projectPrompts = client.calls.filter(call => call[0] === 'prompt' && call[1] === projectId)
     assert.equal(projectPrompts.length, 1)
@@ -1244,7 +1262,7 @@ for (const action of ['start', 'send']) {
       : client.calls.find(call => call[0] === 'resume' && call[1] === projectId)[2]
     assert.deepEqual(projectOptions.mcpServers, [builtin])
     assert.equal(tools.registerCalls, 1)
-    assert.equal(tools.registerOptions[0].instructions.split(COORDINATOR_STABLE_INSTRUCTIONS).length, 2)
+    assert.equal(tools.registerOptions[0].instructions, COORDINATOR_STABLE_INSTRUCTIONS)
   })
 }
 

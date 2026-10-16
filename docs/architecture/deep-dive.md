@@ -375,16 +375,26 @@ opaque delegation ID. The coordinator can dispatch several independent Sessions,
 ends its turn without polling, repeating work, or claiming completion. The adapter owns
 waiting, cancellation, permission routing, and result correlation.
 
-The coordinator MCP server also publishes the stable coordination contract
-through the MCP initialization `instructions` field. Backends whose drivers
-declare `coordinatorMcpInstructions` receive only the dynamic natural task
-instruction on each turn; this avoids appending the same routing and response
-rules to the persistent Session history. The capability is currently enabled for OpenCode,
-Qoder, Qwen Code, and Claude Code. The shared payload stays within a 2 KiB portability
-budget. Agents without this capability—or a future payload that exceeds that budget—keep
-the complete per-turn prompt as a safe
-fallback. This flag does not describe general MCP support. Project Sessions
-never receive the coordinator MCP server.
+All ACP coordinator Sessions prefix their prompts with the full stable instructions on
+rounds 1, 21, 41, and so on; other rounds carry the dynamic task instruction without that
+prefix. Accepted logical rounds are counted per Session and persisted across restarts.
+Execution, update routing, and result synthesis count; internal tool iterations, steering
+within a round, and restarts do not. Older Sessions without a count receive the prefix on
+their next accepted round. The interval of 20 is a global internal constant, not a user
+setting. Refreshes neither recreate Sessions nor change contract versions.
+
+The common rules and backend-specific notes have one source, shared by the periodic
+prefix and the optional MCP initialization response's `instructions` field. Backends
+without delegation omit project-routing rules. MCP instructions are published only when
+the driver declares `coordinatorMcpInstructions` and the payload fits the 2 KiB portability
+budget; the capability is currently enabled for OpenCode, Qoder, Qwen Code, Claude Code,
+and Codex. Other backends, or payloads exceeding that budget, use the same periodic prefix,
+not a full per-round fallback. This flag does not control general MCP support or tool
+availability. Project and isolated Sessions are unchanged and receive neither the
+coordinator MCP server nor these refreshes.
+
+This is a periodic reminder, not detection of backend context compaction or a guarantee
+that rules survive it. Token savings have not been established.
 
 `session_status` is observational only. If the query fails, the backend Agent
 must report the failure; it must not inspect the target directory with native

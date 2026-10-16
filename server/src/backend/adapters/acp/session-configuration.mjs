@@ -1,8 +1,4 @@
 import { AgentError } from '../../agent-error.mjs'
-import {
-  COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES,
-  COORDINATOR_STABLE_INSTRUCTIONS,
-} from './coordinator-instructions.mjs'
 
 function clean(value) {
   return String(value || '').trim()
@@ -46,19 +42,6 @@ function modelConfigOption(options = []) {
 export function normalizeAcpModel(value) {
   const model = clean(value)
   return model.toLowerCase() === 'auto' ? '' : model
-}
-
-export function stableCoordinatorInstructions(profile) {
-  return [
-    COORDINATOR_STABLE_INSTRUCTIONS,
-    clean(profile.sessionInstructions),
-  ].filter(Boolean).join('\n\n')
-}
-
-export function coordinatorUsesMcpInstructions(profile) {
-  return profile.coordinatorMcpInstructions === true
-    && Buffer.byteLength(stableCoordinatorInstructions(profile), 'utf8')
-      <= COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES
 }
 
 export function coordinatorMeta(profile, ownerId, options = {}) {

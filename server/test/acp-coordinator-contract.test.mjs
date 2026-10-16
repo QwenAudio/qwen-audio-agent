@@ -4,7 +4,10 @@ import { buildAcpCoordinatorInstruction } from '../src/backend/adapters/acp/coor
 import {
   COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES,
   COORDINATOR_STABLE_INSTRUCTIONS,
+  coordinatorUsesMcpInstructions,
+  stableCoordinatorInstructions,
 } from '../src/backend/adapters/acp/coordinator-instructions.mjs'
+import { createBackendProfile } from '../src/backend/adapters/acp/drivers/registry.mjs'
 
 test('projects Gateway Work into one natural ACP task instruction', () => {
   const prompt = buildAcpCoordinatorInstruction({
@@ -24,8 +27,8 @@ test('projects Gateway Work into one natural ACP task instruction', () => {
     }],
   })
 
-  assert.match(prompt, /^继续修改此前讨论的首页/u)
-  assert.match(prompt, /Use a project Session for work with a distinct goal that benefits from sustained, independent execution/u)
+  assert.equal(prompt, '继续修改此前讨论的首页')
+  assert.doesNotMatch(prompt, /Project Session routing:|Use a project Session/u)
   assert.doesNotMatch(prompt, /qwen_audio_agent_request|coordination\.v2/u)
   assert.doesNotMatch(prompt, /task_7|owner-one/u)
   assert.doesNotMatch(prompt, /继续改刚才那个页面|current-project|Asia\/Shanghai/u)
@@ -33,11 +36,10 @@ test('projects Gateway Work into one natural ACP task instruction', () => {
   assert.doesNotMatch(prompt, /"(?:request_id|task_id|work_id)"/u)
 })
 
-test('sends only the dynamic natural instruction when MCP supplies stable rules', () => {
+test('always projects only the dynamic natural instruction', () => {
   const prompt = buildAcpCoordinatorInstruction({
     originalRequest: '查询内存',
     objective: '查询当前电脑的真实内存容量',
-    includeStableInstructions: false,
   })
 
   assert.equal(prompt, '查询当前电脑的真实内存容量')
@@ -56,7 +58,6 @@ test('keeps frontend memory, history, and attachment metadata out of model text'
       filename: 'reference.png',
       url: 'data:image/png;base64,aGVsbG8=',
     }],
-    includeStableInstructions: false,
   })
 
   assert.match(prompt, /分析用户直接附带的参考图片/u)
@@ -102,4 +103,47 @@ test('coordinator preserves continuity and releases its turn after delegating', 
   assert.match(COORDINATOR_STABLE_INSTRUCTIONS, /After a start or continue action succeeds, end the turn without querying, repeating, or claiming completion/u)
   assert.match(COORDINATOR_STABLE_INSTRUCTIONS, /Updates continue the referenced work using its history and completed actions/u)
   assert.match(COORDINATOR_STABLE_INSTRUCTIONS, /Recent conversation is reference context, not additional work/u)
+})
+
+for (const protocol of ['pi', 'deepseek']) {
+  test(`${protocol} coordinator retains shared safety and driver notes without unsupported project routing`, () => {
+    const profile = createBackendProfile(protocol, {
+      root: '/repo', directory: '/work', permissionMode: 'native',
+    })
+    const instructions = stableCoordinatorInstructions(profile)
+    assert.equal(profile.delegation, false)
+    assert.ok(instructions.includes(profile.sessionInstructions))
+    assert.match(instructions, /Use available capabilities and preserve requested action level/u)
+    assert.match(instructions, /Do not modify qwen-audio-agent unless explicitly requested/u)
+    assert.match(instructions, /Recent conversation is reference context, not additional work/u)
+    assert.match(instructions, /ordinary text and any supported ACP ContentBlocks/u)
+    assert.doesNotMatch(instructions, /Project Session routing:|Use a project Session|After a start or continue action succeeds/u)
+  })
+}
+
+test('OpenClaw retains the shared project routing and its native Session tool notes', () => {
+  const profile = createBackendProfile('openclaw', {
+    root: '/repo', directory: '/work', baseUrl: 'http://127.0.0.1:3999',
+  })
+  const instructions = stableCoordinatorInstructions(profile)
+  assert.ok(instructions.includes(COORDINATOR_STABLE_INSTRUCTIONS))
+  assert.ok(instructions.includes(profile.sessionInstructions))
+  assert.equal(coordinatorUsesMcpInstructions(profile), false)
+})
+
+test('MCP instruction eligibility requires explicit support and the full UTF-8 payload to fit', () => {
+  const profile = { delegation: true, externalMcp: true, coordinatorMcpInstructions: true }
+  const available = COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES
+    - Buffer.byteLength(stableCoordinatorInstructions(profile), 'utf8') - 2
+  assert.ok(available > 0)
+  const sessionInstructions = '规'.repeat(Math.floor(available / 3)) + 'x'.repeat(available % 3)
+  const atLimit = { ...profile, sessionInstructions }
+  assert.equal(Buffer.byteLength(stableCoordinatorInstructions(atLimit), 'utf8'),
+    COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES)
+  assert.equal(coordinatorUsesMcpInstructions(atLimit), true)
+  assert.equal(coordinatorUsesMcpInstructions({ ...atLimit, sessionInstructions: `${sessionInstructions}x` }), false)
+  assert.equal(coordinatorUsesMcpInstructions({ ...profile, coordinatorMcpInstructions: false }), false)
+  assert.equal(coordinatorUsesMcpInstructions({ ...profile, externalMcp: false }), false)
+  assert.equal(coordinatorUsesMcpInstructions({ delegation: true }), false)
+  assert.equal(coordinatorUsesMcpInstructions({ ...profile, coordinatorMcpInstructions: 'true' }), false)
 })

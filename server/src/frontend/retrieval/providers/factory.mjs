@@ -11,7 +11,12 @@ export function createWebSearchProvider(config, options = {}) {
   if (provider === 'so360') {
     return new So360WebSearchProvider(options)
   }
-  if (provider === 'mcp' || provider === 'bailian' || provider === 'keenable') {
+  if (
+    provider === 'mcp'
+    || provider === 'bailian'
+    || provider === 'keenable'
+    || provider === 'parallel'
+  ) {
     return new McpWebSearchProvider({
       url: config.webSearchMcpUrl,
       token: config.webSearchMcpToken,
@@ -31,6 +36,9 @@ export function createWebSearchProvider(config, options = {}) {
             // the 1200-character citation bound.
             toolArguments: { output_format: 'json', snippet_max_length: 1200 },
           }
+        : {}),
+      ...(provider === 'parallel'
+        ? { key: 'parallel-mcp', label: 'Parallel Web Search MCP' }
         : {}),
       ...options,
     })

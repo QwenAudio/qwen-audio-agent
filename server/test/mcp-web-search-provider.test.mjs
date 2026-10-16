@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { PACKAGE_VERSION } from '../src/core/package-version.mjs'
 import {
   McpWebSearchProvider,
 } from '../src/frontend/retrieval/providers/mcp.mjs'
@@ -200,7 +201,11 @@ test('projects the keyless Keenable Web Search MCP JSON response', async () => {
     transports[0].url.href,
     'https://api.keenable.ai/mcp?keenable_title=qwen-audio-agent',
   )
-  assert.equal(transports[0].options.requestInit, undefined)
+  // Keyless: the shared User-Agent is the only header, so no Authorization and
+  // no credentials saved for another MCP service reach Keenable.
+  assert.deepEqual(transports[0].options.requestInit.headers, {
+    'User-Agent': `qwen-audio-agent/${PACKAGE_VERSION}`,
+  })
   assert.deepEqual(calls.find(call => call[0] === 'callTool')[1], {
     name: 'search_web_pages',
     arguments: {

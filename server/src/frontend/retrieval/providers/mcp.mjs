@@ -5,7 +5,9 @@ import {
 import { PACKAGE_VERSION } from '../../../core/package-version.mjs'
 import { listMcpTools } from '../../mcp-tool-discovery.mjs'
 
-const MAX_TOOL_TEXT_LENGTH = 24_000
+// Search MCP responses can contain ~25,000 excerpt characters plus metadata.
+// Keep JSON intact before the runtime bounds individual snippets and citations.
+const MAX_TOOL_TEXT_LENGTH = 64 * 1024
 const QUERY_FIELDS = ['query', 'q', 'search_query']
 const LIMIT_FIELDS = ['limit', 'count', 'top_k', 'max_results']
 const RESULT_KEYS = [
@@ -90,7 +92,8 @@ function projectResult(item) {
   const url = clean(item.url || item.link || item.href)
   if (!url) return null
   const snippet = clean(
-    item.snippet || item.description || item.content || item.text,
+    item.snippet || item.description || item.content || item.text
+    || (Array.isArray(item.excerpts) ? item.excerpts.join('\n') : ''),
   )
   const source = clean(
     item.source
@@ -100,7 +103,8 @@ function projectResult(item) {
     || item.domain,
   )
   const publishedAt = clean(
-    item.publishedAt || item.published_at || item.published_date || item.date,
+    item.publishedAt || item.published_at || item.published_date
+    || item.publish_date || item.date,
   )
   return {
     title: clean(item.title || item.name),
@@ -157,7 +161,10 @@ function normalizeToolResult(result) {
 function callArguments(tool, query, limit) {
   const properties = tool?.inputSchema?.properties || {}
   const queryField = QUERY_FIELDS.find(field => field in properties) || 'query'
-  const args = { [queryField]: query }
+  // Preserve the frontend's single-query contract without another model call.
+  const args = 'objective' in properties && 'search_queries' in properties
+    ? { objective: query, search_queries: [query] }
+    : { [queryField]: query }
   const limitField = LIMIT_FIELDS.find(field => field in properties)
   if (limitField) args[limitField] = limit
   return args
@@ -225,11 +232,12 @@ export class McpWebSearchProvider {
     const boundedLimit = Math.max(1, Math.min(8, Math.trunc(Number(limit) || 5)))
     const url = validateEndpoint(this.url, { hasToken: Boolean(this.token) })
     const client = this.clientFactory()
-    const headers = this.token
-      ? { authorization: `Bearer ${this.token}` }
-      : undefined
+    const headers = {
+      'User-Agent': `qwen-audio-agent/${PACKAGE_VERSION}`,
+      ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
+    }
     const transport = this.transportFactory(url, {
-      ...(headers ? { requestInit: { headers } } : {}),
+      requestInit: { headers },
     })
     try {
       await client.connect(transport, { signal })

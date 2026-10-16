@@ -10,6 +10,20 @@
 Adapter，只解析一次公开搜索结果页。该基础兜底属于实验性实现，可能被拦截、结果质量
 不稳定或受上游变化影响；稳定使用时应配置自己的 Provider。
 
+如需返回来源摘录的托管搜索服务，可显式选择
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp)：
+
+```dotenv
+QWEN_AUDIO_WEB_SEARCH_PROVIDER=parallel
+```
+
+此预设通过 Streamable HTTP 连接 `https://search.parallel.ai/mcp`，无需账号或 API Key。
+匿名搜索使用 Fast 模式，受服务调用频率限制。搜索词会发送给 Parallel，返回的摘录和
+来源链接会进入语音模型上下文。预设忽略自定义 MCP 地址、Token 和工具名，避免把为其他
+服务保存的凭据发送给 Parallel。如需使用 Parallel API Key 或其他地址，请选择 `mcp`
+并显式配置地址与 Token。语音与模型服务的费用独立计算。默认 360 Provider 不变；
+设置 `QWEN_AUDIO_WEB_SEARCH_PROVIDER=so360` 即可切回。
+
 在百炼开通联网搜索 MCP 后，需要显式选择内置预设；此时会复用
 `DASHSCOPE_API_KEY`：
 
@@ -27,7 +41,7 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN=your-token
 QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 ```
 
-可选 `so360`（默认）、`bing`、`bailian`、`mcp` 或 `none`。设置 `none` 只关闭搜索，网页读取工具仍可用；同时关闭搜索和网页读取时设置：
+可选 `so360`（默认）、`bing`、`bailian`、`parallel`、`mcp` 或 `none`。设置 `none` 只关闭搜索，网页读取工具仍可用；同时关闭搜索和网页读取时设置：
 
 ```dotenv
 QWEN_AUDIO_WEB_TOOLS_ENABLED=false

@@ -13,6 +13,23 @@ public search results page. This basic
 fallback is experimental: it may be blocked, return weak results, or break
 with upstream changes. Configure your own provider for reliable search.
 
+For an optional hosted search service with source excerpts, select
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp):
+
+```dotenv
+QWEN_AUDIO_WEB_SEARCH_PROVIDER=parallel
+```
+
+This preset uses Streamable HTTP at `https://search.parallel.ai/mcp` with no
+account or API key. Anonymous searches use Fast mode and have service rate
+limits. Search queries are sent to Parallel, and returned excerpts and source
+links enter the voice model's context. The preset ignores custom MCP endpoint,
+token, and tool overrides, so credentials saved for another service are not sent
+to Parallel. To use a Parallel API key or a different endpoint, choose `mcp`
+and configure its URL and token explicitly. Voice/model service costs are separate.
+The default 360 provider remains unchanged; switch back with
+`QWEN_AUDIO_WEB_SEARCH_PROVIDER=so360`.
+
 After enabling Model Studio's Web Search MCP service, select its built-in preset
 explicitly; it then reuses `DASHSCOPE_API_KEY`:
 
@@ -30,7 +47,7 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN=your-token
 QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 ```
 
-Choose `so360` (default), `bing`, `bailian`, `mcp`, or `none`. Setting `none` disables search, not page fetching. Disable both search and page fetching with:
+Choose `so360` (default), `bing`, `bailian`, `parallel`, `mcp`, or `none`. Setting `none` disables search, not page fetching. Disable both search and page fetching with:
 
 ```dotenv
 QWEN_AUDIO_WEB_TOOLS_ENABLED=false

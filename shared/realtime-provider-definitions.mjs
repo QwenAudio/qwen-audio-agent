@@ -3,6 +3,7 @@
 import {
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
   DEFAULT_GPT_LIVE_REALTIME_MODEL,
+  DEFAULT_GPT_LIVE_1_REALTIME_MODEL,
   DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
   DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL,
   DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE,
@@ -16,6 +17,7 @@ export const DEFAULT_STEPFUN_REALTIME_URL = 'wss://api.stepfun.com/v1/realtime'
 export const DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL = 'ws://127.0.0.1:8765/v1/realtime'
 export const DEFAULT_MINICPM_O_REALTIME_URL = 'ws://127.0.0.1:8006/v1/realtime?mode=audio'
 export const DEFAULT_GPT_LIVE_REALTIME_URL = 'wss://api.openai.com/v1/realtime'
+export const DEFAULT_GPT_LIVE_1_REALTIME_URL = 'wss://api.openai.com/v1/live/sessions'
 export const DEFAULT_GOOGLE_LIVE_REALTIME_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent'
 export const DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_URL = 'wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue'
 
@@ -89,6 +91,24 @@ export const REALTIME_PROVIDERS = Object.freeze([
         slot: 'voice', placeholder: '留空使用服务默认音色' },
       { key: 'gptLiveRealtimeUrl', environment: ['GPT_LIVE_REALTIME_URL', 'OPENAI_REALTIME_URL'],
         slot: 'endpoint', default: DEFAULT_GPT_LIVE_REALTIME_URL },
+    ],
+  }),
+  defineProvider({
+    key: 'gpt-live-1', label: 'GPT-Live 1', aliases: ['gptlive1', 'openai-live'],
+    description: 'GPT-Live 1 · OpenAI Live API（全双工）',
+    requiredConfiguration: { field: 'gptLive1ApiKey', key: 'GPT_LIVE_1_API_KEY' },
+    settings: [
+      // A dedicated key wins over OPENAI_API_KEY so an internal gateway key can
+      // be supplied without disturbing a plain OpenAI configuration.
+      { key: 'gptLive1ApiKey', environment: ['GPT_LIVE_1_API_KEY', 'OPENAI_API_KEY'],
+        slot: 'credential', placeholder: 'sk-…',
+        helpUrl: 'https://platform.openai.com/api-keys' },
+      { key: 'gptLive1RealtimeModel', environment: ['GPT_LIVE_1_REALTIME_MODEL'],
+        slot: 'model', default: DEFAULT_GPT_LIVE_1_REALTIME_MODEL },
+      { key: 'gptLive1RealtimeVoice', environment: ['GPT_LIVE_1_REALTIME_VOICE'],
+        slot: 'voice', placeholder: '留空使用服务默认音色（marin）' },
+      { key: 'gptLive1RealtimeUrl', environment: ['GPT_LIVE_1_REALTIME_URL', 'OPENAI_LIVE_URL'],
+        slot: 'endpoint', default: DEFAULT_GPT_LIVE_1_REALTIME_URL },
     ],
   }),
   defineProvider({

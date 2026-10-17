@@ -41,6 +41,8 @@ const CAPABILITY_FLAGS = [
   'clientResponses',
   'mutableSession',
   'imageRequiresAudioStart',
+  'concurrentVoicePlayback',
+  'transcriptTrailsAudio',
 ]
 
 const MODEL_CAPABILITY_FLAGS = [

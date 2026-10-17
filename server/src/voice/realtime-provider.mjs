@@ -105,6 +105,12 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   mutableSession: true,
   // Requires an audio timeline before accepting the first visual frame.
   imageRequiresAudioStart: false,
+  // The voice layer speaks while the backend works (e.g. GPT-Live 1): playback
+  // responses do not gate gateway-initiated responses.
+  concurrentVoicePlayback: false,
+  // The output transcript trails the audio, so an interrupted caption keeps
+  // filling until the model stops.
+  transcriptTrailsAudio: false,
 })
 const DEFAULT_RESPONSE_CANCEL_GRACE_MS = 1_000
 
@@ -129,6 +135,12 @@ export class RealtimeFrontend {
       provider.createProtocol?.({
         connectionId: this.connectionId,
         provider,
+        // Protocol hook: a synthetic provider event, e.g. closing a full-duplex
+        // output segment on silence; it flows through normalizeIncoming.
+        emit: event => this.emitProviderEvent(event),
+        // Protocol hook: a wire event of its own, e.g. re-sending a rejected tool
+        // result; correlate: false keeps it off the pending Gateway request.
+        send: (payload, options) => this.send(payload, options),
       }) ?? provider.protocol,
       provider.key || provider.label,
     )
@@ -150,6 +162,8 @@ export class RealtimeFrontend {
     this.restoringContext = false
     this.audioInputStarted = false
     this.activeResponses = new Set()
+    // Subset of activeResponses that is voice playback only (concurrentVoicePlayback).
+    this.playbackResponses = new Set()
     this.pendingResponses = []
     this.retryingResponses = new Set()
     this.responseWaiters = new Map()
@@ -284,6 +298,15 @@ export class RealtimeFrontend {
         }
       })
     })
+  }
+
+  emitProviderEvent(providerEvent) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    try {
+      this.handleProviderEvent(providerEvent)
+    } catch (error) {
+      this.onError?.(error)
+    }
   }
 
   handleProviderEvent(providerEvent, { onSessionReady, onSessionError } = {}) {
@@ -716,6 +739,13 @@ export class RealtimeFrontend {
   }
 
   cancel() {
+    if (this.capabilities.concurrentVoicePlayback) {
+      // User speech interrupts playback only: backend responses, and the
+      // Gateway requests waiting on them, keep running as they do on the service.
+      this.protocol.responseCancel()
+      this.resolveIdle()
+      return
+    }
     this.responseQueueGeneration += 1
     const cancelledResponseIds = [...this.activeResponses]
     const hasResponse = cancelledResponseIds.length
@@ -744,6 +774,7 @@ export class RealtimeFrontend {
     const recoveryTimer = setTimeout(() => {
       for (const responseId of cancelledResponseIds) {
         this.activeResponses.delete(responseId)
+        this.playbackResponses.delete(responseId)
         this.responseWaiters.delete(responseId)
       }
       this.resolveIdle()
@@ -868,6 +899,7 @@ export class RealtimeFrontend {
       // This acknowledges cancellation; it must not reject an unrelated item.
       if (this.responseSlot.phase === 'cancelling') {
         this.activeResponses.clear()
+        this.playbackResponses.clear()
         this.responseWaiters.clear()
         this.responseSlot.release()
         this.resolveIdle()
@@ -944,7 +976,9 @@ export class RealtimeFrontend {
         if (index >= 0) {
           pending = this.pendingResponses.splice(index, 1)[0]
         }
-      } else {
+      } else if (!(this.capabilities.concurrentVoicePlayback && event.__voiceAutomatic)) {
+        // A full-duplex frontend's own speech never answers a queued Gateway
+        // request; that answer arrives as the backend response.
         const index = this.pendingResponses.findIndex(item => item.responseRequested)
         if (index >= 0) pending = this.pendingResponses.splice(index, 1)[0]
       }
@@ -954,6 +988,9 @@ export class RealtimeFrontend {
       if (pending?.isCurrent?.() === false) event.__voiceContext = { ...pending.context, suppressed: true }
       if (id) {
         this.activeResponses.add(id)
+        if (this.capabilities.concurrentVoicePlayback && event.__voicePlayback) {
+          this.playbackResponses.add(id)
+        }
         if (pending) {
           this.responseWaiters.set(id, pending)
           pending.responseStartedAt = Date.now()
@@ -978,9 +1015,11 @@ export class RealtimeFrontend {
       ) {
         pending = this.pendingResponses.shift()
       }
+      // Only id-less errors fall back to the sole waiter: a protocol may give an
+      // unrelated command error its own id so it settles nothing.
       if (
         event.type === 'error'
-        && !pending && this.responseWaiters.size === 1
+        && !pending && !id && this.responseWaiters.size === 1
       ) {
         const first = this.responseWaiters.entries().next().value
         id = first[0]
@@ -1002,6 +1041,7 @@ export class RealtimeFrontend {
       event.__voiceContext = { ...(pending?.context || {}), ...event.__voiceContext }
       if (id) {
         this.activeResponses.delete(id)
+        this.playbackResponses.delete(id)
         this.responseWaiters.delete(id)
       }
       const status = event.response?.status
@@ -1106,6 +1146,7 @@ export class RealtimeFrontend {
         if (this.responseWaiters.get(responseId) !== pending) return
         this.responseWaiters.delete(responseId)
         this.activeResponses.delete(responseId)
+        this.playbackResponses.delete(responseId)
         this.resolveIdle()
       }, 1000)
       recoveryTimer.unref?.()
@@ -1152,7 +1193,8 @@ export class RealtimeFrontend {
         this.settlePending(pending, { cancelled: true, phase: 'start' })
         return
       }
-      if (pending.isCurrent?.() === false) {
+      // The refusal means the request never ran; its gate may decide differently now.
+      if (pending.isCurrent?.({ refused: true }) === false) {
         this.settlePending(pending, { skipped: true, phase: 'superseded' })
         return
       }
@@ -1173,21 +1215,29 @@ export class RealtimeFrontend {
     })
   }
 
+  // Responses that gate gateway-initiated work: all active responses except the
+  // voice playback ones, which run concurrently with the backend.
+  gatingResponsesActive() {
+    for (const id of this.activeResponses) if (!this.playbackResponses.has(id)) return true
+    return false
+  }
+
   async whenIdle() {
-    while (this.responseSlot.blocked || this.activeResponses.size) {
+    while (this.responseSlot.blocked || this.gatingResponsesActive()) {
       if (this.responseSlot.blocked) await this.responseSlot.wait()
       else await new Promise(resolve => this.idleWaiters.push(resolve))
     }
   }
 
   resolveIdle() {
-    if (this.activeResponses.size) return
+    if (this.gatingResponsesActive()) return
     while (this.idleWaiters.length) this.idleWaiters.shift()?.()
   }
 
   resetResponses() {
     this.responseQueueGeneration += 1
     this.activeResponses.clear()
+    this.playbackResponses.clear()
     this.responseSlot.release()
     this.rejectConversationItemWaiters(new Error('Realtime 会话已重置'))
     this.pendingResponses.forEach(item => this.settlePending(item, { cancelled: true }))
@@ -1237,7 +1287,7 @@ export class RealtimeFrontend {
     if (!payload) return
     if (this.ws?.readyState === WebSocket.OPEN) {
       let outgoing = payload
-      if (payload.type === 'response.create' && this.pendingResponses.length) {
+      if (payload.type === 'response.create' && options.correlate !== false && this.pendingResponses.length) {
         const pending = this.pendingResponses[this.pendingResponses.length - 1]
         outgoing = this.protocol.correlateResponseCreate(
           payload,

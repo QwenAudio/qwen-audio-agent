@@ -210,6 +210,7 @@ for (const key of defaultRealtimeProviderRegistry.list().map(provider => provide
         assert.equal(frontend.pendingResponses.length, 0)
         return
       }
+      if (frontend.capabilities.concurrentVoicePlayback) return
       peer.autoComplete = false
       const pending = frontend.sendUserText('hello')
       await waitFor(() => frontend.activeResponses.size === 1)
@@ -218,6 +219,25 @@ for (const key of defaultRealtimeProviderRegistry.list().map(provider => provide
       await flush()
       assert.equal(frontend.activeResponses.size, 0)
       peer.autoComplete = true
+      assert.equal((await frontend.sendUserText('next turn')).completed, true)
+      assert.equal(frontend.ready, true)
+    })
+
+    await t.test('cancel interrupts playback only on a full-duplex frontend', async t => {
+      const { frontend, peer, flush } = await connect(t, key)
+      if (!frontend.capabilities.concurrentVoicePlayback) return
+      peer.autoComplete = false
+      const pending = frontend.sendUserText('hello')
+      await waitFor(() => frontend.activeResponses.size === 1)
+      frontend.cancel()
+      // The backend response keeps running and the request waiting on it
+      // completes with it.
+      assert.equal(frontend.activeResponses.size, 1)
+      peer.autoComplete = true
+      peer.finish()
+      assert.equal((await pending).completed, true)
+      await flush()
+      assert.equal(frontend.activeResponses.size, 0)
       assert.equal((await frontend.sendUserText('next turn')).completed, true)
       assert.equal(frontend.ready, true)
     })

@@ -48,6 +48,7 @@ are governed by OpenAI's current Realtime API documentation.
 
 ## Read next
 
+- [GPT-Live 1 (Live API)](gpt-live-1.md)
 - [Google Gemini Live](google-live.md)
 - [Frontend configuration reference](../configuration/frontend.md)
 - [Custom Provider](custom-provider.md)

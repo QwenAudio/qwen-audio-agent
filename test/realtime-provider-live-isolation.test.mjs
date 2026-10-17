@@ -10,6 +10,7 @@ import { resolveRealtimeFrontendConfiguration } from '../shared/realtime-provide
 const profiles = [
   { provider: 'doubao-seeduplex', alias: 'seeduplex', credential: 'DOUBAO_API_KEY', credentialAlias: 'SEEDUPLEX_API_KEY', model: 'DOUBAO_SEEDUPLEX_REALTIME_MODEL', modelValue: '1.2.6.1', voice: 'DOUBAO_SEEDUPLEX_REALTIME_VOICE', voiceAlias: 'DOUBAO_SEEDUPLEX_REALTIME_VOICE', endpoint: 'DOUBAO_SEEDUPLEX_REALTIME_URL', endpointAlias: 'DOUBAO_SEEDUPLEX_REALTIME_URL' },
   { provider: 'gpt-live', alias: 'openai', credential: 'OPENAI_API_KEY', credentialAlias: 'GPT_LIVE_API_KEY', model: 'GPT_LIVE_REALTIME_MODEL', modelValue: 'gpt-realtime-2.1', voice: 'GPT_LIVE_REALTIME_VOICE', voiceAlias: 'OPENAI_REALTIME_VOICE', endpoint: 'GPT_LIVE_REALTIME_URL', endpointAlias: 'OPENAI_REALTIME_URL' },
+  { provider: 'gpt-live-1', alias: 'openai-live', credential: 'GPT_LIVE_1_API_KEY', credentialAlias: 'OPENAI_API_KEY', model: 'GPT_LIVE_1_REALTIME_MODEL', modelValue: 'gpt-live-1', voice: 'GPT_LIVE_1_REALTIME_VOICE', voiceAlias: 'GPT_LIVE_1_REALTIME_VOICE', endpoint: 'GPT_LIVE_1_REALTIME_URL', endpointAlias: 'OPENAI_LIVE_URL' },
   { provider: 'google-live', alias: 'gemini-live', credential: 'GOOGLE_API_KEY', credentialAlias: 'GEMINI_API_KEY', model: 'GOOGLE_LIVE_REALTIME_MODEL', modelValue: 'gemini-3.8-live', voice: 'GOOGLE_LIVE_REALTIME_VOICE', voiceAlias: 'GEMINI_LIVE_REALTIME_VOICE', endpoint: 'GOOGLE_LIVE_REALTIME_URL', endpointAlias: 'GEMINI_LIVE_REALTIME_URL' },
 ]
 for(const entry of profiles) {
@@ -59,6 +60,7 @@ test('server provider descriptors never reuse the active provider model or crede
       provider: config.audioProvider, active: config.realtimeModel,
       dash: [config.audioModel, config.dashscopeApiKey], step: [config.stepfunModel, config.stepfunApiKey],
       gpt: [config.gptLiveModel, config.openaiApiKey], google: [config.googleLiveModel, config.googleApiKey],
+      gpt1: [config.gptLive1Model, config.gptLive1ApiKey],
     }));
   `
   const env = { ...process.env,
@@ -69,6 +71,7 @@ test('server provider descriptors never reuse the active provider model or crede
     STEPFUN_API_KEY: 'step-key', STEPFUN_REALTIME_MODEL: 'stepaudio-3-realtime-preview',
     OPENAI_API_KEY: 'gpt-key', GPT_LIVE_REALTIME_MODEL: 'gpt-realtime-2.1',
     GOOGLE_API_KEY: 'google-key', GOOGLE_LIVE_REALTIME_MODEL: 'gemini-3.8-live',
+    GPT_LIVE_1_API_KEY: 'gpt1-key', GPT_LIVE_1_REALTIME_MODEL: 'gpt-live-1',
   }
   const result = JSON.parse(execFileSync(process.execPath, ['--input-type=module','-e',source], { env, encoding:'utf8' }))
   assert.equal(result.provider, 'stepfun')
@@ -77,4 +80,5 @@ test('server provider descriptors never reuse the active provider model or crede
   assert.deepEqual(result.step, ['stepaudio-3-realtime-preview','step-key'])
   assert.deepEqual(result.gpt, ['gpt-realtime-2.1','gpt-key'])
   assert.deepEqual(result.google, ['gemini-3.8-live','google-key'])
+  assert.deepEqual(result.gpt1, ['gpt-live-1','gpt1-key'])
 })

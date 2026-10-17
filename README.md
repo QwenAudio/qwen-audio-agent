@@ -107,6 +107,7 @@ tasks. They integrate independently and can be combined as needed.
 | --- | --- | --- | --- |
 | [Qwen Audio 3.0 Realtime](docs/voice-frontends/qwen-audio-realtime.md) | Cloud | Bailian API Key | Duplex voice, tool calling |
 | [GPT-Live / OpenAI Realtime](docs/voice-frontends/gpt-live.md) | Cloud | OpenAI API Key | — |
+| [GPT-Live 1 (Live API)](docs/voice-frontends/gpt-live-1.md) | Cloud | OpenAI API Key | Full duplex, tool calling via delegation |
 | [Google Gemini Live](docs/voice-frontends/google-live.md) | Cloud | Google API Key | Live video input |
 | [Qwen3.5-Omni Realtime](docs/voice-frontends/qwen-omni-realtime.md) | Cloud | Bailian API Key | Live video input |
 | [Qwen3.8 Omni Flash Realtime](docs/voice-frontends/qwen-omni-realtime.md) | Cloud | Bailian API Key + workspace-specific endpoint | Live video input |

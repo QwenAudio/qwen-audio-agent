@@ -38,8 +38,8 @@
 | 层 | 所在位置 | 职责 |
 | --- | --- | --- |
 | 对话运行时 | 主框架 | Realtime、工具、历史、响应状态、内容安全 |
-| DigitalHumanOrchestrator | 主框架的可选模块 | 生命周期、超时、取消、输出模式和降级决策 |
-| DigitalHumanProvider SPI | 主框架 | 厂商无关的助手音频输入和渲染结果契约 |
+| DigitalHumanOrchestrator | 本 example 的 `presentation/` | 生命周期、超时、取消、输出模式和降级决策 |
+| DigitalHumanProvider SPI | 本 example 的 `presentation/` | 厂商无关的助手音频输入和渲染结果契约 |
 | Provider Adapter | 本 example | 把 SPI 映射为 Renderer 或厂商 API |
 | Media Source Adapter | 本 example，受控媒体子进程内加载 | 接收媒体，转成网关统一媒体单元 |
 | Media Worker | 已有可选 WebRTC 能力的扩展 | 发布客户端音视频、队列和时间轴管理 |
@@ -47,6 +47,8 @@
 | WebUI | 本 example，由网关提供页面 | 麦克风、数字人视频、文字、打断、状态诊断 |
 
 网关是唯一的客户端对接边界，但不是要求所有媒体字节都穿过 Node 主进程。Renderer 的大体积媒体直接进入网关管理的媒体子进程；主进程只管理控制和输入音频。
+
+框架侧只保留一个注入点：`createGatewayApplication({ digitalHuman })` 需要 `personas` 白名单和 `createRuntime()` 工厂（见 `bootstrap/compose-gateway.mjs`），编排器、输出选择器与 Provider SPI 全部在本 example 的 `presentation/` 内。人物 id 由 WebRTC 路由校验后，经内部 `attachClient()` 端口注入会话运行时，不经过任何客户端可见的协议字段。
 
 ### 3.1 一次回复的数据流
 

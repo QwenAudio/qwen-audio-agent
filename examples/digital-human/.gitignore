@@ -1,0 +1,10 @@
+node_modules/
+.runtime/
+skins/
+.env.local
+fixtures/generated/
+test/artifacts/
+renderer/.venv/
+renderer/.upstream/
+__pycache__/
+*.pyc

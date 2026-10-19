@@ -57,6 +57,7 @@
     "./gateway-application": "./server/src/app/gateway-application.mjs",
     "./backend-adapter-sdk": "./server/src/backend/backend-adapter-sdk.mjs",
     "./a2a-backend-adapter": "./server/src/backend/adapters/a2a/backend-adapter.mjs",
+    "./llm-backend-adapter": "./server/src/backend/adapters/llm/backend-adapter.mjs",
     "./realtime-provider": "./server/src/voice/realtime-provider-extension.mjs",
     "./web-retrieval": "./server/src/frontend/retrieval/providers/web-retrieval.mjs",
     "./knowledge-provider": "./server/src/knowledge/provider.mjs",

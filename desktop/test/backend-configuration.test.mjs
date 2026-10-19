@@ -51,7 +51,7 @@ test('maps every backend-owned configuration action on every desktop OS', () => 
   for (const platform of ['darwin', 'linux', 'win32']) {
     for (const id of backendNames()) {
       const launch = configurationLaunch(id, { env: {}, platform })
-      if (id === 'acp') {
+      if (['acp', 'llm'].includes(id)) {
         assert.equal(launch, null)
         continue
       }

@@ -115,6 +115,7 @@
 | 后台 Agent | 接入方式 | 接入准备 | 推荐指数 |
 | --- | --- | --- | --- |
 | 无 | N/A | 仅前台模式，无需后台配置 | ★★★★★ |
+| 裸 LLM | 内置 Chat Completions | OpenAI-compatible API Key、URL 与模型 | 实验性 |
 | Qwen Code | 原生 ACP | 支持一键安装，需用户配置 | ★★★★★ |
 | OpenCode | 原生 ACP | 支持一键安装和百炼配置 | ★★★★★ |
 | OpenClaw | 内置 ACP 桥接 | 支持一键安装和百炼配置 | ★★★★★ |

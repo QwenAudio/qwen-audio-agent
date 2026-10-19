@@ -8,6 +8,7 @@
 | 后台 Agent | 接入方式 | 接入准备 | Skills | 推荐指数 |
 | --- | --- | --- | --- | --- |
 | 无 | N/A | 仅前台模式，无需配置 | — | ★★★★★ |
+| 裸 LLM | 内置 Chat Completions | OpenAI-compatible URL、API Key 与模型 | 无（纯文本） | 实验性 |
 | Qwen Code | 原生 ACP | 支持一键安装，需用户配置 | `~/.qwen/skills/` | ★★★★★ |
 | OpenCode | 原生 ACP | 支持一键安装和百炼配置 | `~/.config/opencode/skills/` | ★★★★★ |
 | OpenClaw | 内置 ACP 桥接 | 支持一键安装和百炼配置 | `~/.openclaw/skills/` | ★★★★★ |
@@ -93,6 +94,8 @@ ACP_ARGS=["--acp"]
 
 命令、参数、显示名称和工作目录可分别通过 `ACP_COMMAND`、`ACP_ARGS`、
 `ACP_LABEL` 和 `ACP_WORKSPACE` 配置。通用 ACP 入口不提供一键安装，请自行安装。
+
+需要轻量 LLM 对照组时使用 `AGENT_PROTOCOL=llm`；每个 Task 为单次无状态文本调用，不继承前台业务工具或会话历史。配置方法与能力边界见[裸 LLM 后台](../configuration/backend.zh.md#裸-llm-后台)。
 
 ## 权限模式
 

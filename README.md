@@ -124,6 +124,7 @@ changing the Gateway's core voice-session or backend-task logic.
 | Backend Agent | Integration | Setup | Rating |
 | --- | --- | --- | --- |
 | None | N/A | Frontend-only mode, no backend config needed | ★★★★★ |
+| Bare LLM | Built-in Chat Completions | OpenAI-compatible API key, URL, and model | Experimental |
 | Qwen Code | Native ACP | One-click install, user config required | ★★★★★ |
 | OpenCode | Native ACP | One-click install + Bailian config | ★★★★★ |
 | OpenClaw | Built-in ACP bridge | One-click install + Bailian config | ★★★★★ |

@@ -134,7 +134,16 @@ export function resolveBackendModels(env = process.env) {
     pi: common,
     muse: common,
     acp: common,
+    llm: common,
   }
+}
+
+function defaultLlmBaseUrl(env = process.env) {
+  if (String(env.OPENAI_API_KEY || '').trim()
+    && !String(env.DASHSCOPE_API_KEY || '').trim()) {
+    return 'https://api.openai.com/v1'
+  }
+  return 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 }
 
 const configuredAgentProtocol = normalizeBackendProtocol(
@@ -463,6 +472,24 @@ export const config = {
       args: resolveAcpArgs(process.env.ACP_ARGS),
       label: String(process.env.ACP_LABEL || 'ACP Agent').trim() || 'ACP Agent',
       coordinatorAgent: String(process.env.ACP_COORDINATOR_AGENT || '').trim(),
+    },
+    llm: {
+      model: String(backendModels.llm).trim(),
+      baseUrl: String(
+        process.env.QWEN_AUDIO_AGENT_LLM_BASE_URL
+        || process.env.OPENAI_BASE_URL
+        || process.env.DASHSCOPE_BASE_URL
+        || defaultLlmBaseUrl(),
+      ).trim().replace(/\/+$/, ''),
+      apiKey: String(
+        process.env.QWEN_AUDIO_AGENT_LLM_API_KEY
+        || process.env.DASHSCOPE_API_KEY
+        || process.env.OPENAI_API_KEY
+        || '',
+      ).trim(),
+      systemPrompt: String(
+        process.env.QWEN_AUDIO_AGENT_LLM_SYSTEM_PROMPT || '',
+      ).trim(),
     },
   },
   announceIntoContext: (

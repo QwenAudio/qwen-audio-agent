@@ -63,17 +63,21 @@ renderer: local Mock  |  your FlashHead service (GPU)
   npm run build:client                      # -> examples/digital-human/skins/digital-human/
   ```
 
-Configuration reference (all optional except the key; see `.env.example`):
+Configuration reference (see `.env.example`). Everything except
+`DASHSCOPE_API_KEY` is optional in Mock mode; `DH_RENDERER_TOKEN` becomes
+required as soon as `DH_RENDERER_URL` points at a remote renderer.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `DASHSCOPE_API_KEY` | — | Realtime upstream credential. Required. |
 | `DH_GATEWAY_HOST` / `DH_GATEWAY_PORT` | `127.0.0.1` / `18895` | Where the demo Gateway listens. |
 | `DH_RENDERER_URL` | empty | Renderer base URL. Empty means `start.mjs` launches the local Mock. |
-| `DH_RENDERER_TOKEN` | empty | Bearer token for a remote renderer control plane. Never logged. |
-| `DH_PERSONA` | `mock-default` | Startup persona; must be in the server allowlist. |
+| `DH_RENDERER_TOKEN` | empty | Bearer token for a remote renderer control plane. **Required whenever `DH_RENDERER_URL` is set**: session creation otherwise fails with 401 and the turn silently degrades to audio only. Ignored by the local Mock. Never logged. |
+| `DH_PERSONA` | `mock-default` | Startup persona; must be in the server allowlist. The local Mock only knows `mock-default`; a remote FlashHead renderer uses `flashhead-default`. A persona the renderer does not know is rejected with 400 at session creation. |
 | `DH_MOCK_FAULT` | empty | Mock fault injection (see §2). |
 | `DH_MOCK_RENDERER_HOST` / `DH_MOCK_RENDERER_PORT` | `127.0.0.1` / `0` | Mock listener (local Mock mode only). |
+| `QWEN_AUDIO_REALTIME_VOICE` | provider default | Avatar timbre. Read by the framework's Realtime provider resolution rather than by `bootstrap/env.mjs`, so it reaches the process through `.env.local`. Audio-model voices: `longanqian`, `longanlingxin`, `longanlingxi`, `longanxiaoxin`, `longanlufeng`. Leave the line out entirely to keep the default — an empty value means "explicitly cleared" to the framework. |
+| `QWEN_AUDIO_REALTIME_MODEL` | `qwen-audio-3.0-realtime-plus` | Realtime model. `compose-gateway.mjs` assigns it with `\|\|=`, so a value in `.env.local` wins. |
 
 ## 2. Run with the Mock renderer
 

@@ -57,17 +57,20 @@ Gateway（本仓库）  ──WSS──►  DashScope Realtime（ASR/LLM/TTS）
   npm run build:client                      # 产物在 examples/digital-human/skins/digital-human/
   ```
 
-配置参考（除 key 外均可选；见 `.env.example`）：
+配置参考（见 `.env.example`）。除 `DASHSCOPE_API_KEY` 外，Mock 模式下均可选；
+一旦 `DH_RENDERER_URL` 指向远端渲染服务，`DH_RENDERER_TOKEN` 就变成必填。
 
 | 变量 | 默认值 | 含义 |
 |---|---|---|
 | `DASHSCOPE_API_KEY` | — | Realtime 上游凭据。必填。 |
 | `DH_GATEWAY_HOST` / `DH_GATEWAY_PORT` | `127.0.0.1` / `18895` | demo Gateway 的监听地址。 |
 | `DH_RENDERER_URL` | 空 | 渲染服务地址。留空表示 `start.mjs` 自动启动本地 Mock。 |
-| `DH_RENDERER_TOKEN` | 空 | 远端渲染服务控制面的 Bearer token。从不写日志。 |
-| `DH_PERSONA` | `mock-default` | 启动人设；必须在服务端白名单内。 |
+| `DH_RENDERER_TOKEN` | 空 | 远端渲染服务控制面的 Bearer token。**只要设了 `DH_RENDERER_URL` 就必填**：否则建会话返回 401，该轮对话会静默降级成纯音频。本地 Mock 忽略此项。从不写日志。 |
+| `DH_PERSONA` | `mock-default` | 启动人设；必须在服务端白名单内。本地 Mock 只认 `mock-default`，远端 FlashHead 用 `flashhead-default`。渲染服务不认识的人设会在建会话时被 400 拒绝。 |
 | `DH_MOCK_FAULT` | 空 | Mock 故障注入（见 §2）。 |
 | `DH_MOCK_RENDERER_HOST` / `DH_MOCK_RENDERER_PORT` | `127.0.0.1` / `0` | Mock 监听地址（仅本地 Mock 模式）。 |
+| `QWEN_AUDIO_REALTIME_VOICE` | provider 默认 | 数字人音色。由框架的 Realtime provider 解析读取，而不是 `bootstrap/env.mjs`，所以它是随 `.env.local` 载入进程的。Audio 模型族可选：`longanqian`、`longanlingxin`、`longanlingxi`、`longanxiaoxin`、`longanlufeng`。想保持默认就整行不要写——对框架而言空值等于「显式清空」。 |
+| `QWEN_AUDIO_REALTIME_MODEL` | `qwen-audio-3.0-realtime-plus` | Realtime 模型。`compose-gateway.mjs` 用 `\|\|=` 赋值，所以 `.env.local` 里写了就以它为准。 |
 
 ## 2. 用 Mock 渲染服务运行
 

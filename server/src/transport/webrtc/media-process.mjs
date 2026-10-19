@@ -8,8 +8,8 @@ const MAX_IPC_BYTES = 8 * 1024 * 1024
 // A native crash must never take down the Gateway or its WSS clients. One
 // disposable Node process owns one peer, and receives no provider credentials.
 export class ProcessWebRtcMedia {
-  constructor({ iceServers = [], iceTransportPolicy = 'all', video = false, inputSampleRate = 16000,
-    forkProcess = fork, shutdownTimeoutMs = 2000, onDiagnostic = () => {} } = {}) {
+  constructor({ iceServers = [], iceTransportPolicy = 'all', video = false, videoOutput = false, inputSampleRate = 16000,
+    digitalHuman = null, forkProcess = fork, shutdownTimeoutMs = 2000, onDiagnostic = () => {} } = {}) {
     this.closed = false
     this.exited = false
     this.opened = false
@@ -21,6 +21,8 @@ export class ProcessWebRtcMedia {
     this.pending = new Map()
     this.shutdownTimeoutMs = shutdownTimeoutMs
     this.onDiagnostic = onDiagnostic
+    this.videoOutput = videoOutput
+    this.digitalHuman = digitalHuman
     this._inputSampleRate = inputSampleRate
     this.initialized = new Promise((resolve, reject) => { this.resolveInit = resolve; this.rejectInit = reject })
     this.initialized.catch(() => {})
@@ -41,7 +43,7 @@ export class ProcessWebRtcMedia {
     this.child.on('error', () => this.fail(rtcError(503, 'media_worker_error', 'WebRTC media process failed')))
     this.child.once('close', (code, signal) => this.finishExit(code, signal))
     this.startupTimer = setTimeout(() => this.fail(rtcError(504, 'media_worker_timeout', 'WebRTC media process startup timed out')), 10000)
-    this.post({ type: 'init', options: { iceServers, iceTransportPolicy, video, inputSampleRate } })
+    this.post({ type: 'init', options: { iceServers, iceTransportPolicy, video, videoOutput, inputSampleRate } })
   }
 
   get inputSampleRate() { return this._inputSampleRate }
@@ -99,6 +101,8 @@ export class ProcessWebRtcMedia {
     } else if (message.type === 'event') this.onEvent?.(message.data)
     else if (message.type === 'audio') this.onAudio?.(message.data)
     else if (message.type === 'image') this.onImage?.(message.data)
+    else if (message.type === 'dh') this.onDhEvent?.(message)
+    else if (message.type === 'peer.failed') this.fail(rtcError(503, 'media_peer_failed', message.message || 'WebRTC media failed'))
     else if (message.type === 'peer.closed') this.fail(rtcError(503, 'media_peer_closed', 'WebRTC peer closed'))
   }
 
@@ -118,6 +122,16 @@ export class ProcessWebRtcMedia {
   append(event) { this.post({ type: 'append', event }) }
   finish(responseId) { this.post({ type: 'finish', responseId }) }
   clear() { this.post({ type: 'clear' }) }
+  // Avatar media control. The adapter module path/options come from trusted
+  // server configuration held by this instance, never from the binding, which
+  // only carries the renderer's private media URL and scoped token.
+  dhOpen(binding) {
+    this.post({ type: 'dh.open', binding, adapterModulePath: this.digitalHuman?.modulePath, adapterOptions: this.digitalHuman?.adapterOptions })
+  }
+  dhBegin(turn, format, idle) { this.post({ type: 'dh.begin', turn, format, ...(idle ? { idle: true } : {}) }) }
+  dhFinish(turn) { this.post({ type: 'dh.finish', turn }) }
+  dhClear(generation, block) { this.post({ type: 'dh.clear', generation, ...(block === false ? { block: false } : {}) }) }
+  dhClose() { this.post({ type: 'dh.close' }) }
   connected() { return !this.closed && this.online }
   whenClosed() { return this.finished }
 
@@ -130,6 +144,7 @@ export class ProcessWebRtcMedia {
   fail(error) {
     if (this.closed) return
     this.failure = error
+    this.onFail?.(error)
     this.rejectPending(error)
     try { this.onClose?.() } finally { this.close() }
   }

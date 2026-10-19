@@ -5,12 +5,17 @@ import { encodeWebRtcMessage } from './webrtc-message.mjs'
 export class BrowserWebRtcConnection {
   constructor({ sessionId, clientActions = [], takeover = false, fetch: request = globalThis.fetch,
     onEvent = () => {}, onState = () => {}, onError = () => {}, onPlayback = () => {}, audio = null,
+    video = null, avatarPersonaId = null, onAvatarState = () => {},
     mediaDevices = globalThis.navigator?.mediaDevices } = {}) {
-    Object.assign(this, { sessionId, clientActions, takeover, request, onEvent, onState, onError, onPlayback, mediaDevices })
+    Object.assign(this, { sessionId, clientActions, takeover, request, onEvent, onState, onError, onPlayback, mediaDevices, onAvatarState })
     this.audio = audio || document.createElement('audio')
     this.audio.autoplay = true
     this.audio.muted = false
     this.audio.setAttribute('playsinline', '')
+    // Optional <video> element that receives the avatar downlink track. When
+    // null, avatar video is not requested even if a persona id is supplied.
+    this.video = video
+    this.avatarPersonaId = avatarPersonaId || null
     this.outputs = new Map()
     this.abort = new AbortController()
     this.ready = false
@@ -31,6 +36,11 @@ export class BrowserWebRtcConnection {
       this.pc = new RTCPeerConnection({ iceServers: config.iceServers, iceTransportPolicy: config.iceTransportPolicy })
       this.audioSender = this.pc.addTransceiver('audio', { direction: 'sendrecv' }).sender
       if (config.video_input) this.videoSender = this.pc.addTransceiver('video', { direction: 'sendonly' }).sender
+      // Avatar downlink: a recvonly video transceiver, added after any sendonly
+      // camera transceiver so the m-line order is deterministic. Only requested
+      // when the Gateway advertises digital_human and a persona id is supplied.
+      this.avatarEnabled = Boolean(config.digital_human?.available && this.avatarPersonaId && this.video)
+      if (this.avatarEnabled) this.pc.addTransceiver('video', { direction: 'recvonly' })
       this.pc.onconnectionstatechange = () => {
         clearTimeout(this.disconnectTimer)
         if (this.pc.connectionState === 'failed') this.fail(new Error('WebRTC media connection failed'))
@@ -46,7 +56,19 @@ export class BrowserWebRtcConnection {
       }
       this.pc.createDataChannel('oai-events', { ordered: true })
       this.pc.ontrack = ({ track }) => {
-        if (track.kind !== 'audio' || this.closed) return
+        if (this.closed) return
+        // Camera input is sendonly/local, so any inbound video track is the
+        // avatar downlink. Attach it to the <video> element and start playback.
+        if (track.kind === 'video') {
+          if (!this.video) { track.stop(); return }
+          this.video.srcObject = new MediaStream([track])
+          this.video.setAttribute('playsinline', '')
+          this.video.autoplay = true
+          this.video.muted = true
+          this.video.play().catch(() => { if (!this.closed) this.onError(new Error('Click anywhere to enable avatar video playback.')) })
+          return
+        }
+        if (track.kind !== 'audio') return
         const stream = new MediaStream([track])
         this.audio.srcObject = stream
         const source = this.context.createMediaStreamSource(stream)
@@ -64,6 +86,7 @@ export class BrowserWebRtcConnection {
       const query = new URLSearchParams({ sessionId: this.sessionId, model: config.model })
       if (this.clientActions.length) query.set('client_actions', JSON.stringify(this.clientActions))
       if (this.takeover) query.set('takeover', 'true')
+      if (this.avatarEnabled) query.set('avatarPersonaId', this.avatarPersonaId)
       const answer = await this.request(`/api/v1/webrtc/realtime?${query}`, {
         method: 'POST', headers: { 'Content-Type': 'application/sdp' },
         body: this.pc.localDescription.sdp, signal: this.abort.signal,
@@ -130,6 +153,7 @@ export class BrowserWebRtcConnection {
         this.updateMicrophone()
         this.onState(item.state === 'connecting' ? 'connecting' : 'disconnected')
       }
+      if (item.type === 'digital_human.state') this.onAvatarState(item)
     }
     this.onEvent(event)
     if (event.type === 'qwaudio.connection.closed') void this.close()
@@ -254,6 +278,7 @@ export class BrowserWebRtcConnection {
     this.pc?.close()
     this.audio.pause()
     this.audio.srcObject = null
+    if (this.video) { this.video.pause(); this.video.srcObject = null }
     this.outputs.clear()
     this.onState('disconnected')
     this.closing = Promise.all([this.context?.close().catch(() => {}), this.release()])

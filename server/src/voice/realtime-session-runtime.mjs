@@ -65,6 +65,7 @@ export function createRealtimeSessionRuntime({
   defaultRealtimeProvider, realtimeFrontendFactory,
   frontendRetrieval, frontendKnowledge, frontendToolSources,
   spawnThinkingDescription, taskAnnouncementFactory,
+  digitalHuman = null, avatarPersonaId = null,
 }) {
   let closed = false
   let started = false
@@ -322,6 +323,7 @@ export function createRealtimeSessionRuntime({
     clearVisualInput()
     announcementWindow.reset()
     announcements.pause()
+    digitalHumanRuntime?.cancelActive('owner_replaced')
     realtimeSession.close({ notifyDisconnected: true })
     emit({ type: 'playback.clear' })
     emit({
@@ -561,6 +563,42 @@ export function createRealtimeSessionRuntime({
     turnCitations,
   })
 
+  // The digital-human runtime is bound lazily and implemented outside the
+  // framework: the embedder injects `digitalHuman.createRuntime`, and only a
+  // transport that negotiated a recvonly video downlink carries an allowlisted
+  // persona id. On every other connection this stays null and the presentation
+  // path is byte-for-byte the plain-audio one.
+  let digitalHumanRuntime = null
+  const ensureDigitalHumanRuntime = personaId => {
+    if (digitalHumanRuntime || typeof digitalHuman?.createRuntime !== 'function' || !personaId) {
+      return Promise.resolve(null)
+    }
+    return digitalHuman.createRuntime({
+      personaId,
+      // Digital-human signals are transport-intercepted control/state events.
+      // They bypass the `closed` guard so the media worker still receives the
+      // teardown `close` while the session is shutting down.
+      publish: event => { try { send(event) } catch {} },
+      onFlushAudio: ({ responseId, deltas }) => (
+        presentationRuntime.publishAudioDelta(responseId, deltas)
+      ),
+      log: (code, fields) => connectionLogger.info('digital_human.log', {
+        code,
+        ...(fields || {}),
+      }),
+    }).then(runtime => {
+      if (closed || !runtime) return null
+      digitalHumanRuntime = runtime
+      presentationRuntime.digitalHuman = runtime
+      return runtime.start().then(() => runtime)
+    }).catch(error => {
+      connectionLogger.warn('digital_human.setup_failed', {
+        error: String(error?.message || error),
+      })
+      return null
+    })
+  }
+
   taskCoordinator.start()
 
   const handleEvent = event => {
@@ -656,7 +694,7 @@ export function createRealtimeSessionRuntime({
         const generation = ++contentRecoveryGeneration
         const canRecover = realtimeRecoveryContext.beginRecovery(failedContext, recentMessages)
         clearResponseCandidate()
-        presentationRuntime.failResponse(event)
+        presentationRuntime.failResponse(event, { reason: 'content_safety' })
         emit({
           type: GatewayServerEvent.PLAYBACK_CLEAR,
           reason: 'provider_content_safety',
@@ -969,6 +1007,7 @@ export function createRealtimeSessionRuntime({
       frontendToolSourcesReady.then(() => {
         if (closed) return
         realtimeSession.updateAgentContext(getAgentContext())
+        ensureDigitalHumanRuntime(avatarPersonaId)
         if (sleeping) {
           sleeping = false
           waking = true
@@ -1077,6 +1116,7 @@ export function createRealtimeSessionRuntime({
       turns.advanceBoundary()
       announcementWindow.interrupt()
       announcements.dismissActive()
+      digitalHumanRuntime?.cancelActive('user_interruption')
       realtimeSession.cancelResponse()
       emit({ type: GatewayServerEvent.PLAYBACK_CLEAR, reason: 'user_interruption' })
     } else if (event.type === GatewayClientEvent.PLAYBACK_STARTED) {
@@ -1116,6 +1156,22 @@ export function createRealtimeSessionRuntime({
       if (accepted) {
         presentationRuntime.cancelPlayback(id, {
           reason: String(event.reason || ''),
+        })
+      }
+    } else if (event.type === GatewayClientEvent.DIGITAL_HUMAN_MEDIA) {
+      // Transport-reported avatar media playback feedback. Only meaningful when
+      // a digital-human runtime is attached to this connection; otherwise the
+      // worker should never have emitted it, so drop defensively.
+      if (!digitalHumanRuntime) return
+      const responseId = String(event.responseId || '')
+      const generation = Number(event.generation)
+      if (event.op === 'first_media') {
+        digitalHumanRuntime.mediaPublished({ responseId, generation })
+      } else if (event.op === 'drained') {
+        digitalHumanRuntime.mediaDrained({ responseId, generation })
+      } else if (event.op === 'error') {
+        connectionLogger.warn('digital_human.media_error', {
+          responseId, generation, code: String(event.code || ''),
         })
       }
     } else if (event.type === GatewayClientEvent.MUTE) {
@@ -1198,6 +1254,7 @@ export function createRealtimeSessionRuntime({
       transcripts.close()
       turnCitations.clear()
       announcementWindow.reset()
+      digitalHumanRuntime?.close('session_closed').catch(() => {})
       presentationRuntime.clear()
       clearVisualInput()
       sleepController?.close()

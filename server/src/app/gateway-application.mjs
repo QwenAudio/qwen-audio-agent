@@ -97,7 +97,18 @@ export function createGatewayApplication({
   gatewayAccess = null,
   publicEndpoint = undefined,
   webrtc = undefined,
+  digitalHuman = null,
 } = {}) {
+// The digital-human runtime itself lives outside the framework (see
+// examples/digital-human); startup only checks the injected contract so a
+// misconfigured embedder fails before any socket opens.
+if (digitalHuman !== null) {
+  const personas = digitalHuman?.personas
+  if (typeof digitalHuman?.createRuntime !== 'function'
+    || !personas || typeof personas !== 'object' || Array.isArray(personas) || !Object.keys(personas).length) {
+    throw new Error('digitalHuman must provide createRuntime() and a non-empty personas allowlist')
+  }
+}
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const sessionJournalRuntime = sessionJournal || new SessionJournalRegistry({
   directory: resolve(config.stateDirectory, 'sessions'), logger,
@@ -377,6 +388,7 @@ const webRtcIngress = registerGatewayHttpRoutes(app, {
   sessionJournalRuntime,
   optionalModules,
   webrtc,
+  digitalHuman,
   getGateway: () => realtimeGateway,
 })
 
@@ -438,6 +450,7 @@ const frontendRuntime = createFrontendRuntime({
   conversationSync,
   config,
   logger,
+  digitalHuman,
 })
 realtimeGateway = attachGatewayClientTransport(server, {
   identityManager: gatewayAccessRuntime,

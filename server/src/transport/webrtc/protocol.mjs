@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { WebRtcMessageReader } from '../../../../shared/gateway/webrtc-message.mjs'
+import { GatewayServerEvent } from '../../../../shared/protocol/realtime-events.mjs'
 import {
   createGatewaySessionHello,
   GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
@@ -13,7 +14,7 @@ const id = () => `evt_rtc_${randomUUID()}`
 // The runtime sees the same connection contract as WebSocket. Neither the
 // media engine nor vendor-shaped wire events own sessions, tools or history.
 export class WebRtcConnection extends EventEmitter {
-  constructor({ media, sessionId, provider, takeover = false, clientActions = [] }) {
+  constructor({ media, sessionId, provider, takeover = false, clientActions = [], avatarPersonaId = null }) {
     super()
     this.media = media
     this.sessionId = sessionId
@@ -28,6 +29,12 @@ export class WebRtcConnection extends EventEmitter {
     this.update = null
     this.video = provider.modelProfile?.()?.transportCapabilities?.imageBufferInput === true
     this.inputAllowed = true
+    // Avatar downlink persona, resolved by the route against the server-side
+    // allowlist. When set, the media engine negotiates a recvonly video track
+    // and this connection intercepts digital-human control events before they
+    // can reach the browser (their bindings carry private URLs and tokens).
+    this.avatarPersonaId = avatarPersonaId || null
+    this.avatarSessionId = null
   }
 
   start() {
@@ -39,7 +46,12 @@ export class WebRtcConnection extends EventEmitter {
         ![GatewayClientCapability.SESSION_HEARTBEAT, GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP].includes(capability)
         && (this.video || capability !== GatewayClientCapability.INPUT_IMAGE_BUFFER)
       )), ...this.clientActions.map(name => `client.actions.${name}`)])],
-      connection: { provider: this.provider.key, voice_enabled: true, input_enabled: true, output_enabled: true },
+      connection: {
+        provider: this.provider.key,
+        voice_enabled: true,
+        input_enabled: true,
+        output_enabled: true,
+      },
       takeover: this.takeover,
     }))
   }
@@ -52,7 +64,14 @@ export class WebRtcConnection extends EventEmitter {
       modalities: ['text', 'audio'],
       voice: this.voice,
       turn_detection: this.provider.modelProfile?.()?.sessionDefaults?.turnDetection || null,
-      qwaudio: { transport: 'webrtc', video_input: this.video, protocol: '0.1', experimental: true },
+      qwaudio: {
+        transport: 'webrtc',
+        video_input: this.video,
+        video_output: Boolean(this.avatarPersonaId),
+        ...(this.avatarPersonaId ? { digital_human: { persona_id: this.avatarPersonaId } } : {}),
+        protocol: '0.1',
+        experimental: true,
+      },
     }
   }
 
@@ -187,10 +206,28 @@ export class WebRtcConnection extends EventEmitter {
     } else if (event.type === 'error') {
       if (event.request_event_id === this.update?.requestId) this.update = null
       this.output({ type: 'error', error: event.error || { type: 'server_error', code: 'gateway_error', message: event.message } })
+    } else if (event.type === GatewayServerEvent.DIGITAL_HUMAN_MEDIA_OPEN) {
+      // Never forwarded: the binding carries a private media URL and scoped
+      // token. Hand it to the media engine (which owns the avatar worker) and
+      // remember the avatar session for later control correlation.
+      this.avatarSessionId = event.avatarSessionId || null
+      this.media.dhOpen?.(event.binding)
+    } else if (event.type === GatewayServerEvent.DIGITAL_HUMAN_MEDIA_CONTROL) {
+      this.applyDigitalHumanControl(event)
     } else {
       if (event.type === 'input.suspend') this.inputAllowed = false
       if (event.type === 'input.resume') this.inputAllowed = true
       this.output({ type: 'qwaudio.event', event })
+    }
+  }
+
+  applyDigitalHumanControl(event) {
+    switch (event.op) {
+      case 'begin': this.media.dhBegin?.(event.turn, event.format, event.idle); break
+      case 'finish': this.media.dhFinish?.(event.turn); break
+      case 'clear': this.media.dhClear?.(event.generation, event.block); break
+      case 'close': this.media.dhClose?.(); break
+      default: break
     }
   }
 

@@ -226,6 +226,12 @@ const GatewayClientPayloadSchemas = Object.freeze({
     responseId: z.string().min(1),
     reason: z.string().optional(),
   }).passthrough(),
+  [GatewayClientEvent.DIGITAL_HUMAN_MEDIA]: z.object({
+    op: z.enum(['first_media', 'drained', 'media_end', 'error']),
+    responseId: z.string().min(1).optional(),
+    generation: z.number().int().nonnegative().optional(),
+    code: z.string().min(1).optional(),
+  }).passthrough(),
 })
 
 const GatewayVoicePayloadSchemas = Object.freeze({

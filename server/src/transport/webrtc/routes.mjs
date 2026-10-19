@@ -19,23 +19,57 @@ export function parseClientActions(value) {
   return actions
 }
 
-export function validateOffer(sdp, { video }) {
+export function parseOfferMedia(sdp) {
   if (typeof sdp !== 'string' || !sdp.startsWith('v=0') || Buffer.byteLength(sdp) > 65536) throw rtcError(400, 'invalid_sdp', 'SDP offer required (max 64 KiB)')
-  const media = sdp.split(/\r?\n/).filter(line => /^m=/.test(line) && !/^m=\S+ 0 /.test(line))
-  const count = kind => media.filter(line => line.startsWith(`m=${kind} `)).length
-  if (count('audio') !== 1 || count('application') !== 1 || count('video') > 1 || media.length !== 2 + count('video')) throw rtcError(400, 'unsupported_media', 'Offer one audio track, one DataChannel transport and optionally one video track')
-  if (count('video') && !video) throw rtcError(400, 'video_unsupported', 'The configured model does not support video input')
+  const lines = sdp.split(/\r?\n/)
+  const sections = []
+  for (const line of lines) {
+    if (/^m=/.test(line)) {
+      // A port of 0 marks a rejected/disabled m-section; ignore it entirely.
+      if (/^m=\S+ 0 /.test(line)) continue
+      sections.push({ kind: line.slice(2).split(' ')[0], direction: 'sendrecv', lines: [] })
+    } else if (sections.length) {
+      sections[sections.length - 1].lines.push(line)
+    }
+  }
+  for (const section of sections) {
+    const direction = section.lines.find(line => /^a=(sendonly|recvonly|sendrecv|inactive)$/.test(line))
+    // SDP defaults a media section to sendrecv when no direction attribute is
+    // present; DataChannel sections carry no meaningful direction.
+    section.direction = direction ? direction.slice(2) : 'sendrecv'
+  }
+  return sections
+}
+
+export function validateOffer(sdp, { video, videoOutput = false }) {
+  const sections = parseOfferMedia(sdp)
+  const count = kind => sections.filter(section => section.kind === kind).length
+  const videos = sections.filter(section => section.kind === 'video')
+  if (count('audio') !== 1 || count('application') !== 1 || sections.length !== 2 + videos.length) {
+    throw rtcError(400, 'unsupported_media', 'Offer one audio track, one DataChannel transport and optionally video tracks')
+  }
+  const sendonly = videos.filter(section => section.direction === 'sendonly').length
+  const recvonly = videos.filter(section => section.direction === 'recvonly').length
+  if (sendonly + recvonly !== videos.length) throw rtcError(400, 'unsupported_media', 'Video tracks must be explicitly sendonly (camera input) or recvonly (avatar output)')
+  if (sendonly > 1 || recvonly > 1) throw rtcError(400, 'unsupported_media', 'Offer at most one sendonly and one recvonly video track')
+  if (sendonly && !video) throw rtcError(400, 'video_unsupported', 'The configured model does not support video input')
+  if (recvonly && !videoOutput) throw rtcError(400, 'avatar_unsupported', 'Avatar video output is not enabled for this Gateway')
 }
 
 // Registered after the application's existing identity and origin middleware.
 // Authentication precedes parsing SDP or allocating any native media resources.
-export function registerWebRtcIngress(app, { options, getGateway, providerRegistry, providerName, logger }) {
+export function registerWebRtcIngress(app, { options, getGateway, providerRegistry, providerName, logger, digitalHuman = null }) {
   options = options === undefined ? webRtcOptions() : options
   if (!options?.enabled) return null
   const connections = new Map()
   const retiring = new Set()
   const factory = options.mediaFactory || (settings => new ProcessWebRtcMedia(settings))
   const maxConnections = options.maxConnections || 4
+  const personas = digitalHuman?.personas && typeof digitalHuman.personas === 'object' ? Object.keys(digitalHuman.personas) : []
+  const avatarAvailable = personas.length > 0
+  const adapterConfig = digitalHuman?.mediaAdapter
+    ? { modulePath: digitalHuman.mediaAdapter.modulePath, adapterOptions: digitalHuman.mediaAdapter.adapterOptions }
+    : null
   let closed = false
   const describe = () => {
     const provider = providerRegistry.resolve(providerName)
@@ -51,7 +85,14 @@ export function registerWebRtcIngress(app, { options, getGateway, providerRegist
     try {
       const { provider, video } = describe()
       res.setHeader('cache-control', 'no-store')
-      res.json({ model: provider.model(), video_input: video, iceServers: options.iceServers || [], iceTransportPolicy: options.iceTransportPolicy || 'all' })
+      res.json({
+        model: provider.model(),
+        video_input: video,
+        video_output: avatarAvailable,
+        digital_human: { available: avatarAvailable, personas: avatarAvailable ? personas : [] },
+        iceServers: options.iceServers || [],
+        iceTransportPolicy: options.iceTransportPolicy || 'all',
+      })
     } catch (error) { errorResponse(res, error) }
   })
   app.get('/api/realtime/webrtc/example', (_req, res) => res.sendFile(fileURLToPath(new URL('index.html', EXAMPLE))))
@@ -73,13 +114,25 @@ export function registerWebRtcIngress(app, { options, getGateway, providerRegist
       if (typeof sessionId !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(sessionId)) throw rtcError(400, 'session_id', 'invalid sessionId')
       if (req.query.takeover && req.query.takeover !== 'true') throw rtcError(400, 'takeover', 'takeover must be true or omitted')
       const clientActions = parseClientActions(req.query.client_actions)
-      validateOffer(req.body, { video })
+      const avatarPersonaId = req.query.avatarPersonaId === undefined ? null : String(req.query.avatarPersonaId)
+      if (avatarPersonaId !== null) {
+        if (!avatarAvailable) throw rtcError(400, 'avatar_unsupported', 'Avatar video output is not enabled for this Gateway')
+        // Reject an unknown persona outright rather than silently falling back to
+        // plain audio: the caller asked for a specific avatar.
+        if (!personas.includes(avatarPersonaId)) throw rtcError(400, 'avatar_persona', 'avatarPersonaId is not in the server allowlist')
+        // The dual-video m-line association order is unverified, so the first
+        // version does not combine camera input with avatar output.
+        if (video) throw rtcError(400, 'avatar_conflict', 'Avatar output cannot be combined with camera video input in this preview')
+      }
+      const videoOutput = avatarPersonaId !== null
+      validateOffer(req.body, { video, videoOutput })
       if (!provider.isConfigured()) throw rtcError(503, 'provider_not_configured', 'Configure the Gateway provider credential first')
       const media = factory({
-        ...options, video, inputSampleRate: provider.inputSampleRate,
+        ...options, video, videoOutput, inputSampleRate: provider.inputSampleRate,
+        ...(videoOutput && adapterConfig ? { digitalHuman: adapterConfig } : {}),
         onDiagnostic: fields => logger?.warn('webrtc.media_worker_failed', fields),
       })
-      connection = new WebRtcConnection({ media, sessionId, provider, takeover: req.query.takeover === 'true', clientActions })
+      connection = new WebRtcConnection({ media, sessionId, provider, takeover: req.query.takeover === 'true', clientActions, avatarPersonaId })
       connectionId = randomUUID()
       const record = { connection, ownerId: req.identity.ownerId }
       connections.set(connectionId, record)
@@ -105,6 +158,11 @@ export function registerWebRtcIngress(app, { options, getGateway, providerRegist
       media.onEvent = raw => connection.receive(raw)
       media.onAudio = audio => connection.audio(audio)
       media.onImage = image => connection.image(image)
+      media.onDhEvent = payload => {
+        if (!payload || payload.op === 'opened' || payload.op === 'closed' || payload.op === 'media_end') return
+        connection.input({ type: 'digital_human.media', op: payload.op, responseId: payload.responseId, generation: payload.generation, code: payload.code })
+      }
+      media.onFail = error => logger?.warn('webrtc.media_failed', { code: error?.code || 'media_failed', message: error?.message || 'unknown' })
       media.onClose = () => connection.close(1006, 'media closed')
       media.onOpen = () => {
         clearTimeout(timer)
@@ -112,8 +170,10 @@ export function registerWebRtcIngress(app, { options, getGateway, providerRegist
         connection.start()
       }
       // Attach before ICE negotiation so credential revocation and shutdown
-      // cover pending peers as well as fully established sessions.
-      getGateway().attachClient(connection, { identity: req.identity, sessionId })
+      // cover pending peers as well as fully established sessions. The persona
+      // is injected through this internal port, never through the wire hello:
+      // it is already resolved against the server-side allowlist above.
+      getGateway().attachClient(connection, { identity: req.identity, sessionId, avatarPersonaId })
       res.once('close', () => { if (!res.writableFinished) connection.close(1000, 'request aborted') })
       const sdp = await Promise.race([media.answer(req.body), closedDuringNegotiation])
       if (closed || connection.readyState !== 1) throw rtcError(503, 'connection_closed', 'WebRTC connection closed')

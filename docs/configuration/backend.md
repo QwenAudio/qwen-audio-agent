@@ -29,6 +29,20 @@ Complete authentication and model setup through the backend's own interface. Des
 
 The generic `acp` entry has no installer. Set `ACP_COMMAND` and `ACP_ARGS` yourself. See [Backend-Specific Settings](../backends/configuration.md).
 
+### Bare LLM Backend
+
+Use the built-in `llm` backend to pair the voice frontend with an OpenAI-compatible text model. Each Task sends one stateless request containing only an optional system prompt and its current instruction. It does not forward tool schemas, conversation history, workspace, or Gateway metadata.
+
+```dotenv
+AGENT_PROTOCOL=llm
+QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-plus
+QWEN_AUDIO_AGENT_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+QWEN_AUDIO_AGENT_LLM_API_KEY=your-key
+# QWEN_AUDIO_AGENT_LLM_SYSTEM_PROMPT=Answer the user's question directly.
+```
+
+When the dedicated key is empty, the backend tries `DASHSCOPE_API_KEY` and then `OPENAI_API_KEY`. When the base URL is empty, it tries `OPENAI_BASE_URL`, then `DASHSCOPE_BASE_URL`, and finally selects the OpenAI or DashScope default from the available credential. The backend supports Task cancellation, but not function calling, permission requests, follow-up input, native workspace tools, or cross-Task history. It remains a lightweight LLM adapter rather than a full Agent replacement.
+
 ## Model Selection
 
 For ACP backends supporting standard model configuration, when `QWEN_AUDIO_AGENT_BACKEND_MODEL` is empty:
@@ -40,7 +54,7 @@ An explicit value uses only standard ACP `configOptions` with `category: model` 
 
 DeepSeek also uses standard ACP model configuration; an empty setting preserves its ACP profile configuration. See [DeepSeek](../backends/configuration.md#deepseek).
 
-Overrides apply to coordinator, new, and restored project Sessions. Non-ACP adapters implement their own declared capability; Muse Code uses MSP `modelId`, not ACP.
+Overrides apply to coordinator, new, and restored project Sessions. Non-ACP adapters implement their own declared capability; Muse Code uses MSP `modelId`, while the bare LLM passes the value directly as the Chat Completions `model`.
 
 ### Managed OpenCode / OpenClaw Setup
 

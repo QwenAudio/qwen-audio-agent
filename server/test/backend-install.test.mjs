@@ -57,9 +57,9 @@ function installOptions(overrides = {}) {
 test('every catalog backend has an explicit install spec', () => {
   for (const id of backendNames()) {
     const support = installSupport(id, { env: {}, platform: 'darwin' })
-    if (id === 'acp') {
-      assert.equal(support.supported, false, 'acp 不提供一键安装')
-      assert.match(support.reason, /ACP_COMMAND/)
+    if (['acp', 'llm'].includes(id)) {
+      assert.equal(support.supported, false, `${id} 不提供一键安装`)
+      assert.match(support.reason, id === 'acp' ? /ACP_COMMAND/ : /无需安装/)
     } else {
       assert.equal(support.supported, true, `${id} 应支持一键安装`)
       assert.ok(support.steps.length >= 1, `${id} 至少一个安装步骤`)

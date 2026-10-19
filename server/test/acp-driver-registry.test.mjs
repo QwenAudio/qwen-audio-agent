@@ -14,7 +14,9 @@ import {
 } from '../src/process/backend-drivers/registry.mjs'
 
 const acpBackendNames = () => backendNames().filter(protocol => (
-  backendDefinition(protocol)?.setup?.integration !== 'msp'
+  ['native', 'bridge', 'adapter', 'generic'].includes(
+    backendDefinition(protocol)?.setup?.integration,
+  )
 ))
 
 test('every advertised ACP backend has Agent and Runtime drivers', () => {

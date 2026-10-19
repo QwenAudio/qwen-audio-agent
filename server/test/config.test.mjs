@@ -165,6 +165,7 @@ test('maps managed provider IDs while preserving backend-native model IDs', () =
     muse: 'qwen3.7-plus',
     deepSeekHarness: 'qwen3.7-plus',
     acp: 'qwen3.7-plus',
+    llm: 'qwen3.7-plus',
   })
 })
 
@@ -188,6 +189,7 @@ test('ignores backend-native model variables as Gateway overrides', () => {
     muse: '',
     deepSeekHarness: '',
     acp: '',
+    llm: '',
   })
 })
 
@@ -210,6 +212,7 @@ test('treats legacy auto as no backend model override', () => {
     muse: '',
     deepSeekHarness: '',
     acp: '',
+    llm: '',
   })
 })
 
@@ -233,6 +236,7 @@ test('uses only the unified backend model override', () => {
     muse: 'qwen3.7-max',
     deepSeekHarness: 'qwen3.7-max',
     acp: 'qwen3.7-max',
+    llm: 'qwen3.7-max',
   })
 })
 

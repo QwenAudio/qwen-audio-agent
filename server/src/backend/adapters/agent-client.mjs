@@ -2,6 +2,7 @@ import { config } from '../../core/config.mjs'
 import { assertBackendPort } from '../backend-port.mjs'
 import { AgentError } from '../agent-error.mjs'
 import { createAcpBackendAdapter } from './acp/backend-factory.mjs'
+import { createLlmBackendAdapter } from './llm/backend-adapter.mjs'
 import { createMuseBackendAdapter } from './muse/backend-adapter.mjs'
 
 export { AgentError }
@@ -88,6 +89,19 @@ export class AgentClient {
 
 export function createAgentClient(options = {}) {
   const protocol = options.protocol ?? config.agentProtocol
+  if (protocol === 'llm') {
+    const backend = {
+      ...(config.backends?.llm || {}),
+      ...(options.backends?.llm || {}),
+    }
+    return new AgentClient({
+      adapter: createLlmBackendAdapter({
+        timeoutMs: options.timeoutMs ?? config.agentTimeoutMs,
+        ...backend,
+        ...(options.llmFetch ? { fetchImpl: options.llmFetch } : {}),
+      }),
+    })
+  }
   if (protocol === 'muse') {
     const backend = {
       ...(config.backends?.muse || {}),

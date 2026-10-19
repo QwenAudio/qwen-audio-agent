@@ -7,6 +7,7 @@ The Backend Agent handles tasks that require tools, file operations, or sustaine
 | Backend Agent | Integration Method | Setup Requirements | Skills | Recommendation |
 | --- | --- | --- | --- | --- |
 | None | N/A | Frontend-only mode, no configuration needed | — | ★★★★★ |
+| Bare LLM | Built-in Chat Completions | OpenAI-compatible URL, API key, and model | None (text only) | Experimental |
 | Qwen Code | Native ACP | Supports one-click install, requires user configuration | `~/.qwen/skills/` | ★★★★★ |
 | OpenCode | Native ACP | Supports one-click install and Bailian configuration | `~/.config/opencode/skills/` | ★★★★★ |
 | OpenClaw | Built-in ACP bridge | Supports one-click install and Bailian configuration | `~/.openclaw/skills/` | ★★★★★ |
@@ -86,6 +87,8 @@ ACP_ARGS=["--acp"]
 ```
 
 The command, arguments, display name, and working directory can be configured via `ACP_COMMAND`, `ACP_ARGS`, `ACP_LABEL`, and `ACP_WORKSPACE` respectively. The generic ACP entry does not provide one-click install; please install it yourself.
+
+For a lightweight LLM control, use `AGENT_PROTOCOL=llm`. Each Task makes one stateless text request without forwarding frontend business tools or conversation history. See [Bare LLM Backend](../configuration/backend.md#bare-llm-backend) for configuration and capability boundaries.
 
 ## Permission Modes
 

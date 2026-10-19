@@ -29,6 +29,20 @@ qwenaudio install qwen
 
 通用 `acp` 入口不提供安装器，需自行设置 `ACP_COMMAND` 与 `ACP_ARGS`。后台独立参数见[各后台详细配置](../backends/configuration.zh.md)。
 
+### 裸 LLM 后台
+
+需要把语音前台与 OpenAI-compatible 文本模型组合时，可选择内置 `llm` 后台。每个 Task 仅携带可选 system prompt 与当前 Task instruction，发起一次无状态文本请求；不传递工具 schema、会话历史、工作区或 Gateway 元数据。
+
+```dotenv
+AGENT_PROTOCOL=llm
+QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-plus
+QWEN_AUDIO_AGENT_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+QWEN_AUDIO_AGENT_LLM_API_KEY=your-key
+# QWEN_AUDIO_AGENT_LLM_SYSTEM_PROMPT=请直接回答用户的问题。
+```
+
+API Key 未单独填写时依次复用 `DASHSCOPE_API_KEY`、`OPENAI_API_KEY`；Base URL 未填写时复用 `OPENAI_BASE_URL`、`DASHSCOPE_BASE_URL`，最后按凭据选择 OpenAI 或 DashScope 默认地址。该后端支持 Task 取消，但不支持 function calling、权限请求、补充输入、后台原生工作区工具或跨 Task 历史；它仍是轻量 LLM Adapter，不等同于完整 Agent。
+
 ## 模型选择
 
 对支持标准模型配置的 ACP 后台，`QWEN_AUDIO_AGENT_BACKEND_MODEL` 留空时：
@@ -40,7 +54,7 @@ qwenaudio install qwen
 
 DeepSeek 同样通过标准 ACP 接口设置模型，留空时保留自身 ACP profile 配置，见 [DeepSeek](../backends/configuration.zh.md#deepseek)。
 
-覆盖应用于协调、新建和恢复的项目 Session。非 ACP 适配器按自己的公开能力实现；例如 Muse Code 使用 MSP `modelId`，不是 ACP。
+覆盖应用于协调、新建和恢复的项目 Session。非 ACP 适配器按自己的公开能力实现；例如 Muse Code 使用 MSP `modelId`，裸 LLM 直接把该值作为 Chat Completions 的 `model`。
 
 ### OpenCode / OpenClaw 一键托管
 

@@ -436,6 +436,30 @@ const definitions = new Map([
       explicitListEnvironment: 'QWEN_AUDIO_AGENT_ACP_FORWARD_ENV',
     },
   }],
+  ['llm', {
+    id: 'llm',
+    label: 'LLM',
+    skills: null,
+    setup: {
+      integration: 'llm',
+    },
+    lifecycle: {
+      installation: null,
+      configuration: { mode: 'api' },
+    },
+    supportsFullPermission: false,
+    environment: {
+      names: [
+        'QWEN_AUDIO_AGENT_LLM_API_KEY',
+        'QWEN_AUDIO_AGENT_LLM_BASE_URL',
+        'QWEN_AUDIO_AGENT_LLM_SYSTEM_PROMPT',
+        'DASHSCOPE_API_KEY',
+        'DASHSCOPE_BASE_URL',
+        'OPENAI_API_KEY',
+        'OPENAI_BASE_URL',
+      ],
+    },
+  }],
 ])
 
 export function backendDefinition(protocol) {

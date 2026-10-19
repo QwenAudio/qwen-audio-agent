@@ -333,6 +333,45 @@ function inspectBackend(id, {
   const definition = backendDefinition(id)
   const spec = definition?.setup
   if (!spec) throw new Error(`后台 ${id} 缺少 setup 配置`)
+  if (spec.integration === 'llm') {
+    const apiKey = clean(
+      env.QWEN_AUDIO_AGENT_LLM_API_KEY
+      || env.DASHSCOPE_API_KEY
+      || env.OPENAI_API_KEY,
+    )
+    const model = clean(env.QWEN_AUDIO_AGENT_BACKEND_MODEL)
+    const issues = [
+      ...(!apiKey ? ['请设置 QWEN_AUDIO_AGENT_LLM_API_KEY（或 DASHSCOPE_API_KEY / OPENAI_API_KEY）'] : []),
+      ...(!model || model.toLowerCase() === 'auto'
+        ? ['请设置 QWEN_AUDIO_AGENT_BACKEND_MODEL']
+        : []),
+    ]
+    const ready = issues.length === 0
+    return {
+      id,
+      label: definition.label,
+      selected: id === selected,
+      ready,
+      backend: {
+        ready,
+        source: 'api',
+        path: '',
+        installed: true,
+        ...(!ready ? { issue: issues.join('；') } : {}),
+      },
+      adapter: {
+        ready: true,
+        source: 'builtin',
+        path: '',
+        installed: true,
+      },
+      integration: spec.integration,
+      configuration: 'api',
+      authentication: 'api-key',
+      issues,
+      platform,
+    }
+  }
   const configured = spec.commandEnvironment
     ? environmentValue(env, spec.commandEnvironment)
     : environmentValue(env, spec.executableEnvironment)
@@ -500,6 +539,7 @@ export async function inspectBackendSetupsAsync({
 }
 
 function integrationText(item) {
+  if (item.integration === 'llm') return '内置 OpenAI-compatible Chat Completions'
   if (item.integration === 'msp') return '原生 Muse Session Protocol'
   if (item.integration === 'native') return '原生 ACP'
   if (item.integration === 'bridge') return '内置 ACP Bridge'
@@ -510,6 +550,7 @@ function integrationText(item) {
 
 function backendText(item) {
   if (!item.backend.ready) return item.backend.issue
+  if (item.backend.source === 'api') return 'API 配置完整'
   if (item.backend.source === 'managed') {
     return `启动时通过 npx 自动下载兼容版本（${item.backend.path}）`
   }
@@ -534,6 +575,8 @@ export function formatBackendSetup(report) {
           integrationText(item),
           item.configuration === 'automatic-bailian'
             ? '自动配置百炼 API Key 与后台模型'
+            : item.configuration === 'api'
+              ? '无会话历史、无工具的纯文本 LLM'
             : item.configuration === 'preserved'
               ? '复用用户级配置'
               : '配置由 ACP Agent 管理',

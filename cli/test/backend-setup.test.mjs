@@ -276,6 +276,29 @@ test('checks explicit generic ACP commands and adapter binaries', () => {
   assert.equal(claude.adapter.source, 'installed')
 })
 
+test('checks the built-in bare LLM configuration without an executable', () => {
+  const ready = inspector({
+    backend: 'llm',
+    env: {
+      QWEN_AUDIO_AGENT_LLM_API_KEY: 'test-key',
+      QWEN_AUDIO_AGENT_BACKEND_MODEL: 'test-model',
+    },
+  }).backends[0]
+  assert.equal(ready.ready, true)
+  assert.equal(ready.backend.source, 'api')
+  assert.equal(ready.adapter.source, 'builtin')
+  assert.equal(ready.configuration, 'api')
+
+  const missing = inspector({ backend: 'llm' }).backends[0]
+  assert.equal(missing.ready, false)
+  assert.match(missing.issues.join(' '), /API_KEY/)
+  assert.match(missing.issues.join(' '), /BACKEND_MODEL/)
+  assert.match(formatBackendSetup({
+    selected: 'llm',
+    backends: [ready],
+  }), /无会话历史、无工具的纯文本 LLM/)
+})
+
 test('requires a compatible Pi version and its ACP adapter', () => {
   const ready = inspector({
     backend: 'pi',

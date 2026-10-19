@@ -139,7 +139,9 @@ export function installSupport(id, {
   if (!spec) {
     return {
       supported: false,
-      reason: '通用 ACP 接入的 Agent 需自行安装，并通过 ACP_COMMAND 配置',
+      reason: definition.setup?.integration === 'llm'
+        ? '裸 LLM 后台为内置适配器，无需安装；请配置 API Key、Base URL 与模型'
+        : '通用 ACP 接入的 Agent 需自行安装，并通过 ACP_COMMAND 配置',
     }
   }
   if (!steps.length) {

@@ -29,7 +29,7 @@ test('every product backend owns an explicit configuration adapter', () => {
       env: {},
       platform: 'darwin',
     })
-    if (id === 'acp') {
+    if (['acp', 'llm'].includes(id)) {
       assert.equal(action, null)
       continue
     }

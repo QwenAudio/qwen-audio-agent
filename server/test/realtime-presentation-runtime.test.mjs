@@ -444,6 +444,29 @@ test('user interruption confirms an announcement and suppresses late output', ()
   assert.equal(calls.some(([name]) => name === 'retryMany'), false)
 })
 
+test('a due reminder is confirmed once it plays, or completes for a non-voice client', () => {
+  const confirmed = calls => calls.filter(([name]) => name === 'confirmMany')
+  const reminder = { __voiceOrigin: 'gateway-system-event', __voiceContext: { turnId: 'turn-1', turnGeneration: 1, taskIds: ['reminder-1'] } }
+
+  const voice = harness()
+  deliver(voice.runtime, { type: 'response.audio.delta', response_id: 'response-1', delta: 'audio', ...reminder })
+  assert.deepEqual(confirmed(voice.calls), [])
+  voice.runtime.startPlayback('response-1')
+  assert.deepEqual(confirmed(voice.calls), [['confirmMany', ['reminder-1']]])
+
+  const text = harness({ nonVoiceClient: true })
+  text.runtime.begin({ type: 'response.created', response: { id: 'response-1' }, ...reminder })
+  deliver(text.runtime, { type: 'response.done', response_id: 'response-1', response: { id: 'response-1', status: 'completed' } })
+  assert.deepEqual(confirmed(text.calls), [['confirmMany', ['reminder-1']]])
+
+  // A system event about no task, such as a content rejection, confirms nothing.
+  const notice = harness()
+  deliver(notice.runtime, { type: 'response.audio.delta', response_id: 'response-1', delta: 'audio',
+    __voiceOrigin: 'gateway-system-event', __voiceContext: { turnId: 'turn-1', turnGeneration: 1 } })
+  notice.runtime.startPlayback('response-1')
+  assert.deepEqual(confirmed(notice.calls), [])
+})
+
 test('a provider failure retries an undelivered announcement', () => {
   const { runtime, calls } = harness()
   runtime.begin({

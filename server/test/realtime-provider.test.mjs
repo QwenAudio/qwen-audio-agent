@@ -17,6 +17,7 @@ import { validateRealtimeProvider } from '../src/voice/providers/registry.mjs'
 import { buildFrontendToolContext } from '../src/frontend/tools/frontend-tool-context.mjs'
 import { inputRequestResponseInstructions } from '../src/frontend/frontend-tools.mjs'
 import {
+  DASHSCOPE_AUDIO_31_REALTIME_MODEL,
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
@@ -554,6 +555,13 @@ test('resolves exact DashScope model profiles for sessions and responses', t => 
       { type: 'semantic_vad' },
     ],
     [
+      DASHSCOPE_AUDIO_31_REALTIME_MODEL,
+      'Qwen Audio 3.1 Realtime Plus',
+      'audio',
+      'longanqian_v3.1',
+      { type: 'smart_turn' },
+    ],
+    [
       DEFAULT_DASHSCOPE_REALTIME_MODEL,
       'Qwen Audio 3.0 Realtime Plus',
       'audio',
@@ -575,6 +583,10 @@ test('resolves exact DashScope model profiles for sessions and responses', t => 
       family !== 'omni',
     )
     assert.equal(session.voice, voice)
+    assert.equal(session.input_audio_format, 'pcm')
+    assert.equal(session.output_audio_format, 'pcm')
+    assert.equal(Object.hasOwn(session, 'audio'), false)
+    assert.ok(session.tools.some(tool => tool.function?.name === 'spawn_thinking'))
     assert.deepEqual(profile.sessionDefaults.turnDetection, turnDetection)
     assert.deepEqual(session.turn_detection, turnDetection)
     assert.deepEqual(session.modalities, ['text', 'audio'])
@@ -583,6 +595,29 @@ test('resolves exact DashScope model profiles for sessions and responses', t => 
       ['text', 'audio'],
     )
   }
+})
+
+test('Audio 3.1 keeps voice overrides and initial-only configuration in the shared DashScope provider', t => {
+  const previous = { audioModel: config.audioModel, audioVoice: config.audioVoice,
+    audioRealtimeBaseUrl: config.audioRealtimeBaseUrl }
+  t.after(() => Object.assign(config, previous))
+  Object.assign(config, { audioModel: DASHSCOPE_AUDIO_31_REALTIME_MODEL, audioVoice: '',
+    audioRealtimeBaseUrl: 'wss://workspace.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime' })
+  const provider = REALTIME_PROVIDERS.qwen
+  assert.doesNotThrow(() => provider.validateSessionOptions())
+  assert.equal(new URL(provider.url()).searchParams.get('model'), DASHSCOPE_AUDIO_31_REALTIME_MODEL)
+  assert.equal(provider.voice(), 'longanqian_v3.1')
+  for (const voice of ['longanqian', 'longanhuan_v3.1', 'qwen-audio-3.1-realtime-plus-myvoice-example']) {
+    config.audioVoice = voice
+    assert.doesNotThrow(() => provider.validateSessionOptions())
+    assert.equal(provider.buildSession({ configured: false }).voice, voice)
+  }
+  assert.equal(provider.buildSession({ configured: false,
+    sessionOptions: { voice: 'beth_v3.1' } }).voice, 'beth_v3.1')
+  const refresh = provider.buildSession({ configured: true })
+  assert.deepEqual(Object.keys(refresh).sort(), ['instructions', 'tools'])
+  assert.equal(provider.modelProfile().modelCapabilities.imageInput, false)
+  assert.equal(provider.modelProfile().modelCapabilities.videoInput, false)
 })
 
 test('prefers the selected DashScope family voice override over the profile default', t => {
@@ -753,6 +788,7 @@ test('publishes the active DashScope profile without assigning one to s2s', t =>
       DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL,
       DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
       DASHSCOPE_OMNI_PLUS_REALTIME_MODEL,
+      DASHSCOPE_AUDIO_31_REALTIME_MODEL,
       DEFAULT_DASHSCOPE_REALTIME_MODEL,
       DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
     ],

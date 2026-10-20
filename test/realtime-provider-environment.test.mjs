@@ -143,6 +143,28 @@ test('Omni voice is family-scoped and an empty Audio voice does not override it'
   }), 'legacy-omni')
 })
 
+test('Audio 3.1 accepts only the Audio family voice and keeps profile defaults implicit', () => {
+  const env = {
+    QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope',
+    QWEN_AUDIO_REALTIME_MODEL: 'qwen-audio-3.1-realtime-plus',
+    DASHSCOPE_API_KEY: 'audio-31-test-key',
+    QWEN_OMNI_REALTIME_VOICE: 'omni-only-voice',
+  }
+  assert.doesNotThrow(() => requireRealtimeFrontendConfiguration(env))
+  const configuration = resolveRealtimeFrontendConfiguration(env)
+  assert.equal(configuration.active.model, 'qwen-audio-3.1-realtime-plus')
+  assert.equal(configuration.active.voice, '')
+  assert.equal(configuration.credential, 'audio-31-test-key')
+  assert.equal(resolveDashScopeRealtimeVoiceOverride(env.QWEN_AUDIO_REALTIME_MODEL, env), '')
+  const overridden = { ...env, QWEN_AUDIO_REALTIME_VOICE: 'custom-audio-31' }
+  assert.doesNotThrow(() => requireRealtimeFrontendConfiguration(overridden))
+  assert.equal(resolveRealtimeFrontendConfiguration(overridden).active.voice, 'custom-audio-31')
+  assert.deepEqual(
+    resolveRealtimeFrontendConfiguration(realtimeRuntimeEnvironment(realtimeSettingsFromEnvironment(overridden))),
+    resolveRealtimeFrontendConfiguration(overridden),
+  )
+})
+
 test('S2S aliases are supported without overriding explicitly cleared primary variables', () => {
   const env = {
     QWEN_AUDIO_REALTIME_PROVIDER: 's2s',

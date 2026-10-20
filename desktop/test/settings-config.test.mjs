@@ -123,6 +123,27 @@ test('keeps profile defaults out of persisted desktop voice overrides', () => {
   )
 })
 
+test('Audio 3.1 settings round-trip without persisting the default voice', () => {
+  const content = updateSettingsContent('', {
+    realtimeModel: 'qwen-audio-3.1-realtime-plus',
+    dashscopeApiKey: 'audio-31-test-key',
+    omniRealtimeVoice: 'omni-only-voice',
+  })
+  const settings = parseSettings(content)
+  assert.equal(settings.realtimeModel, 'qwen-audio-3.1-realtime-plus')
+  assert.equal(settings.audioRealtimeVoice, '')
+  assert.match(content, /^QWEN_AUDIO_REALTIME_VOICE=$/m)
+  assert.doesNotMatch(content, /longanqian_v3\.1/)
+  assert.equal(realtimeSettingsConfigured(settings), true)
+  assert.equal(realtimeSettingsConfiguration(settings).active.voice, '')
+  const overridden = parseSettings(updateSettingsContent(content, {
+    audioRealtimeVoice: 'custom-audio-31',
+  }))
+  assert.equal(realtimeSettingsConfiguration(overridden).active.voice, 'custom-audio-31')
+  assert.equal(applySettingsEnvironment(overridden, {}).QWEN_AUDIO_REALTIME_VOICE, 'custom-audio-31')
+  assert.equal(overridden.omniRealtimeVoice, 'omni-only-voice')
+})
+
 test('persists both model family voices and clears only the selected family', () => {
   const settings = {
     realtimeModel: 'qwen3.5-omni-plus-realtime',

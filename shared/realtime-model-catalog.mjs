@@ -6,6 +6,7 @@ export const DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL = '1.2.6.1'
 export const DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE = 'zh_female_vv_jupiter_bigtts'
 
 export const DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL = 'qwen-audio-3.0-realtime-flash'
+export const DASHSCOPE_AUDIO_31_REALTIME_MODEL = 'qwen-audio-3.1-realtime-plus'
 export const DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL = 'qwen3.8-omni-flash-realtime'
 export const DASHSCOPE_OMNI_FLASH_REALTIME_MODEL = 'qwen3.5-omni-flash-realtime'
 export const DASHSCOPE_OMNI_PLUS_REALTIME_MODEL = 'qwen3.5-omni-plus-realtime'
@@ -75,6 +76,17 @@ export const DASHSCOPE_REALTIME_MODEL_PROFILES = Object.freeze([
     sessionDefaults: OMNI_SESSION_DEFAULTS,
     modelCapabilities: OMNI_MODEL_CAPABILITIES,
     transportCapabilities: OMNI_TRANSPORT_CAPABILITIES,
+  }),
+  Object.freeze({
+    id: DASHSCOPE_AUDIO_31_REALTIME_MODEL,
+    label: 'Qwen Audio 3.1 Realtime Plus',
+    family: 'audio',
+    sessionDefaults: Object.freeze({
+      voice: 'longanqian_v3.1',
+      turnDetection: AUDIO_SESSION_DEFAULTS.turnDetection,
+    }),
+    modelCapabilities: LEGACY_MODEL_CAPABILITIES,
+    transportCapabilities: LEGACY_TRANSPORT_CAPABILITIES,
   }),
   Object.freeze({
     id: DEFAULT_DASHSCOPE_REALTIME_MODEL,

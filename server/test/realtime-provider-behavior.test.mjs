@@ -7,6 +7,12 @@ import { config } from '../src/core/config.mjs'
 import { RealtimeFrontend } from '../src/voice/realtime-provider.mjs'
 import { RealtimeProviderSession } from '../src/voice/realtime-provider-session.mjs'
 import { defaultRealtimeProviderRegistry } from '../src/voice/providers/registry.mjs'
+import {
+  DASHSCOPE_AUDIO_31_REALTIME_MODEL,
+  DEFAULT_DASHSCOPE_REALTIME_MODEL,
+} from '../../shared/realtime-model-catalog.mjs'
+
+const PCM_REPLY = Buffer.alloc(480).toString('base64')
 
 // Exercise the public runtime against real sockets and each native dialect.
 // Only connection configuration is replaced: never contact a cloud endpoint or
@@ -39,6 +45,9 @@ async function service(t, key) {
         } else {
           this.send({ type: 'response.created', response: this.active })
           this.send({ type: 'response.text.delta', response_id: id, delta: 'reply' })
+          if (key === 'dashscope') {
+            this.send({ type: 'response.audio.delta', response_id: id, delta: PCM_REPLY })
+          }
         }
         if (this.autoComplete) this.finish()
       },
@@ -137,12 +146,37 @@ async function connect(t, key) {
   return { ...fixture, frontend, events, errors, flush, peer: fixture.connections[0] }
 }
 
-for (const key of defaultRealtimeProviderRegistry.list().map(provider => provider.key)) {
-  test(`${key}: shared runtime behavior contract`, async t => {
+const cases = defaultRealtimeProviderRegistry.list().flatMap(({ key }) => key === 'dashscope'
+  ? [DEFAULT_DASHSCOPE_REALTIME_MODEL, DASHSCOPE_AUDIO_31_REALTIME_MODEL].map(model => ({ key, model }))
+  : [{ key }])
+
+for (const { key, model } of cases) {
+  test(`${key}${model ? ` / ${model}` : ''}: shared runtime behavior contract`, async t => {
     // Keep the DashScope profile independent from the developer's config.env.
-    const previous = config.audioModel
-    config.audioModel = 'qwen-audio-3.0-realtime-plus'
-    t.after(() => { config.audioModel = previous })
+    const previous = { audioModel: config.audioModel, audioVoice: config.audioVoice }
+    Object.assign(config, { audioModel: model || DEFAULT_DASHSCOPE_REALTIME_MODEL, audioVoice: '' })
+    t.after(() => Object.assign(config, previous))
+
+    if (key === 'dashscope') {
+      await t.test('audio session configures PCM and streams input and spoken output', async t => {
+        const { frontend, peer, events, flush } = await connect(t, key)
+        const setup = peer.messages.find(message => message.type === 'session.update').session
+        assert.equal(setup.voice, model === DASHSCOPE_AUDIO_31_REALTIME_MODEL ? 'longanqian_v3.1' : 'longanqian')
+        assert.deepEqual(setup.turn_detection, { type: 'smart_turn' })
+        assert.deepEqual(setup.modalities, ['text', 'audio'])
+        assert.equal(setup.input_audio_format, 'pcm')
+        assert.equal(setup.output_audio_format, 'pcm')
+        assert.equal(frontend.provider.inputSampleRate, 16000)
+        assert.equal(frontend.provider.outputSampleRate, 24000)
+        const audio = Buffer.alloc(3200).toString('base64')
+        frontend.appendAudio(audio)
+        await flush()
+        assert.equal(peer.messages.find(message => message.type === 'input_audio_buffer.append').audio, audio)
+        assert.equal((await frontend.sendUserText('hello')).completed, true)
+        assert.equal(events.find(event => event.type === 'response.audio.delta').delta, PCM_REPLY)
+        assert.equal(peer.replies, 1)
+      })
+    }
 
     await t.test('context-only delivery preserves successive updates without a reply', async t => {
       const { frontend, peer, flush } = await connect(t, key)

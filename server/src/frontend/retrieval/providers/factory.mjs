@@ -11,7 +11,7 @@ export function createWebSearchProvider(config, options = {}) {
   if (provider === 'so360') {
     return new So360WebSearchProvider(options)
   }
-  if (provider === 'mcp' || provider === 'bailian') {
+  if (provider === 'mcp' || provider === 'bailian' || provider === 'parallel') {
     return new McpWebSearchProvider({
       url: config.webSearchMcpUrl,
       token: config.webSearchMcpToken,
@@ -22,6 +22,9 @@ export function createWebSearchProvider(config, options = {}) {
             label: 'Bailian Web Search MCP',
             requiresToken: true,
           }
+        : {}),
+      ...(provider === 'parallel'
+        ? { key: 'parallel', label: 'Parallel Search MCP' }
         : {}),
       ...options,
     })

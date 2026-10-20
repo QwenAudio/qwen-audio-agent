@@ -31,8 +31,16 @@ export function confirmsTaskNotificationOnPlaybackStart(context) {
     context
     && (
       context.origin === 'announcement'
-      || context.consumesTaskNotification
+      || isTaskNotification(context)
     ),
+  )
+}
+
+// A due reminder reaches the model as a Gateway system event for its task.
+function isTaskNotification(context) {
+  return Boolean(
+    context?.consumesTaskNotification
+    || (context?.origin === 'gateway-system-event' && contextTaskIds(context).length),
   )
 }
 
@@ -388,7 +396,7 @@ export class RealtimePresentationRuntime {
         && !failed
       )
       const completedNonVoiceTaskNotification = (
-        context?.consumesTaskNotification
+        isTaskNotification(context)
         && nonVoiceClient
         && !failed
       )

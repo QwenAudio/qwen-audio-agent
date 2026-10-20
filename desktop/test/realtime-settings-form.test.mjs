@@ -7,7 +7,7 @@ import {
   realtimeSettingsProfileState,
   realtimeSettingsValues,
 } from '../../shared/realtime-provider-definitions.mjs'
-import { realtimeSettingsFields } from '../src/realtime-settings-form.mjs'
+import { createRealtimeSettingsForm, realtimeSettingsFields } from '../src/realtime-settings-form.mjs'
 import { normalizeSettings, parseSettings } from '../src/settings-config.mjs'
 
 test('each provider has unique UI bindings and lossless structured drafts', () => {
@@ -60,6 +60,47 @@ test('Omni 3.8 uses the existing model, endpoint and voice settings', () => {
   assert.equal(fields[3].key, 'omniRealtimeVoice')
   assert.equal(fields[3].placeholder, 'Tina')
   assert.deepEqual(realtimeSettingsFromProfileState(realtimeSettingsProfileState(values)), values)
+})
+
+test('Audio 3.1 is rendered as a model option with the Audio family voice binding', () => {
+  // Rendering needs only these DOM operations; no Electron or upstream service is started.
+  const document = {
+    addEventListener() {},
+    createElement(tagName) {
+      return {
+        tagName, ownerDocument: document, dataset: {}, children: [], value: '',
+        setAttribute() {},
+        addEventListener() {},
+        append(...children) { this.children.push(...children) },
+        replaceChildren(...children) { this.children = children },
+        get options() { return this.children },
+      }
+    },
+  }
+  const panel = document.createElement('div')
+  const form = createRealtimeSettingsForm({
+    pickerRoot: document.createElement('div'), panel,
+    onChange() {}, openExternal() {},
+  })
+  form.load({ realtimeModel: 'qwen-audio-3.1-realtime-plus' })
+  const model = panel.children[2].children.find(child => child.tagName === 'select')
+  assert.equal(model.value, 'qwen-audio-3.1-realtime-plus')
+  assert.equal(model.options.find(option => option.value === model.value)?.textContent, 'Qwen Audio 3.1 Realtime Plus')
+  const voice = panel.children[3].children.find(child => child.tagName === 'input')
+  assert.equal(voice.dataset.setting, 'audioRealtimeVoice')
+  assert.equal(voice.placeholder, 'longanqian_v3.1')
+  assert.equal(voice.value, '')
+  assert.equal(form.values().audioRealtimeVoice, '')
+
+  form.load({
+    realtimeModel: 'qwen-audio-3.1-realtime-plus',
+    audioRealtimeVoice: 'custom-audio', omniRealtimeVoice: 'custom-omni',
+  })
+  assert.equal(panel.children[3].children.find(child => child.tagName === 'input').value, 'custom-audio')
+  assert.equal(form.values().omniRealtimeVoice, 'custom-omni')
+  form.load({})
+  assert.equal(form.values().realtimeModel, 'qwen-audio-3.0-realtime-plus')
+  assert.equal(panel.children[3].children.find(child => child.tagName === 'input').placeholder, 'longanqian')
 })
 
 test('service-owned model and voice rows stay visible but have no writable binding', () => {

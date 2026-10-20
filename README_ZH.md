@@ -98,6 +98,7 @@
 | 语音前台 | 部署方式 | 接入准备 | 特点 |
 | --- | --- | --- | --- |
 | [Qwen Audio 3.0 Realtime](docs/voice-frontends/qwen-audio-realtime.zh.md) | 云端 | 百炼 API Key | 双工语音、工具调用 |
+| [Qwen Audio 3.1 Realtime Plus](docs/voice-frontends/qwen-audio-realtime.zh.md) | 云端 | 百炼 API Key | 双工语音、工具调用 |
 | [GPT-Live / OpenAI Realtime](docs/voice-frontends/gpt-live.zh.md) | 云端 | OpenAI API Key | — |
 | [Google Gemini Live](docs/voice-frontends/google-live.zh.md) | 云端 | Google API Key | 实时视频输入 |
 | [Qwen3.5-Omni Realtime](docs/voice-frontends/qwen-omni-realtime.zh.md) | 云端 | 百炼 API Key | 实时视频输入 |

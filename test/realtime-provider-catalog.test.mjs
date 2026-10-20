@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  DASHSCOPE_AUDIO_31_REALTIME_MODEL,
   DASHSCOPE_REALTIME_MODEL_PROFILES,
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
+  DEFAULT_DASHSCOPE_REALTIME_VOICE,
   DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL,
   DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE,
   resolveDashScopeRealtimeVoiceOverride,
@@ -15,6 +17,7 @@ import {
 const OMNI_FLASH_ID = 'qwen3.5-omni-flash-realtime'
 const OMNI_38_FLASH_ID = 'qwen3.8-omni-flash-realtime'
 const OMNI_PLUS_ID = 'qwen3.5-omni-plus-realtime'
+const AUDIO_31_PLUS_ID = 'qwen-audio-3.1-realtime-plus'
 const AUDIO_PLUS_ID = 'qwen-audio-3.0-realtime-plus'
 const AUDIO_FLASH_ID = 'qwen-audio-3.0-realtime-flash'
 
@@ -141,6 +144,30 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
       transportCapabilities: omniTransportCapabilities,
     },
     {
+      id: AUDIO_31_PLUS_ID,
+      label: 'Qwen Audio 3.1 Realtime Plus',
+      family: 'audio',
+      sessionDefaults: {
+        voice: 'longanqian_v3.1',
+        turnDetection: { type: 'smart_turn' },
+      },
+      modelCapabilities: {
+        textInput: true,
+        audioInput: true,
+        imageInput: false,
+        videoInput: false,
+        textOutput: true,
+        audioOutput: true,
+        functionCalling: true,
+      },
+      transportCapabilities: {
+        textInput: true,
+        audioInput: true,
+        imageInput: false,
+        imageBufferInput: false,
+      },
+    },
+    {
       id: AUDIO_PLUS_ID,
       label: 'Qwen Audio 3.0 Realtime Plus',
       family: 'audio',
@@ -190,6 +217,7 @@ test('resolves Omni and Audio Flash and Plus profiles by exact model id', () => 
     OMNI_38_FLASH_ID,
     OMNI_FLASH_ID,
     OMNI_PLUS_ID,
+    AUDIO_31_PLUS_ID,
     AUDIO_PLUS_ID,
     AUDIO_FLASH_ID,
   ]) {
@@ -208,10 +236,25 @@ test('resolves Omni and Audio Flash and Plus profiles by exact model id', () => 
 
 test('keeps the legacy model as the default', () => {
   assert.equal(DEFAULT_DASHSCOPE_REALTIME_MODEL, AUDIO_PLUS_ID)
+  assert.equal(DEFAULT_DASHSCOPE_REALTIME_VOICE, 'longanqian')
   assert.equal(
     resolveDashScopeRealtimeModelProfile().id,
     DEFAULT_DASHSCOPE_REALTIME_MODEL,
   )
+  for (const modelId of [AUDIO_PLUS_ID, AUDIO_FLASH_ID]) {
+    assert.deepEqual(resolveDashScopeRealtimeModelProfile(modelId).sessionDefaults, legacySessionDefaults)
+  }
+})
+
+test('Audio 3.1 has its own default voice and retains Audio capabilities', () => {
+  assert.equal(DASHSCOPE_AUDIO_31_REALTIME_MODEL, AUDIO_31_PLUS_ID)
+  const profile = resolveRealtimeModelProfile(AUDIO_31_PLUS_ID, 'dashscope')
+  const legacy = resolveDashScopeRealtimeModelProfile(AUDIO_PLUS_ID)
+  assert.equal(profile.family, 'audio')
+  assert.equal(profile.sessionDefaults.voice, 'longanqian_v3.1')
+  assert.deepEqual(profile.sessionDefaults.turnDetection, { type: 'smart_turn' })
+  assert.deepEqual(profile.modelCapabilities, legacy.modelCapabilities)
+  assert.deepEqual(profile.transportCapabilities, legacy.transportCapabilities)
 })
 
 test('Omni 3.8 resolves a workspace endpoint without inheriting an Audio voice override', () => {
@@ -238,11 +281,13 @@ test('selects only the explicit voice override for the active model family', () 
   }
 
   assert.equal(resolveDashScopeRealtimeVoiceOverride(AUDIO_PLUS_ID, env), 'custom-voice')
+  assert.equal(resolveDashScopeRealtimeVoiceOverride(AUDIO_31_PLUS_ID, env), 'custom-voice')
   assert.equal(resolveDashScopeRealtimeVoiceOverride(AUDIO_FLASH_ID, env), 'custom-voice')
   assert.equal(resolveDashScopeRealtimeVoiceOverride(OMNI_PLUS_ID, env), 'custom-voice')
   assert.equal(resolveDashScopeRealtimeVoiceOverride(OMNI_FLASH_ID, env), 'custom-voice')
   assert.equal(resolveDashScopeRealtimeVoiceOverride(OMNI_38_FLASH_ID, env), 'custom-voice')
   assert.equal(resolveDashScopeRealtimeVoiceOverride(AUDIO_PLUS_ID, {}), '')
+  assert.equal(resolveDashScopeRealtimeVoiceOverride(AUDIO_31_PLUS_ID, {}), '')
   assert.equal(resolveDashScopeRealtimeVoiceOverride(OMNI_PLUS_ID, {}), '')
   assert.equal(resolveDashScopeRealtimeVoiceOverride('future-model', env), '')
 })

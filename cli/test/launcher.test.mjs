@@ -905,6 +905,37 @@ test('shows and sets the Gateway model without restarting it', async () => {
   assert.equal(target.calls.some(call => call[0] === 'runtime'), false)
 })
 
+test('CLI accepts Audio 3.1 in an isolated config without launching a runtime', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-audio-31-config-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  const configPath = join(directory, 'config.env')
+  const original = [
+    '# keep user configuration',
+    'DASHSCOPE_API_KEY=audio-31-test-key',
+    'QWEN_AUDIO_REALTIME_VOICE=custom-audio',
+    'QWEN_OMNI_REALTIME_VOICE=custom-omni',
+    'OTHER_SETTING=keep',
+    '',
+  ].join('\n')
+  writeFileSync(configPath, original)
+  const target = harness()
+  target.dependencies.env = {}
+  target.dependencies.prepareEnvironment = () => ({ configDirectory: directory, configPath })
+
+  assert.equal(await main(['config', 'show'], target.dependencies), 0)
+  assert.match(target.calls.at(-1)[1], /Realtime 模型：qwen-audio-3\.0-realtime-plus/)
+  assert.equal(await main([
+    'config', 'set', '--realtime-model', 'qwen-audio-3.1-realtime-plus',
+  ], target.dependencies), 0)
+  assert.equal(readFileSync(configPath, 'utf8'), `${original}QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.1-realtime-plus\n`)
+  assert.equal(await main(['config', 'show'], target.dependencies), 0)
+  const output = target.calls.at(-1)[1]
+  assert.match(output, /Realtime 模型：qwen-audio-3\.1-realtime-plus/)
+  assert.match(output, /qwen-audio-3\.1-realtime-plus（Qwen Audio 3\.1 Realtime Plus）/)
+  assert.doesNotMatch(output, /audio-31-test-key/)
+  assert.equal(target.calls.every(call => call[0] === 'stdout'), true)
+})
+
 test('warns when an environment model overrides config set', async () => {
   const target = harness()
   target.dependencies.prepareEnvironment = () => ({

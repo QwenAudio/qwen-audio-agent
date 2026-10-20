@@ -53,11 +53,18 @@ Current built-in DashScope model profiles:
 | --- | --- |
 | `qwen-audio-3.0-realtime-plus` (default) | Text, audio |
 | `qwen-audio-3.0-realtime-flash` | Text, audio |
+| `qwen-audio-3.1-realtime-plus` | Text, audio |
 | `qwen3.5-omni-flash-realtime` | Text, audio, live visual frames |
 | `qwen3.5-omni-plus-realtime` | Text, audio, live visual frames |
 | `qwen3.8-omni-flash-realtime` | Text, audio, live visual frames |
 
 All profiles support tool calls. Live vision also requires client and transport support; see [Visual Input](../guides/vision.md).
+
+Audio 3.1 Plus uses the existing `dashscope` provider and defaults to
+`longanqian_v3.1`; Audio 3.0 Plus / Flash keep `longanqian`. An explicit
+`QWEN_AUDIO_REALTIME_VOICE` must match the selected model. Audio models do not
+support visual input. See the [Audio guide](../voice-frontends/qwen-audio-realtime.md)
+for model switching and workspace endpoint overrides.
 
 ## Apply and Verify
 

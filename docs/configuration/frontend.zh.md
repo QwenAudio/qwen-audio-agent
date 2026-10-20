@@ -53,11 +53,17 @@ DashScope 当前内置以下模型档案：
 | --- | --- |
 | `qwen-audio-3.0-realtime-plus`（默认） | 文字、语音 |
 | `qwen-audio-3.0-realtime-flash` | 文字、语音 |
+| `qwen-audio-3.1-realtime-plus` | 文字、语音 |
 | `qwen3.5-omni-flash-realtime` | 文字、语音、实时视觉帧 |
 | `qwen3.5-omni-plus-realtime` | 文字、语音、实时视觉帧 |
 | `qwen3.8-omni-flash-realtime` | 文字、语音、实时视觉帧 |
 
 这些档案均支持工具调用。模型能否接收视觉帧，还取决于客户端和传输通道，见[视觉输入](../guides/vision.zh.md)。
+
+Audio 3.1 Plus 复用现有 `dashscope` Provider，默认音色为 `longanqian_v3.1`；
+Audio 3.0 Plus / Flash 保持 `longanqian`。显式配置 `QWEN_AUDIO_REALTIME_VOICE`
+时，须选择与模型匹配的音色。Audio 模型不支持视觉输入。模型切换和工作区端点覆盖见
+[Audio 使用说明](../voice-frontends/qwen-audio-realtime.zh.md)。
 
 ## 应用并验证
 

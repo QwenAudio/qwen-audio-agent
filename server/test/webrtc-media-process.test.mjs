@@ -34,7 +34,7 @@ test('media worker receives only transport options and a minimal environment', a
   assert.equal(Object.hasOwn(spawnOptions.env, 'DASHSCOPE_API_KEY'), false)
   assert.equal(Object.hasOwn(spawnOptions.env, 'NODE_OPTIONS'), false)
   assert.deepEqual(spawnOptions.execArgv, [])
-  assert.deepEqual(child.messages[0].options, { iceServers: [], iceTransportPolicy: 'all', video: true, videoOutput: false, inputSampleRate: 16000 })
+  assert.deepEqual(child.messages[0].options, { iceServers: [], iceTransportPolicy: 'all', video: true, inputSampleRate: 16000 })
   assert.equal(await media.answer('offer'), 'test-answer')
   let opened = 0
   media.onOpen = () => { opened++ }
@@ -94,44 +94,4 @@ test('callbacks from an exited child cannot revive a connection', async () => {
   child.emit('message', { type: 'audio', data: 'AAAA' })
   assert.equal(events, 0)
   assert.equal(media.connected(), false)
-})
-
-test('avatar control forwards to the worker and media events surface via onDhEvent', async () => {
-  const child = new FakeChild()
-  const media = new ProcessWebRtcMedia({
-    forkProcess: () => child,
-    videoOutput: true,
-    digitalHuman: { modulePath: '/abs/adapter.mjs', adapterOptions: { connectTimeoutMs: 5000 } },
-  })
-  await media.initialized
-  assert.equal(child.messages[0].options.videoOutput, true)
-  const binding = { protocol: 'dhav', protocolVersion: 1, media: { url: 'wss://renderer/media', token: 'scoped' } }
-  media.dhOpen(binding)
-  assert.deepEqual(child.messages.at(-1), { type: 'dh.open', binding, adapterModulePath: '/abs/adapter.mjs', adapterOptions: { connectTimeoutMs: 5000 } })
-  const turn = { avatarSessionId: 'av1', responseId: 'r1', generation: 0 }
-  media.dhBegin(turn, { sampleRate: 24000 })
-  assert.deepEqual(child.messages.at(-1), { type: 'dh.begin', turn, format: { sampleRate: 24000 } })
-  // An idle turn is flagged so the worker publishes its frames directly.
-  media.dhBegin(turn, { sampleRate: 24000 }, true)
-  assert.deepEqual(child.messages.at(-1), { type: 'dh.begin', turn, format: { sampleRate: 24000 }, idle: true })
-  media.dhFinish(turn)
-  assert.deepEqual(child.messages.at(-1), { type: 'dh.finish', turn })
-  media.dhClear(1)
-  assert.deepEqual(child.messages.at(-1), { type: 'dh.clear', generation: 1 })
-  // A pre-commit renderer fallback keeps the response's plain-audio egress open.
-  media.dhClear(1, false)
-  assert.deepEqual(child.messages.at(-1), { type: 'dh.clear', generation: 1, block: false })
-  media.dhClear(1, true)
-  assert.deepEqual(child.messages.at(-1), { type: 'dh.clear', generation: 1 })
-  media.dhClose()
-  assert.deepEqual(child.messages.at(-1), { type: 'dh.close' })
-  const received = []
-  media.onDhEvent = payload => received.push(payload)
-  child.emit('message', { type: 'dh', op: 'first_media', responseId: 'r1', generation: 0 })
-  child.emit('message', { type: 'dh', op: 'drained', responseId: 'r1', generation: 0 })
-  assert.deepEqual(received, [
-    { type: 'dh', op: 'first_media', responseId: 'r1', generation: 0 },
-    { type: 'dh', op: 'drained', responseId: 'r1', generation: 0 },
-  ])
-  await media.close()
 })

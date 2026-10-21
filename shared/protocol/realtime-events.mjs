@@ -19,11 +19,6 @@ export const GatewayClientEvent = Object.freeze({
   // host must not wait for it: pressing a key to record is latency sensitive,
   // so the acknowledgement only feeds status display and timeout healing.
   INPUT_SUSPEND_ACK: 'input.suspend.ack',
-  // Transport-reported avatar media playback feedback (first frame pumped,
-  // drained, media end, or a media error). This is the input-side counterpart
-  // of the DIGITAL_HUMAN_MEDIA_OPEN/CONTROL server events and is only emitted
-  // by transports that run an avatar media worker; it never carries bytes.
-  DIGITAL_HUMAN_MEDIA: 'digital_human.media',
 })
 
 export const GatewayServerEvent = Object.freeze({
@@ -55,15 +50,6 @@ export const GatewayServerEvent = Object.freeze({
   MEMORY_CHANGED: 'memory.changed',
   AGENT_ACTIVITY: 'agent.activity',
   CLIENT_STATE: 'client.state',
-  // Public per-connection digital-human presentation state. Clients render it
-  // as an avatar status light; on the WebRTC transport it travels inside a
-  // qwaudio.event envelope rather than as a bare frame.
-  DIGITAL_HUMAN_STATE: 'digital_human.state',
-  // Internal control-plane signals between the session runtime and a media
-  // transport. The WebRTC transport intercepts them to drive its media worker
-  // and never forwards them to a client; no other transport emits them.
-  DIGITAL_HUMAN_MEDIA_OPEN: 'digital_human.media_open',
-  DIGITAL_HUMAN_MEDIA_CONTROL: 'digital_human.media_control',
   ERROR: 'error',
 })
 

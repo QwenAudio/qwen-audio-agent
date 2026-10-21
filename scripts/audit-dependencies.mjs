@@ -5,31 +5,9 @@ import { spawnSync } from 'node:child_process'
 const AUDIT_ATTEMPTS = 3
 const AUDIT_RETRY_DELAY_MS = 1_000
 
-// 仅记录没有上游修复版本、且不进入生产依赖的构建链问题。npm 的审计
-// 快照偶尔会漏报已有 advisory，因此例外按明确到期日收敛，不以单次缺席
-// 判定已修复。
-const TEMPORARY_BUILD_ADVISORIES = new Map([
-  [1102341, {
-    id: 'GHSA-67mh-4wv8-2f99',
-    expires: '2026-11-30',
-    reason: 'VitePress 1.6.4 的开发服务器间接依赖；npm 当前无可用修复，且不进入生产依赖',
-  }],
-  [1116229, {
-    id: 'GHSA-4w7w-66w2-5vf9',
-    expires: '2026-11-30',
-    reason: 'VitePress 1.6.4 的开发服务器间接依赖；npm 当前无可用修复，且不进入生产依赖',
-  }],
-  [1120784, {
-    id: 'GHSA-v6wh-96g9-6wx3',
-    expires: '2026-11-30',
-    reason: 'VitePress 1.6.4 的开发服务器间接依赖；npm 当前无可用修复，且不进入生产依赖',
-  }],
-  [1123525, {
-    id: 'GHSA-fx2h-pf6j-xcff',
-    expires: '2026-11-30',
-    reason: 'VitePress 1.6.4 的开发服务器间接依赖；npm 当前无可用修复，且不进入生产依赖',
-  }],
-])
+// VitePress now uses a patched Vite through the scoped package override.
+// No build-chain advisories are currently exempt from the release audit.
+const TEMPORARY_BUILD_ADVISORIES = new Map()
 
 function runAuditOnce(args) {
   const npmExecutable = process.env.npm_execpath

@@ -67,6 +67,26 @@ export function resolveDisabledFrontendTools(env = process.env) {
   ]
 }
 
+// GPT-Live 1 timing overrides in milliseconds; a key left unset keeps the
+// adapter's default. Idle timers need a floor, or a turn would never end.
+const GPT_LIVE_1_TIMING_SETTINGS = Object.freeze({
+  answerGapMs: ['GPT_LIVE_1_ANSWER_GAP_MS', 100],
+  bargeInYieldMs: ['GPT_LIVE_1_BARGE_IN_YIELD_MS', 100],
+  transcriptLagMs: ['GPT_LIVE_1_TRANSCRIPT_LAG_MS', 100],
+  stoppedAnswerPauseMs: ['GPT_LIVE_1_STOPPED_ANSWER_PAUSE_MS', 100],
+  inputSegmentGapMs: ['GPT_LIVE_1_INPUT_SEGMENT_GAP_MS', 100],
+  lateQuestionMs: ['GPT_LIVE_1_LATE_QUESTION_MS', 100],
+  questionWaitMs: ['GPT_LIVE_1_QUESTION_WAIT_MS', 0],
+  inputIdleMs: ['GPT_LIVE_1_INPUT_IDLE_MS', 100],
+  outputIdleMs: ['GPT_LIVE_1_OUTPUT_IDLE_MS', 100],
+})
+
+export function resolveGptLive1Timing(env = process.env) {
+  return Object.fromEntries(Object.entries(GPT_LIVE_1_TIMING_SETTINGS)
+    .map(([key, [name, min]]) => [key, numberSetting(env[name], undefined, { min, max: 10_000 })])
+    .filter(([, value]) => value !== undefined))
+}
+
 export function resolveBackendWorkspace(
   protocol,
   env = process.env,
@@ -290,6 +310,13 @@ export const config = {
   gptLiveRealtimeUrl: realtimeConnections['gpt-live'].endpoint,
   gptLiveModel: realtimeConnections['gpt-live'].model,
   gptLiveVoice: realtimeConnections['gpt-live'].voice,
+  gptLive1ApiKey: realtimeConnections['gpt-live-1'].credential,
+  gptLive1RealtimeUrl: realtimeConnections['gpt-live-1'].endpoint,
+  gptLive1Model: realtimeConnections['gpt-live-1'].model,
+  gptLive1Voice: realtimeConnections['gpt-live-1'].voice,
+  // The Responses model GPT-Live 1 delegates reasoning and tool calls to.
+  gptLive1DelegationModel: String(process.env.GPT_LIVE_1_DELEGATION_MODEL || '').trim(),
+  gptLive1Timing: resolveGptLive1Timing(),
   googleApiKey: realtimeConnections['google-live'].credential,
   googleLiveRealtimeUrl: realtimeConnections['google-live'].endpoint,
   googleLiveModel: realtimeConnections['google-live'].model,

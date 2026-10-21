@@ -9,6 +9,8 @@ function harness({
   terminalToolResponses = [],
   resultSummaryResponses = [],
   perResponseInstructions = false,
+  concurrentVoicePlayback = false,
+  transcriptTrailsAudio = false,
 } = {}) {
   const events = []
   const records = []
@@ -20,7 +22,7 @@ function harness({
   const frontend = {
     ready: true,
     provider: { outputSampleRate: 24000 },
-    capabilities: { perResponseInstructions },
+    capabilities: { perResponseInstructions, concurrentVoicePlayback, transcriptTrailsAudio },
     ensureResponse: async (...args) => calls.push(['ensureResponse', ...args]),
   }
   const terminalResponses = new Set(terminalToolResponses)
@@ -60,6 +62,7 @@ function harness({
       responseTurnCandidate = null
       calls.push(['clearResponseCandidate'])
     },
+    clearResponseWatchdog: () => calls.push(['clearResponseWatchdog']),
     announcementQuietMs: 60_000,
     responseContextCleanupMs: 60_000,
     turnCitations,
@@ -214,6 +217,23 @@ test('correlates an implicit provider response with the pending voice turn', () 
     setup.calls.some(([name]) => name === 'clearResponseCandidate'),
     true,
   )
+})
+
+test('a voice-only reply of a full-duplex frontend keeps the pending-permission fallback armed', () => {
+  // Without the capability the marker means nothing.
+  for (const concurrentVoicePlayback of [true, false]) {
+    const { runtime, turns, calls, setResponseTurnCandidate } = harness({ concurrentVoicePlayback })
+    const candidate = turns.beginVoice('item-1').context
+    turns.endSpeech()
+    setResponseTurnCandidate(candidate)
+    runtime.begin({ type: 'response.created', response: { id: 'say-1' }, __voicePlayback: true })
+    const clears = () => calls.filter(([name]) => name.startsWith('clearResponse'))
+    assert.deepEqual(turns.committed(), candidate)
+    assert.deepEqual(clears(), [[concurrentVoicePlayback ? 'clearResponseWatchdog' : 'clearResponseCandidate']])
+    // The backend taking the turn settles the candidate as before.
+    runtime.begin({ type: 'response.created', response: { id: 'resp-1' } })
+    assert.deepEqual(clears().at(-1), ['clearResponseCandidate'])
+  }
 })
 
 test('holds audio transcripts until playback starts and records them once', () => {
@@ -444,6 +464,48 @@ test('user interruption confirms an announcement and suppresses late output', ()
   assert.equal(calls.some(([name]) => name === 'retryMany'), false)
 })
 
+test('a full-duplex frontend confirms an announcement when its response completes', () => {
+  // A full-duplex voice layer plays it under its own id, so no audio ever arrives under the
+  // announcement's; a half-duplex voice client still waits for the announcement's own audio.
+  for (const [concurrentVoicePlayback, settled, never] of [[true, 'confirmMany', 'retryMany'], [false, 'retryMany', 'confirmMany']]) {
+    const { runtime, calls } = harness({ concurrentVoicePlayback })
+    runtime.begin({ type: 'response.created', response: { id: 'response-1' }, __voiceOrigin: 'announcement',
+      __voiceContext: { turnId: 'turn-1', turnGeneration: 1, taskIds: ['work-1'] } })
+    deliver(runtime, { type: 'response.done', response_id: 'response-1', response: { id: 'response-1', status: 'completed' } })
+    assert.deepEqual(calls.find(([name]) => name === settled), [settled, ['work-1']])
+    assert.equal(calls.some(([name]) => name === never), false)
+  }
+  // A due reminder is confirmed the same way.
+  const { runtime, calls } = harness({ concurrentVoicePlayback: true })
+  runtime.begin({ type: 'response.created', response: { id: 'response-1' }, __voiceOrigin: 'gateway-system-event',
+    __voiceContext: { turnId: 'turn-1', turnGeneration: 1, taskIds: ['reminder-1'] } })
+  deliver(runtime, { type: 'response.done', response_id: 'response-1', response: { id: 'response-1', status: 'completed' } })
+  assert.deepEqual(calls.find(([name]) => name === 'confirmMany'), ['confirmMany', ['reminder-1']])
+})
+
+test('a due reminder is confirmed once it plays, or completes for a non-voice client', () => {
+  const confirmed = calls => calls.filter(([name]) => name === 'confirmMany')
+  const reminder = { __voiceOrigin: 'gateway-system-event', __voiceContext: { turnId: 'turn-1', turnGeneration: 1, taskIds: ['reminder-1'] } }
+
+  const voice = harness()
+  deliver(voice.runtime, { type: 'response.audio.delta', response_id: 'response-1', delta: 'audio', ...reminder })
+  assert.deepEqual(confirmed(voice.calls), [])
+  voice.runtime.startPlayback('response-1')
+  assert.deepEqual(confirmed(voice.calls), [['confirmMany', ['reminder-1']]])
+
+  const text = harness({ nonVoiceClient: true })
+  text.runtime.begin({ type: 'response.created', response: { id: 'response-1' }, ...reminder })
+  deliver(text.runtime, { type: 'response.done', response_id: 'response-1', response: { id: 'response-1', status: 'completed' } })
+  assert.deepEqual(confirmed(text.calls), [['confirmMany', ['reminder-1']]])
+
+  // A system event about no task, such as a content rejection, confirms nothing.
+  const notice = harness()
+  deliver(notice.runtime, { type: 'response.audio.delta', response_id: 'response-1', delta: 'audio',
+    __voiceOrigin: 'gateway-system-event', __voiceContext: { turnId: 'turn-1', turnGeneration: 1 } })
+  notice.runtime.startPlayback('response-1')
+  assert.deepEqual(confirmed(notice.calls), [])
+})
+
 test('a provider failure retries an undelivered announcement', () => {
   const { runtime, calls } = harness()
   runtime.begin({
@@ -464,4 +526,31 @@ test('a provider failure retries an undelivered announcement', () => {
     calls.find(([name]) => name === 'retryMany'),
     ['retryMany', ['work-1']],
   )
+})
+
+test('a trailing transcript keeps filling an interrupted answer and closes its caption', () => {
+  // Plays an answer, cuts it, then delivers the rest of its transcript.
+  const play = ({ transcriptTrailsAudio = true, reason = 'user_interruption', shown = true } = {}) => {
+    const { runtime, events, records } = harness({ transcriptTrailsAudio })
+    const transcript = (type, fields) => deliver(runtime, { type, response_id: 'response-1', ...fields })
+    deliver(runtime, { type: 'response.output_audio.delta', response_id: 'response-1', delta: 'audio' })
+    runtime.startPlayback('response-1')
+    if (shown) transcript('response.output_audio_transcript.delta', { delta: '今天' })
+    runtime.cancelPlayback('response-1', { reason })
+    transcript('response.output_audio_transcript.delta', { delta: '晴。' })
+    transcript('response.output_audio_transcript.done', { transcript: '今天晴。' })
+    const captions = events.filter(event => event.role === 'assistant' && ['transcript.delta', 'transcript.final'].includes(event.type))
+    return { captions: captions.map(event => [event.type, event.content]), records }
+  }
+  // The transcript trails the audio: what arrives after the cut was played.
+  const trailing = play()
+  assert.deepEqual(trailing.captions, [['transcript.delta', '今天'], ['transcript.delta', '晴。'], ['transcript.final', '今天晴。']])
+  assert.equal(trailing.records.length, 0, 'an interrupted answer is still not recorded')
+  // A transcript that leads its audio, as on GA, describes words never played.
+  assert.deepEqual(play({ transcriptTrailsAudio: false }).captions, [['transcript.delta', '今天']])
+  // Only a caption the user cut into keeps filling, not one cut for another reason or not yet shown.
+  assert.deepEqual(play({ reason: 'playback_error' }).captions, [['transcript.delta', '今天']])
+  const unshown = play({ shown: false })
+  assert.deepEqual(unshown.captions, [], 'no bubble existed to mark interrupted')
+  assert.equal(unshown.records.length, 0)
 })

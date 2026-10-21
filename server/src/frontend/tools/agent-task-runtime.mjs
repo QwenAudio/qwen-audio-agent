@@ -571,6 +571,12 @@ export class AgentTaskRuntime {
         )
         return
       }
+      if (this.host.answersRequest?.(turnId, authorizationId) === false) {
+        await this.host.sendOutput(callId, failure(
+          'permission_not_answered', '用户还没有回答这个权限请求；请求仍待确认。', { retryable: false },
+        ), turnId, null, responseOptions('用户还没有回答这个权限请求。不要代替用户决定，简短询问是否允许，不要调用工具。'))
+        return
+      }
       if (!this.host.taskOperations.respondAuthorization) {
         await this.host.sendOutput(
           callId,
@@ -629,6 +635,9 @@ export class AgentTaskRuntime {
     ) {
       fail('input_not_pending', '对应的后台问题已失效或不在当前会话，回答没有提交。')
     }
+    if (this.host.answersRequest?.(turnId, request.id) === false) {
+      fail('input_not_answered', '用户还没有回答这个后台问题；请先向用户转述问题。')
+    }
     if (!this.host.taskOperations.respondInput) {
       fail('input_unavailable', '当前后台无法接收补充输入。')
     }
@@ -653,11 +662,12 @@ export class AgentTaskRuntime {
   }
 
   async cancelAgentTask(callId, turnId, args, responseOptions) {
+    const reachable = task => !this.host.startedLater?.(task.turnId, turnId)
     if (args.all === true) {
       const targets = this.host.taskOperations.list({
         ownerId: this.host.ownerId,
         sessionId: this.host.sessionId,
-      }).filter(task => isTaskCancellable(task.status))
+      }).filter(task => isTaskCancellable(task.status) && reachable(task))
       if (!targets.length) {
         await this.host.sendOutput(callId, {
           status: 'not_found',
@@ -718,8 +728,8 @@ export class AgentTaskRuntime {
       : this.host.taskOperations.list({
         ownerId: this.host.ownerId,
         sessionId: this.host.sessionId,
-        }).find(task => isTaskCancellable(task.status))
-    if (!target) {
+        }).find(task => isTaskCancellable(task.status) && reachable(task))
+    if (!target || !reachable(target)) {
       await this.host.sendOutput(callId, {
         status: 'not_found',
         message: '当前没有仍在排队或执行的工作。',

@@ -1,6 +1,7 @@
 export const DEFAULT_DASHSCOPE_REALTIME_MODEL = 'qwen-audio-3.0-realtime-plus'
 export const DEFAULT_DASHSCOPE_REALTIME_VOICE = 'longanqian'
 export const DEFAULT_GPT_LIVE_REALTIME_MODEL = 'gpt-realtime-2.1'
+export const DEFAULT_GPT_LIVE_1_REALTIME_MODEL = 'gpt-live-1'
 export const DEFAULT_GOOGLE_LIVE_REALTIME_MODEL = 'gemini-3.8-live'
 export const DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL = '1.2.6.1'
 export const DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE = 'zh_female_vv_jupiter_bigtts'
@@ -161,6 +162,21 @@ const GPT_LIVE_PROFILES = Object.freeze([
   }),
 ])
 
+// GPT-Live 1: full duplex, tools via Responses delegation, no VAD config.
+const GPT_LIVE_1_PROFILES = Object.freeze([
+  Object.freeze({
+    id: DEFAULT_GPT_LIVE_1_REALTIME_MODEL,
+    label: 'GPT-Live 1',
+    family: 'gpt-live-1',
+    sessionDefaults: Object.freeze({
+      voice: null,
+      turnDetection: null,
+    }),
+    modelCapabilities: LEGACY_MODEL_CAPABILITIES,
+    transportCapabilities: LEGACY_TRANSPORT_CAPABILITIES,
+  }),
+])
+
 const GOOGLE_LIVE_PROFILES = Object.freeze([
   Object.freeze({
     id: DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
@@ -205,6 +221,13 @@ const MODEL_CATALOGS = Object.freeze({
     defaultModel: DEFAULT_GPT_LIVE_REALTIME_MODEL,
     profiles: GPT_LIVE_PROFILES,
   }),
+  'gpt-live-1': Object.freeze({
+    environment: 'GPT_LIVE_1_REALTIME_MODEL',
+    defaultModel: DEFAULT_GPT_LIVE_1_REALTIME_MODEL,
+    profiles: GPT_LIVE_1_PROFILES,
+    // An Azure OpenAI deployment name takes the default profile's capabilities.
+    deploymentNames: true,
+  }),
   'google-live': Object.freeze({
     environment: 'GOOGLE_LIVE_REALTIME_MODEL',
     defaultModel: DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
@@ -224,5 +247,12 @@ export function realtimeModelCatalog(provider = 'dashscope') {
 export function resolveRealtimeModelProfile(model, provider = 'dashscope') {
   const catalog = realtimeModelCatalog(provider)
   const id = String(model || catalog?.defaultModel || '').trim()
-  return catalog?.profiles.find(profile => profile.id === id) || unknownModelProfile(id)
+  return catalog?.profiles.find(profile => profile.id === id)
+    || (catalog?.deploymentNames && id ? deploymentModelProfile(catalog, id) : null)
+    || unknownModelProfile(id)
+}
+
+function deploymentModelProfile(catalog, id) {
+  const base = catalog.profiles.find(profile => profile.id === catalog.defaultModel)
+  return base ? Object.freeze({ ...base, id, label: id }) : null
 }

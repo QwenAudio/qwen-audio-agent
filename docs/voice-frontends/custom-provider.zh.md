@@ -25,6 +25,10 @@ createGatewayApplication({
 - 每个 Provider 都是独立适配器，完整拥有自己的 URL、认证、模型、Session 和错误分类语义；不要通过改造另一个 Provider 来承载业务差异。
 - `url()`、`headers()`、`model()` 可从宿主配置闭包读取服务地址、令牌和模型；Gateway 不要求为业务 Provider 增加环境变量。
 - `createProtocol()` 每条 Realtime 连接调用一次，适合生成连接级 ID 和隔离状态。
+- `createProtocol({ emit, send })` 还会收到两个钩子：`emit(event)` 注入一条经 `normalizeIncoming()` 的合成服务端事件，例如在输出静默后收掉当前语音段；`send(payload, options)` 经 `encodeOutgoing()` 发出协议自己的事件，以 `{ correlate: false }` 发出的 `response.create` 不关联等待中的 Gateway 请求。
+- `concurrentVoicePlayback` 声明全双工服务：语音输出与后端工作并行，是否回复某一轮由模型决定，没有得到回复的轮次会被释放，不报错。只代表播放的合成 response 标 `__voicePlayback: true`，模型自发的发言再标 `__voiceAutomatic: true`；它们不阻挡 Gateway 请求，要求说话的请求只由播放 response 回复。用户打断调用可选的 `interruptPlayback()`，其他取消以 `{ stop: true }` 调用它，它可以返回一帧由运行时发出。用户后续的轮次只对 `respond_permission` 与 `update_agent_task` 顶掉更早的工具调用，更早轮次的 `cancel_agent_task` 也取消不到后来轮次发起的工作；权限请求和后台追问只能由 Gateway 询问之后开始的轮次回答。播报在其 response 完成时确认送达。默认关闭。
+- `transcriptTrailsAudio` 声明输出转写与播放分开计时：用户打断后，已开始的字幕继续补到模型停下，被打断的回答仍不记入历史。默认关闭。
+- `toolOutputsBeforeResponse` 声明服务在有调用未回传结果时拒绝 `response.create`，且发起调用的 response 只在之后的 `response.create` 上继续。函数结果不进响应队列，Gateway 请求等所有调用都有结果后才发出，运行时把这个 response 续上一次：由 Gateway 的后续请求，或由 `continueToolResults()`。当前连接并未在等的调用，其结果不发送。默认关闭。
 - 可选的同步 `validateSessionOptions({ sessionOptions })` 在上游连接前执行；只拒绝已确认无效的配置，未知值交给服务端验证。
 - `connectionMessages()` 在 WebSocket 打开后、`session.update` 之前发送原始握手帧。
 - 其余事件通过 `encodeOutgoing()` 与 `normalizeIncoming()` 转换，Gateway 的工具调用、任务和客户端协议保持不变。
@@ -32,6 +36,7 @@ createGatewayApplication({
 - `conversationItemCreate(item, { contextOnly })` 区分上下文投递和用户交互输入。对于消息项，`contextOnly: true` 必须写入上下文且不触发回复，不能只缓存到下一次 `responseCreate`；用户主动发送文本或文件时，Gateway 传入 `false`。工具回执仍遵循供应商原生的续答语义。
 - 仅当工具结果会由服务原生续答时声明 `automaticToolResponses: true`（豆包 Seeduplex、Google Live）。运行时发送这类回执不等待当前响应结束；工具批次结束时通过 `ensureResponse(..., { afterToolResults: true })` 避免再次请求回复。`sendFunctionOutput` 返回 `{ delivered: true, automatic: true }` 只表示回执已投递，不表示播报完成。`createResponse: false` 不能禁止服务原生续答，单次回复指令也不能控制它。其他 Provider 保持显式请求回复和完成跟踪。
 - 只表示响应仍在进行的事件可转换为带 `response_id` 的 `response.activity`，无需转发原始思考内容。
+- 带 `response_id` 的 `error` 只结算它点名的那个回复；失败属于前端正在等待的请求时不要带 id，以回落到唯一等待者。
 - 服务端确认对话项时会重分配 ID 的 Provider，应声明 `conversationItemIdEcho: false`；网关按唯一待确认项关联，无需增加延时或跳过确认。
 - 仅当服务要求首帧视频之前必须先有音频时，声明 `imageRequiresAudioStart: true`；网关用 20 毫秒 PCM16 静音初始化时间线，视频输入无需开启麦克风。
 - 服务接受输入或工具结果但不返回 conversation-item 确认事件时，应声明 `acknowledgesConversationItems: false`；Gateway 写出 frame 后即完成本次发送。

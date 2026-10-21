@@ -127,7 +127,7 @@ export class RealtimeInputRuntime {
       state: 'listening',
       turnId: started.context.turnId,
     })
-    this.getFrontend()?.cancel()
+    this.getFrontend()?.cancel({ reason: 'user_interruption' })
   }
 
   #stopSpeech(event) {
@@ -296,7 +296,7 @@ export class RealtimeInputRuntime {
       turnId: inputTurnId,
       origin: 'model',
     })
-    this.getFrontend()?.cancel()
+    this.getFrontend()?.cancel({ reason: 'user_interruption' })
     this.transcripts.record(inputTurnId, text || display)
     this.transcripts.recordParts(inputTurnId, inputFileParts(parts))
     this.conversationSync.record({

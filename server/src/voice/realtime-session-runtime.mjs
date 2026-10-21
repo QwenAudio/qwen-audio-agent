@@ -47,6 +47,20 @@ export function isSleepActivityEvent(event = {}) {
   ].includes(event.type)
 }
 
+// The frontend checks shouldCreate on enqueue and again before sending: decide
+// once. A busy-refused request never ran, so retry it only while the
+// permission is still pending.
+export function permissionResponseGate({ isCandidate, hasPendingPermission, claim }) {
+  let decided = null
+  return ({ refused = false } = {}) => {
+    if (decided === null) {
+      decided = isCandidate() && hasPendingPermission()
+      if (decided) claim()
+    }
+    return refused ? decided && hasPendingPermission() : decided
+  }
+}
+
 /**
  * One frontend conversation runtime per client connection.
  * Receives decoded semantic input plus trusted identity; emits internal events.
@@ -194,6 +208,9 @@ export function createRealtimeSessionRuntime({
       onProgressError: error => connectionLogger.warn('progress.injection_failed', {
         error: error.message,
       }),
+      onPresentRequest: requestId => {
+        if (realtimeSession.frontend?.capabilities?.concurrentVoicePlayback) turns.noteRequest(requestId)
+      },
     }),
     onTaskEvent,
     onResult: task => recordTaskResult({ conversationSync, ownerId, sessionId, task }),
@@ -365,6 +382,11 @@ export function createRealtimeSessionRuntime({
         })
       })
     : () => {}
+  // Full duplex: only a turn that began after the Gateway asked answers a request.
+  const answersRequest = (turnId, requestId) => (
+    !realtimeSession.frontend?.capabilities?.concurrentVoicePlayback
+    || turns.beganAfterRequest(turnId, requestId)
+  )
   const toolCalls = new ToolCallHandler({
     taskManager,
     taskOperations,
@@ -374,6 +396,9 @@ export function createRealtimeSessionRuntime({
     getFrontend: () => realtimeSession.frontend,
     getTurnId: () => turns.committedTurnId,
     getTurnGeneration: () => turns.committedTurnGeneration,
+    isUserTurnSinceBoundary: context => turns.isUserTurnSinceBoundary(context),
+    userTurnBeganAfter: (laterId, turnId) => turns.beganAfterTurn(laterId, turnId),
+    answersRequest,
     memoryService,
     notesStore,
     getClientContext: () => clientContext,
@@ -457,17 +482,24 @@ export function createRealtimeSessionRuntime({
     turnCitations,
     sessionDigests,
   })
-  const clearResponseCandidate = () => {
+  const clearResponseWatchdog = () => {
     clearTimeout(responseStartWatchdog)
-    clearTimeout(permissionResponseTimer)
     responseStartWatchdog = null
+  }
+  const clearResponseCandidate = () => {
+    clearResponseWatchdog()
+    clearTimeout(permissionResponseTimer)
     permissionResponseTimer = null
     responseTurnCandidate = null
   }
 
   const ensurePermissionResponseFor = context => {
     clearTimeout(permissionResponseTimer)
-    const hasPendingPermission = () => taskCoordinator.hasPendingPermission()
+    const hasPendingPermission = () => (realtimeSession.frontend?.capabilities?.concurrentVoicePlayback
+      ? taskCoordinator.activeTasks().some(({ authorization }) => (
+        authorization?.status === 'pending' && turns.beganAfterRequest(context.turnId, authorization.id)
+      ))
+      : taskCoordinator.hasPendingPermission())
     if (!hasPendingPermission()) return
     permissionResponseTimer = setTimeout(() => {
       permissionResponseTimer = null
@@ -475,14 +507,11 @@ export function createRealtimeSessionRuntime({
         turnId: context.turnId,
         turnGeneration: context.turnGeneration,
       }, {
-        shouldCreate: () => {
-          if (
-            responseTurnCandidate !== context
-            || !hasPendingPermission()
-          ) return false
-          clearResponseCandidate()
-          return true
-        },
+        shouldCreate: permissionResponseGate({
+          isCandidate: () => responseTurnCandidate === context,
+          hasPendingPermission,
+          claim: clearResponseCandidate,
+        }),
       }).catch(error => emit({
         type: 'error',
         message: `暂时无法处理权限回答：${error.message}`,
@@ -496,6 +525,13 @@ export function createRealtimeSessionRuntime({
     responseStartWatchdog = setTimeout(() => {
       if (responseTurnCandidate !== context) return
       clearResponseCandidate()
+      // The turn is given up: Gateway requests no longer wait for its reply.
+      announcementWindow.responseDone({ turnId: context.turnId, failed: true })
+      // A full-duplex model may leave a turn unanswered: not a stall.
+      if (realtimeSession.frontend?.capabilities?.concurrentVoicePlayback) {
+        if (!turns.userSpeaking) emit({ type: 'voice.state', state: 'idle', turnId: context.turnId, origin: 'model' })
+        return
+      }
       emit({
         type: 'error',
         message: '实时模型没有开始回复，语音连接已自动恢复，请再说一次。',
@@ -556,6 +592,7 @@ export function createRealtimeSessionRuntime({
     getNonVoiceClient: () => nonVoiceClient,
     getResponseTurnCandidate: () => responseTurnCandidate,
     clearResponseCandidate,
+    clearResponseWatchdog,
     announcementQuietMs: config.announcementQuietMs,
     responseContextCleanupMs: RESPONSE_CONTEXT_CLEANUP_MS,
     turnCitations,

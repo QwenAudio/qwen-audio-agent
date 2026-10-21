@@ -10,15 +10,17 @@ Adapter 只把 Gemini Live 的双向流协议转换成项目内统一的 Realtim
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=google-live
-GOOGLE_API_KEY=your-google-api-key
+QWEN_AUDIO_REALTIME_API_KEY=your-google-api-key
+QWEN_AUDIO_REALTIME_MODEL=gemini-3.8-live
+QWEN_AUDIO_REALTIME_URL=
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
 | 可选配置 | 默认值 | 说明 |
 | --- | --- | --- |
-| `GOOGLE_LIVE_REALTIME_URL` / `GEMINI_LIVE_REALTIME_URL` | `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent` | WebSocket 端点 |
-| `GOOGLE_LIVE_REALTIME_MODEL` / `GEMINI_LIVE_REALTIME_MODEL` | `gemini-3.8-live` | 当前内置模型档案 |
-| `GOOGLE_LIVE_REALTIME_VOICE` / `GEMINI_LIVE_REALTIME_VOICE` | 空 | 使用服务默认音色，或填写 Gemini Live 预置音色名 |
-| `GEMINI_API_KEY` / `GOOGLE_LIVE_API_KEY` | 空 | `GOOGLE_API_KEY` 的别名 |
+| `QWEN_AUDIO_REALTIME_URL` | `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent` | WebSocket 端点 |
+| `QWEN_AUDIO_REALTIME_MODEL` | `gemini-3.8-live` | 当前内置模型档案 |
+| `QWEN_AUDIO_REALTIME_VOICE` | 空 | 使用服务默认音色，或填写 Gemini Live 预置音色名 |
 
 桌面端在 **语音前台 -> Google Live** 下暴露同样字段。终端 Gateway 修改文件后需重启；
 若是已安装的后台服务，执行 `qwenaudio gateway restart`。

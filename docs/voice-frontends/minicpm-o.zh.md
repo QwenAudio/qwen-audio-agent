@@ -14,13 +14,16 @@ ws://127.0.0.1:8006/v1/realtime?mode=audio
 
 ```bash
 QWEN_AUDIO_REALTIME_PROVIDER=minicpm-o
-MINICPM_O_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=audio
+QWEN_AUDIO_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=audio
+QWEN_AUDIO_REALTIME_API_KEY=
+QWEN_AUDIO_REALTIME_MODEL=
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
 默认地址假设上游 Gateway 以 `--http` 方式监听本机回环地址；连接面壁智能云端或其他
 TLS 部署时，改为对应的 `wss://` 地址。服务要求 Bearer 认证时，可用
-`MINICPM_O_AUTH_TOKEN` 配置令牌。桌面版在“语音前台 → 面壁智能”中填写相同配置，
-模型固定显示为 `MiniCPM-o 4.5`。
+`QWEN_AUDIO_REALTIME_API_KEY` 配置令牌。桌面版在“语音前台 → 面壁智能”中填写相同配置，
+模型固定显示为 `MiniCPM-o 4.5`。模型和音色由上游服务配置，Gateway 中这两个字段留空。
 
 Adapter 会把客户端的 16-bit PCM 转换成协议要求的 16 kHz 单声道 float32 输入，将 24 kHz
 单声道 float32 输出转换回 16-bit PCM，并把 MiniCPM-o 的 Session 和响应事件映射到统一的
@@ -31,7 +34,7 @@ Realtime Runtime。
 要启用协商后的 WebUI 视觉帧流，需要使用 MiniCPM-o 的视频全双工端点：
 
 ```bash
-MINICPM_O_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=video
+QWEN_AUDIO_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=video
 ```
 
 公开 GCP 仍使用统一的 `input_image_buffer.append`。MiniCPM-o Adapter 只保留最近一张

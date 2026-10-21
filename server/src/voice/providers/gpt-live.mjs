@@ -1,3 +1,4 @@
+import { providerRuntimeConfiguration } from './runtime-configuration.mjs'
 import { config } from '../../core/config.mjs'
 import {
   realtimeModelCatalog,
@@ -14,13 +15,15 @@ import {
 import { isRecoverableRealtimeInactivityError } from '../realtime-errors.mjs'
 import { gaRealtimeProtocol } from './ga-protocol.mjs'
 
+const connection = providerRuntimeConfiguration('gpt-live')
+
 function modelProfile() {
-  return resolveRealtimeModelProfile(config.gptLiveModel, 'gpt-live')
+  return resolveRealtimeModelProfile(connection.model, 'gpt-live', config.realtimeModelCatalogs)
 }
 
 function gptLiveUrl() {
-  const url = new URL(config.gptLiveRealtimeUrl)
-  url.searchParams.set('model', config.gptLiveModel)
+  const url = new URL(connection.endpoint)
+  url.searchParams.set('model', connection.model)
   return url.toString()
 }
 
@@ -46,15 +49,15 @@ export const gptLiveProvider = {
     sessionOutputVoice: true,
   },
 
-  model: () => config.gptLiveModel,
+  model: () => connection.model,
   modelProfile,
-  modelCatalog: () => realtimeModelCatalog('gpt-live').profiles,
-  voice: () => config.gptLiveVoice || null,
-  isConfigured: () => Boolean(config.openaiApiKey),
-  missingConfigurationMessage: '请先配置 OPENAI_API_KEY',
+  modelCatalog: () => realtimeModelCatalog('gpt-live', config.realtimeModelCatalogs).profiles,
+  voice: () => String(connection.voice || '').trim() || modelProfile().sessionDefaults.voice,
+  isConfigured: () => connection.configured,
+  missingConfigurationMessage: '请先选择 gpt-live 并配置 QWEN_AUDIO_REALTIME_API_KEY',
   connectTimeoutMessage: '连接 GPT-Live Realtime 超时',
   url: gptLiveUrl,
-  headers: () => ({ Authorization: `Bearer ${config.openaiApiKey}` }),
+  headers: () => ({ Authorization: `Bearer ${connection.credential}` }),
   classifyError: message => {
     if (isRecoverableRealtimeInactivityError(message)) return 'inactivity'
     if (/another response is in progress|already has an active response/i.test(message)) return 'response_slot_busy'
@@ -65,7 +68,7 @@ export const gptLiveProvider = {
   },
 
   buildSession: ({ agentContext, sessionOptions }) => {
-    const voice = String(sessionOptions?.voice || config.gptLiveVoice || '').trim()
+    const voice = String(sessionOptions?.voice || '').trim() || gptLiveProvider.voice()
     return {
       type: 'realtime',
       instructions: buildFrontendInstructions(agentContext),

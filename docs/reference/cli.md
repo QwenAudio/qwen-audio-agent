@@ -9,14 +9,14 @@ After installation, run `qwenaudio` from any directory. In a source checkout, ru
 | `qwenaudio --version` | Show the CLI version |
 | `qwenaudio config` | Show the config path; create a template if missing |
 | `qwenaudio config show` | Show the configured voice provider, model, and available models without credentials |
-| `qwenaudio config set --realtime-model ID` | Change the current provider's model setting |
+| `qwenaudio config set --realtime-model ID` | Select a registered model for the current provider |
 | `qwenaudio doctor` | Read-only configuration, connection, and state checks |
 | `qwenaudio doctor --json` | Print diagnostic JSON |
 | `qwenaudio doctor --turn ID` | Build a turn timeline from local logs |
 | `qwenaudio setup` | Check integration readiness for all backends |
 | `qwenaudio setup --backend qwen --json` | Check one backend and print JSON |
 
-`config show` reads configuration, not live model availability. `setup` does not verify backend accounts or quota. [Apply configuration changes](../operations/gateway.md#applying-configuration-changes) after changing models.
+`config show` reads the effective catalog (built-in models plus user registrations), not live model availability. An unknown ID must be [registered first](../configuration/frontend.md#register-an-additional-model); `config set` does not register it or guess its API. `setup` does not verify backend accounts or quota. [Apply configuration changes](../operations/gateway.md#applying-configuration-changes) after changing models.
 
 ## Gateway
 

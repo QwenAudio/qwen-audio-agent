@@ -16,18 +16,19 @@ import {
 
 function configure(t, model = DASHSCOPE_OMNI_FLASH_REALTIME_MODEL, voice = 'Cherry') {
   const previous = {
-    audioModel: config.audioModel,
-    audioVoice: config.audioVoice,
-    dashscopeApiKey: config.dashscopeApiKey,
+    audioProvider: config.audioProvider,
+    realtimeModel: config.realtimeModel,
+    realtimeVoice: config.realtimeVoice,
+    realtimeCredential: config.realtimeCredential,
   }
   t.after(() => Object.assign(config, previous))
-  Object.assign(config, { audioModel: model, audioVoice: voice, dashscopeApiKey: 'test-only-key' })
+  Object.assign(config, { audioProvider: 'dashscope', realtimeModel: model, realtimeVoice: voice, realtimeCredential: 'test-only-key' })
 }
 
 test('rejects only the known Omni/Cherry mismatch before opening a socket', async t => {
   configure(t)
   for (const model of [DASHSCOPE_OMNI_FLASH_REALTIME_MODEL, DASHSCOPE_OMNI_PLUS_REALTIME_MODEL]) {
-    config.audioModel = model
+    config.realtimeModel = model
     for (const sessionOptions of [{}, { voice: '  Cherry  ' }, { voice: ' ' }]) {
       const frontend = new RealtimeFrontend({ provider: dashscopeProvider, sessionOptions })
       await assert.rejects(frontend.connect(), error => {
@@ -38,14 +39,14 @@ test('rejects only the known Omni/Cherry mismatch before opening a socket', asyn
         return true
       })
       assert.equal(frontend.ws, null)
-      assert.equal(config.audioVoice, 'Cherry', 'Never rewrite saved configuration')
+      assert.equal(config.realtimeVoice, 'Cherry', 'Never rewrite saved configuration')
     }
-    config.audioVoice = 'Ethan'
+    config.realtimeVoice = 'Ethan'
     const overridden = new RealtimeFrontend({ provider: dashscopeProvider, sessionOptions: { voice: 'Cherry' } })
     await assert.rejects(overridden.connect(), /音色 Cherry/)
     assert.equal(overridden.ws, null)
-    assert.equal(config.audioVoice, 'Ethan')
-    config.audioVoice = 'Cherry'
+    assert.equal(config.realtimeVoice, 'Ethan')
+    config.realtimeVoice = 'Cherry'
   }
 })
 
@@ -53,18 +54,20 @@ test('leaves defaults, unknown voices and other model families untouched', t => 
   configure(t)
   for (const model of [DASHSCOPE_OMNI_FLASH_REALTIME_MODEL, DASHSCOPE_OMNI_PLUS_REALTIME_MODEL,
     DEFAULT_DASHSCOPE_REALTIME_MODEL, DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL]) {
-    config.audioModel = model
-    config.audioVoice = ''
+    config.realtimeModel = model
+    config.realtimeVoice = ''
     dashscopeProvider.validateSessionOptions()
-    assert.equal(dashscopeProvider.voice(), model.includes('omni') ? 'Ethan' : 'longanqian')
+    const expectedVoice = model.includes('omni') ? 'Ethan'
+      : model === DEFAULT_DASHSCOPE_REALTIME_MODEL ? 'longanqian_v3.1' : 'longanqian'
+    assert.equal(dashscopeProvider.voice(), expectedVoice)
     for (const voice of ['Serena', 'future-system-voice', 'qwen-omni-vc-custom-123',
       'qwen3.5-omni-plus-realtime-custom-voice']) {
-      config.audioVoice = voice
+      config.realtimeVoice = voice
       assert.doesNotThrow(() => dashscopeProvider.validateSessionOptions())
       assert.equal(dashscopeProvider.voice(), voice)
     }
   }
-  config.audioModel = DEFAULT_DASHSCOPE_REALTIME_MODEL
+  config.realtimeModel = DEFAULT_DASHSCOPE_REALTIME_MODEL
   assert.doesNotThrow(() => dashscopeProvider.validateSessionOptions({ sessionOptions: { voice: 'Cherry' } }))
 })
 
@@ -97,7 +100,7 @@ test('sends per-session and unknown voices unchanged to the upstream provider', 
     frontend.close()
   }
   assert.deepEqual(received, voices)
-  assert.equal(config.audioVoice, 'Cherry', 'Session overrides must not change the process default')
+  assert.equal(config.realtimeVoice, 'Cherry', 'Session overrides must not change the process default')
 })
 
 test('keeps the optional validation hook provider-neutral and preserves its error', async t => {

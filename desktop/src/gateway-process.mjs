@@ -9,7 +9,7 @@ import {
   resolveRealtimeFrontendConfiguration,
 } from '../../shared/realtime-provider-catalog.mjs'
 
-import { migrateRealtimeFileEnvironment, mergeRealtimeEnvironment } from '../../shared/realtime-provider-definitions.mjs'
+import { mergeRealtimeEnvironment } from '../../shared/realtime-provider-definitions.mjs'
 
 // Gateway 子进程托管器随包发布（宿主与桌面版共用同一份实现，防漂移）；
 // 本文件只保留桌面特有的环境构建与兼容性检查。
@@ -54,7 +54,7 @@ export function desktopGatewayEnvironment({
   sourceRoot = '',
   platform = process.platform,
 } = {}) {
-  const merged = mergeRealtimeEnvironment(env, migrateRealtimeFileEnvironment(configured))
+  const merged = mergeRealtimeEnvironment(env, configured)
   // Wake-word capture and inference belong to the Desktop Client. Do not leak
   // that client preference or its model path into the Gateway child process.
   delete merged.QWEN_AUDIO_WAKE_WORD_ENABLED

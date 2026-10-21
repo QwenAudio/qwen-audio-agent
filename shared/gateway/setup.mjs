@@ -12,7 +12,20 @@
 import { assertRealtimeFrontendModel, realtimeProviderDefinition, resolveRealtimeFrontendConfiguration } from '../realtime-provider-catalog.mjs'
 
 export function gatewaySetupStatus(env = process.env) {
-  const frontend = resolveRealtimeFrontendConfiguration(env)
+  let frontend
+  try {
+    frontend = resolveRealtimeFrontendConfiguration(env)
+  } catch (error) {
+    return {
+      ready: false,
+      provider: env.QWEN_AUDIO_REALTIME_PROVIDER || null,
+      missing: [{
+        key: error.code === 'QWAUDIO_REALTIME_MODEL_CONFIG_INVALID'
+          ? 'QWEN_AUDIO_FRONTEND_MODELS_CONFIG' : 'QWEN_AUDIO_REALTIME_PROVIDER',
+        message: error.message,
+      }],
+    }
+  }
   const missing = []
   try {
     assertRealtimeFrontendModel(frontend.active)

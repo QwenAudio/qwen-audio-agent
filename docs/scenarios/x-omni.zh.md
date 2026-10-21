@@ -47,11 +47,14 @@ Qwen 默认使用 `qwen3.5-omni-plus-realtime`；也可通过
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=minicpm-o
-MINICPM_O_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=video
+QWEN_AUDIO_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=video
+QWEN_AUDIO_REALTIME_API_KEY=
+QWEN_AUDIO_REALTIME_MODEL=
+QWEN_AUDIO_REALTIME_VOICE=
 AGENT_PROTOCOL=none
 ```
 
-地址以实际部署为准，按需配置 `MINICPM_O_AUTH_TOKEN`，无需 DashScope Key。
+地址以实际部署为准；需要 Bearer 认证时填写 `QWEN_AUDIO_REALTIME_API_KEY`，无需 DashScope Key。
 客户端使用持续画面与语音输入；当前 MiniCPM-o 接口不支持文字输入、按需识图、
 观察和后台工具调用。不支持的控件会禁用，不模拟执行。
 

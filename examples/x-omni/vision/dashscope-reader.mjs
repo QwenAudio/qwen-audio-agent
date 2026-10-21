@@ -4,18 +4,19 @@ import WebSocket from 'ws'
 // A bounded, text-only Omni request reads the requested frame. This helper is
 // perception inside the example, not a Backend Agent or a second speaker.
 export class DashScopeVisualReader {
-  constructor({ apiKey, model = 'qwen3.5-omni-plus-realtime',
+  constructor({ apiKey, headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+    model = 'qwen3.5-omni-plus-realtime',
     endpoint = 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
     timeoutMs = 30_000, maxConcurrent = 2,
     connect = (url, options) => new WebSocket(url, options) } = {}) {
-    Object.assign(this, { apiKey, model, endpoint, timeoutMs, maxConcurrent, connect })
+    Object.assign(this, { headers: { ...headers }, model, endpoint, timeoutMs, maxConcurrent, connect })
     this.active = new Set()
     this.closed = false
   }
 
   async read(frame, question, { signal, structured = false } = {}) {
     if (this.closed || signal?.aborted) throw new Error('Visual request cancelled')
-    if (!this.apiKey) throw new Error('DASHSCOPE_API_KEY is required')
+    if (!this.headers.Authorization) throw new Error('QWEN_AUDIO_REALTIME_API_KEY is required')
     if (this.active.size >= this.maxConcurrent) throw new Error('Visual reader is busy; try again shortly')
     const url = new URL(this.endpoint)
     if (!['ws:', 'wss:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid Omni endpoint')
@@ -24,7 +25,7 @@ export class DashScopeVisualReader {
     }
     url.searchParams.set('model', this.model)
     const socket = this.connect(url, {
-      headers: { Authorization: `Bearer ${this.apiKey}` },
+      headers: this.headers,
       maxPayload: 1024 * 1024, handshakeTimeout: this.timeoutMs,
     })
     this.active.add(socket)

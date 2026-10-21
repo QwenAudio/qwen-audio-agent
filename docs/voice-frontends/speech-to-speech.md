@@ -73,15 +73,19 @@ Set the following in `config.env`:
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech
-SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
+QWEN_AUDIO_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
+QWEN_AUDIO_REALTIME_API_KEY=
+QWEN_AUDIO_REALTIME_MODEL=
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
 In full-local mode, no cloud API Key is required. If the Realtime interface sits behind a
 proxy that requires Bearer authentication, you can set:
 
 ```dotenv
-SPEECH_TO_SPEECH_AUTH_TOKEN=your-token
+QWEN_AUDIO_REALTIME_API_KEY=your-token
 ```
 
-`SPEECH_TO_SPEECH_AUTH_TOKEN` is only used for proxy authentication and is not an access
-password for the local service.
+The model and voice are configured in speech-to-speech, not the Gateway. The optional
+`QWEN_AUDIO_REALTIME_API_KEY` is sent as a Bearer token; setting it does not enable
+authentication on an otherwise unprotected local service.

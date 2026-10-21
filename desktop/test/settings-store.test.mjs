@@ -34,34 +34,47 @@ test('reading never creates the config directory', t => {
   assert.throws(() => statSync(join(root, 'never-created')), /ENOENT/)
 })
 
+test('store readiness and saved patches do not promote unrelated backend keys to the frontend', t => {
+  const root = temporaryRoot(t)
+  writeFileSync(join(root, SETTINGS_FILE), 'DASHSCOPE_API_KEY=backend-only\n')
+  const env = { QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun' }
+  const store = createSettingsStore({ configDir: root, clientDir: join(root, 'client'), env })
+  assert.equal(store.load().realtimeApiKey, '')
+  assert.equal(store.ready(), false)
+  store.save({ realtimeVoice: 'step-voice' })
+  assert.equal(store.ready(), false)
+  assert.equal(env.QWEN_AUDIO_REALTIME_API_KEY, '')
+  assert.match(readFileSync(store.path, 'utf8'), /DASHSCOPE_API_KEY=backend-only/)
+})
+
 test('save persists 0600, applies the environment, and satisfies the gate', t => {
   const root = temporaryRoot(t)
   const env = {}
   const store = createSettingsStore({ configDir: join(root, 'data'), clientDir: join(root, 'client'), env })
 
   assert.equal(store.status().ready, false)
-  assert.equal(store.status().missing[0].key, 'DASHSCOPE_API_KEY')
+  assert.equal(store.status().missing[0].key, 'QWEN_AUDIO_REALTIME_API_KEY')
 
-  const saved = store.save({ dashscopeApiKey: 'sk-host' })
-  assert.equal(saved.dashscopeApiKey, 'sk-host')
+  const saved = store.save({ realtimeApiKey: 'sk-host' })
+  assert.equal(saved.realtimeApiKey, 'sk-host')
   // The same truth the startup gate reads.
   assert.equal(store.ready(), true)
   // An in-process restart must observe what was just written.
-  assert.equal(env.DASHSCOPE_API_KEY, 'sk-host')
+  assert.equal(env.QWEN_AUDIO_REALTIME_API_KEY, 'sk-host')
   // Windows has no POSIX permission bits; the private mode is only
   // assertable where chmod means something.
   if (process.platform !== 'win32') {
     const mode = statSync(store.path).mode & 0o777
     assert.equal(mode, 0o600)
   }
-  assert.match(readFileSync(store.path, 'utf8'), /DASHSCOPE_API_KEY=sk-host/)
+  assert.match(readFileSync(store.path, 'utf8'), /QWEN_AUDIO_REALTIME_API_KEY=sk-host/)
   assert.ok(store.path.endsWith(SETTINGS_FILE))
 })
 
 test('the stored file outweighs nothing but the live environment', t => {
   const root = temporaryRoot(t)
   const store = createSettingsStore({ configDir: join(root, 'data'), clientDir: join(root, 'client'), env: {} })
-  store.save({ dashscopeApiKey: 'sk-stored' })
+  store.save({ realtimeApiKey: 'sk-stored' })
   // A second store over the same directory sees the stored credential even
   // with an empty environment — how a host process asks after a restart.
   const reread = createSettingsStore({ configDir: join(root, 'data'), clientDir: join(root, 'client'), env: {} })
@@ -125,7 +138,7 @@ test('Gateway configuration and client state use separately named directories', 
   // The Gateway configuration never owns the client's UI state.
   assert.equal(store.path, join(root, 'shared', 'config.env'))
   assert.equal(store.uiStatePath, join(root, 'client', 'ui-state.json'))
-  store.save({ dashscopeApiKey: 'sk-test' })
+  store.save({ realtimeApiKey: 'sk-test' })
   store.saveUiState({ theme: 'dark' })
   assert.ok(existsSync(join(root, 'shared', 'config.env')))
   assert.ok(existsSync(join(root, 'client', 'ui-state.json')))
@@ -138,15 +151,15 @@ test('the unified form persists Gateway settings and desktop preferences separat
   const options = { configDir: join(root, 'gateway'), clientDir: join(root, 'desktop'), env: {} }
   const store = createSettingsStore(options)
   const saved = store.save({
-    dashscopeApiKey: 'sk-local', gatewayUrl: 'https://gateway.example',
+    realtimeApiKey: 'sk-local', gatewayUrl: 'https://gateway.example',
     orbSkin: 'goo', language: 'en', wakeWordEnabled: true,
     autoHideSeconds: 300, wakeShortcut: 'CommandOrControl+Shift+Space',
   })
   const gateway = readFileSync(store.path, 'utf8')
   const client = readFileSync(store.clientSettingsPath, 'utf8')
-  assert.match(gateway, /DASHSCOPE_API_KEY=sk-local/)
+  assert.match(gateway, /QWEN_AUDIO_REALTIME_API_KEY=sk-local/)
   assert.doesNotMatch(gateway, /ORB_|DESKTOP_|WAKE_|QWEN_AUDIO_AGENT_URL/)
-  assert.doesNotMatch(client, /DASHSCOPE|AGENT_PROTOCOL/)
+  assert.doesNotMatch(client, /REALTIME_|AGENT_PROTOCOL/)
   assert.match(client, /QWEN_AUDIO_WAKE_WORD_ENABLED=true/)
   assert.match(client, /QWEN_AUDIO_AGENT_URL=https:\/\/gateway.example/)
   assert.deepEqual(createSettingsStore({ ...options, env: {} }).load(), saved)
@@ -161,7 +174,7 @@ test('the unified form persists Gateway settings and desktop preferences separat
   assert.equal(statSync(store.path).mtimeMs, gatewayMtime)
   assert.equal(store.load().autoHideSeconds, 300)
   const clientMtime = statSync(store.clientSettingsPath).mtimeMs
-  store.save({ dashscopeApiKey: 'sk-updated' })
+  store.save({ realtimeApiKey: 'sk-updated' })
   assert.equal(statSync(store.clientSettingsPath).mtimeMs, clientMtime)
   assert.equal(store.load().language, 'zh-CN')
 })
@@ -171,8 +184,8 @@ test('desktop clients sharing a Gateway keep independent preferences and identit
   const configDir = join(root, 'gateway')
   const first = createSettingsStore({ configDir, clientDir: join(root, 'first'), env: {} })
   const second = createSettingsStore({ configDir, clientDir: join(root, 'second'), env: {} })
-  first.save({ dashscopeApiKey: 'sk-shared', language: 'en', orbSkin: 'goo' })
-  assert.equal(second.load().dashscopeApiKey, 'sk-shared')
+  first.save({ realtimeApiKey: 'sk-shared', language: 'en', orbSkin: 'goo' })
+  assert.equal(second.load().realtimeApiKey, 'sk-shared')
   assert.equal(second.load().language, 'auto')
   assert.equal(second.load().orbSkin, 'fluid')
   assert.notEqual(first.gatewayClientInstance.load(), second.gatewayClientInstance.load())

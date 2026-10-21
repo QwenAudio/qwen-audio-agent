@@ -68,9 +68,11 @@ import {
   clientSettingsPatch,
   realtimeSettingsConfigured,
   realtimeSettingsConfiguration,
+  realtimeSettingsChanged,
   updateSettingsContent,
 } from './settings-config.mjs'
 import { runtimePathEnvironment, userConfigDirectory } from '../../shared/runtime-paths.mjs'
+import { assertRealtimeFrontendModel } from '../../shared/realtime-provider-catalog.mjs'
 import { DesktopWakeWordRuntime } from './wake-word/runtime.mjs'
 import {
   effectiveOrbSkin as resolveEffectiveOrbSkin,
@@ -174,7 +176,7 @@ let setupRequired = (
   !configExistedAtLaunch
   || (
     isLoopbackUrl(configuredGatewayOrigin)
-    && !realtimeSettingsConfigured(initialSettings)
+    && !desktopSettingsStore.ready()
   )
 )
 const preloadPath = resolve(here, 'preload.cjs')
@@ -410,6 +412,7 @@ async function runtimeStatus(target = appOrigin) {
     realtimeLabel: health?.realtimeLabel || null,
     realtimeModel: health?.realtimeModel || null,
     realtimeModelProfile: health?.realtimeModelProfile || null,
+    realtimeConfigurationSignature: health?.realtimeConfigurationSignature || '',
     voiceConfigured: health?.voiceConfigured === true,
     realtimeConnection: health?.voiceClients?.realtime || null,
     backend: health?.backend
@@ -850,21 +853,30 @@ ipcMain.handle('qwen-audio-agent:settings-load', async event => {
     throw new Error('无权读取设置')
   }
   const settings = desktopSettingsStore.load()
+  const catalogStatus = desktopSettingsStore.modelCatalogStatus()
+  const runtime = setupRequired
+    ? {
+        gatewayConnected: false,
+        gatewayUrl: String(appOrigin || ''),
+        realtimeProvider: null,
+        realtimeLabel: null,
+        realtimeModel: null,
+        voiceConfigured: false,
+        realtimeConnection: null,
+        backend: null,
+      }
+    : await runtimeStatus()
   return {
     settings,
+    ...catalogStatus,
+    realtimeConfigurationPending: Boolean(
+      isLoopbackUrl(configuredGatewayOrigin)
+      && catalogStatus.realtimeModelCatalogs
+      && runtime.realtimeConfigurationSignature
+      && realtimeSettingsChanged(settings, settings, catalogStatus.realtimeModelCatalogs, runtime.realtimeConfigurationSignature)
+    ),
     skins: [...BUILTIN_ORB_SKINS, ...listSkins(skinsRoot)],
-    runtime: setupRequired
-      ? {
-          gatewayConnected: false,
-          gatewayUrl: String(appOrigin || ''),
-          realtimeProvider: null,
-          realtimeLabel: null,
-          realtimeModel: null,
-          voiceConfigured: false,
-          realtimeConnection: null,
-          backend: null,
-        }
-      : await runtimeStatus(),
+    runtime,
     setupRequired,
     firstRun: !configExistedAtLaunch,
     runtimeError: lastRuntimeError || null,
@@ -1017,8 +1029,9 @@ async function applyDesktopSettings(settings) {
   settings = { ...(remote ? clientSettingsPatch(settings) : settings), gatewayUrl: nextOrigin }
   const current = readFileSync(runtimeEnvironment.configPath, 'utf8')
   const previous = desktopSettingsStore.load()
-  const content = updateSettingsContent(current, settings, { scope: 'gateway', realtimeDrafts: previous })
+  const content = updateSettingsContent(current, settings, { scope: 'gateway', effectiveSettings: previous })
   const normalized = desktopSettingsStore.preview(settings)
+  const modelCatalogs = remote ? undefined : desktopSettingsStore.modelCatalogs()
   const connection = await prepareDesktopGatewayConnection(target, {
     profileStore: desktopGatewayProfiles,
     clientInstanceId: desktopGatewayClientInstanceId,
@@ -1026,12 +1039,22 @@ async function applyDesktopSettings(settings) {
     fallbackAccessToken: process.env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN || '',
   })
   const credentialChanged = connection.credential !== gatewayAccessToken
-  if (!remote && !connection.connected && !realtimeSettingsConfigured(normalized)) {
-    throw new Error(realtimeSettingsConfiguration(normalized).missingConfigurationMessage)
+  if (!remote && !connection.connected && !realtimeSettingsConfigured(normalized, modelCatalogs)) {
+    const frontend = realtimeSettingsConfiguration(normalized, modelCatalogs)
+    assertRealtimeFrontendModel(frontend.active)
+    throw new Error(frontend.missingConfigurationMessage)
   }
   const gatewayChanged = nextOrigin !== configuredGatewayOrigin
-  const realtimeChanged = realtimeSettingsConfiguration(previous).active.signature
-    !== realtimeSettingsConfiguration(normalized).active.signature
+  // An owned Gateway may have selected another loopback port. Compare its
+  // actual snapshot, not two settings views resolved against the new catalog.
+  const runningSignature = connection.realtimeConfigurationSignature || (
+    !remote && !gatewayChanged && embeddedGateway?.running
+      ? (await readDesktopGatewayHealth(appOrigin))?.realtimeConfigurationSignature
+      : ''
+  )
+  const realtimeChanged = !remote && realtimeSettingsChanged(
+    previous, normalized, modelCatalogs, runningSignature,
+  )
   const realtimeProviderChanged = (
     previous.realtimeProvider !== normalized.realtimeProvider
   )
@@ -1166,6 +1189,8 @@ async function applyDesktopSettings(settings) {
   const runtime = await runtimeStatus(appOrigin)
   return {
     settings: normalized,
+    ...desktopSettingsStore.modelCatalogStatus(),
+    realtimeConfigurationPending: false,
     restarted,
     restartRequired: false,
     runtime,

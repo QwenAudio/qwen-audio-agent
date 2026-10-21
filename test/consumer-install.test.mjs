@@ -119,7 +119,7 @@ test('a consumer with only the declared dependencies can run the CLI and Gateway
   assert.notEqual(refused.status, 0, 'an unconfigured start must not succeed')
   assert.match(
     `${refused.stdout}\n${refused.stderr}`,
-    /DASHSCOPE_API_KEY/,
+    /QWEN_AUDIO_REALTIME_API_KEY/,
     'the refusal must name what is missing',
   )
 
@@ -134,7 +134,7 @@ test('a consumer with only the declared dependencies can run the CLI and Gateway
     env: {
       ...process.env,
       QWAUDIO_CONFIG_DIR: configDir,
-      DASHSCOPE_API_KEY: 'sk-consumer-probe',
+      QWEN_AUDIO_REALTIME_API_KEY: 'sk-consumer-probe',
       AGENT_PROTOCOL: '',
       PORT: '0',
     },
@@ -224,7 +224,7 @@ async function main() {
   const clientDir = mkdtempSync(join(tmpdir(), 'qwaudio-client-'))
   const settings = api.createSettingsStore({ configDir, clientDir })
   assert.equal(settings.ready(), false)
-  settings.save({ dashscopeApiKey: 'sk-embed-probe' })
+  settings.save({ realtimeApiKey: 'sk-embed-probe' })
   assert.equal(settings.ready(), true)
 
   // The client owns skins; an embedding host can opt into read-only hosting.

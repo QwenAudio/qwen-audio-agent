@@ -166,12 +166,15 @@ test('publishes truthful MiniCPM-o model and transport capabilities', () => {
 })
 
 test('negotiates live visual input only when MiniCPM-o runs in video mode', t => {
-  const previousUrl = config.miniCpmORealtimeUrl
+  const previousUrl = config.realtimeEndpoint
+  const previousProvider = config.audioProvider
   t.after(() => {
-    config.miniCpmORealtimeUrl = previousUrl
+    config.realtimeEndpoint = previousUrl
+    config.audioProvider = previousProvider
   })
 
-  config.miniCpmORealtimeUrl = 'ws://127.0.0.1:32550/api/v1/realtime?mode=video'
+  config.audioProvider = 'minicpm-o'
+  config.realtimeEndpoint = 'ws://127.0.0.1:32550/api/v1/realtime?mode=video'
   assert.equal(
     describeActiveRealtime('minicpm-o').transportCapabilities.imageBufferInput,
     true,

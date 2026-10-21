@@ -11,6 +11,7 @@ import { buildFrontendToolContext } from '../src/frontend/tools/frontend-tool-co
 import { isResponseActivityEvent } from '../src/voice/response-lifecycle.mjs'
 
 function configure(t, values) {
+  values = { audioProvider: 'stepfun', ...values }
   const previous = Object.fromEntries(Object.keys(values).map(key => [key, config[key]]))
   Object.assign(config, values)
   t.after(() => Object.assign(config, previous))
@@ -18,11 +19,10 @@ function configure(t, values) {
 
 test('StepFun owns its credentials, model, voice, and 24 kHz audio contract', t => {
   configure(t, {
-    stepfunApiKey: 'step-test',
-    stepfunRealtimeUrl: 'wss://api.stepfun.com/v1/realtime?model=old&region=test',
-    stepfunModel: 'stepaudio-3-realtime-preview',
-    stepfunVoice: '',
-    audioVoice: 'qwen-only',
+    realtimeCredential: 'step-test',
+    realtimeEndpoint: 'wss://api.stepfun.com/v1/realtime?model=old&region=test',
+    realtimeModel: 'stepaudio-3-realtime-preview',
+    realtimeVoice: '',
   })
   validateRealtimeProvider(stepfunProvider)
   assert.equal(new URL(stepfunProvider.url()).searchParams.getAll('model').length, 1)
@@ -118,10 +118,10 @@ test('runs text, tool output, delivery, permission, and cancellation through a W
     server.close(resolve)
   }))
   configure(t, {
-    stepfunApiKey: 'step-test',
-    stepfunRealtimeUrl: `ws://127.0.0.1:${server.address().port}/v1/realtime`,
-    stepfunModel: 'stepaudio-3-realtime-preview',
-    stepfunVoice: '',
+    realtimeCredential: 'step-test',
+    realtimeEndpoint: `ws://127.0.0.1:${server.address().port}/v1/realtime`,
+    realtimeModel: 'stepaudio-3-realtime-preview',
+    realtimeVoice: '',
   })
   const outgoing = []
   const incoming = []

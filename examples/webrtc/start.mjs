@@ -1,5 +1,6 @@
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { requireWebRtcDependencies } from '../../shared/gateway/webrtc.mjs'
+import { DEFAULT_DASHSCOPE_REALTIME_MODEL } from '../../shared/realtime-model-catalog.mjs'
 
 export function demoEnvironment(environment, args = []) {
   if (args.some(arg => arg !== '--omni')) throw new Error('Usage: node start.mjs [--omni]')
@@ -9,7 +10,7 @@ export function demoEnvironment(environment, args = []) {
     QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope',
     QWEN_AUDIO_REALTIME_MODEL: args.includes('--omni')
       ? 'qwen3.5-omni-plus-realtime'
-      : 'qwen-audio-3.0-realtime-plus',
+      : DEFAULT_DASHSCOPE_REALTIME_MODEL,
   }
 }
 

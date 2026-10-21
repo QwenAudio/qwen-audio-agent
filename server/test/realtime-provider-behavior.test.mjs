@@ -32,12 +32,20 @@ async function service(t, key) {
   server.on('connection', socket => {
     const peer = {
       socket, messages: [], replies: 0, active: null, autoComplete: true,
+      // GPT-Live 1: the running or tool-waiting delegation; its events arrive wrapped in a response.event.
+      delegation: null,
       send: event => socket.send(JSON.stringify(event)),
+      delegated(event) { return { type: 'response.event', delegation_id: this.delegation, event } },
       start(metadata) {
         const id = `response_${++this.replies}`
         this.active = { id, metadata }
         if (key === 'google-live') {
           this.send({ serverContent: { modelTurn: { parts: [{ text: 'reply' }] } } })
+        } else if (key === 'gpt-live-1') {
+          // Resumes the delegation a tool call left waiting, or opens a new one.
+          this.delegation ||= `item_${id}`
+          this.send(this.delegated({ type: 'response.created', response: this.active }))
+          this.send(this.delegated({ type: 'response.output_text.delta', delta: 'reply' }))
         } else if (key === 'doubao-seeduplex') {
           this.send({ type: 'response.output_text.delta', response_id: id, delta: 'reply' })
         } else if (key === 'minicpm-o') {
@@ -57,6 +65,10 @@ async function service(t, key) {
         this.active = null
         if (key === 'google-live') {
           this.send({ serverContent: { turnComplete: true, interrupted: status === 'cancelled' } })
+        } else if (key === 'gpt-live-1') {
+          // Nothing on the Live wire cancels a delegated response.
+          this.send(this.delegated({ type: 'response.completed', response }))
+          this.delegation = null
         } else if (status === 'cancelled' && key === 'doubao-seeduplex') {
           this.send({ type: 'response.canceled', response_id: response.id })
         } else if (status === 'cancelled' && key === 'stepfun') {
@@ -69,6 +81,17 @@ async function service(t, key) {
         const call = { call_id: 'call_contract', name: 'lookup', arguments: '{"q":"test"}' }
         if (key === 'google-live') {
           this.send({ toolCall: { functionCalls: [{ id: call.call_id, name: call.name, args: { q: 'test' } }] } })
+        } else if (key === 'gpt-live-1') {
+          // The model delegates on its own; only the output item names the call (the
+          // arguments-done twin has none). It then waits for the output and a response.create.
+          const id = `response_${++this.replies}`
+          const delegation = { id: `item_${id}`, type: 'delegation', target: 'responses', response_id: id }
+          this.delegation = delegation.id
+          this.send({ type: 'session.delegation.created', delegation })
+          this.send(this.delegated({ type: 'response.created', response: { id } }))
+          this.send(this.delegated({ type: 'response.function_call_arguments.done', arguments: call.arguments }))
+          this.send(this.delegated({ type: 'response.output_item.done', item: { type: 'function_call', ...call } }))
+          this.send(this.delegated({ type: 'response.completed', response: { id, status: 'completed' } }))
         } else {
           this.active = { id: `response_${++this.replies}` }
           if (key !== 'doubao-seeduplex') this.send({ type: 'response.created', response: this.active })
@@ -85,7 +108,12 @@ async function service(t, key) {
       peer.messages.push(message)
       if (message.setup) peer.send({ setupComplete: {} })
       else if (message.type === 'session.init') peer.send({ type: 'session.created', session_id: 'native' })
-      else if (['session.create', 'session.update'].includes(message.type)) {
+      else if (message.type === 'session.start') {
+        // GPT-Live 1 acknowledges session.start and context appends, never response.item.create.
+        peer.send({ type: 'session.started', client_event_id: message.event_id, session: { id: 'live_native' } })
+      } else if (['session.instructions.append', 'session.thinking.append', 'session.commentary.append'].includes(message.type)) {
+        peer.send({ type: `${message.type}ed`, client_event_id: message.event_id })
+      } else if (['session.create', 'session.update'].includes(message.type)) {
         // Speech-to-Speech deliberately does not acknowledge session.update.
         if (key !== 'speech-to-speech') peer.send({ type: 'session.updated', session: {} })
       } else if (message.type === 'conversation.item.create') {
@@ -106,7 +134,7 @@ async function service(t, key) {
       }
     })
     if (key === 'minicpm-o') peer.send({ type: 'session.queue_done' })
-    else if (!['google-live', 'doubao-seeduplex'].includes(key)) peer.send({ type: 'session.created', session: {} })
+    else if (!['google-live', 'doubao-seeduplex', 'gpt-live-1'].includes(key)) peer.send({ type: 'session.created', session: {} })
   })
   const base = defaultRealtimeProviderRegistry.resolve(key)
   const provider = {
@@ -244,6 +272,8 @@ for (const { key, model } of cases) {
         assert.equal(frontend.pendingResponses.length, 0)
         return
       }
+      // A full-duplex service cannot cancel a running response: see the next test.
+      if (frontend.capabilities.concurrentVoicePlayback) return
       peer.autoComplete = false
       const pending = frontend.sendUserText('hello')
       await waitFor(() => frontend.activeResponses.size === 1)
@@ -252,6 +282,28 @@ for (const { key, model } of cases) {
       await flush()
       assert.equal(frontend.activeResponses.size, 0)
       peer.autoComplete = true
+      assert.equal((await frontend.sendUserText('next turn')).completed, true)
+      assert.equal(frontend.ready, true)
+    })
+
+    await t.test('a cancel for user speech stops only playback on a full-duplex frontend', async t => {
+      const { frontend, peer, flush } = await connect(t, key)
+      if (!frontend.capabilities.clientResponses) return
+      const fullDuplex = frontend.capabilities.concurrentVoicePlayback
+      peer.autoComplete = false
+      const pending = frontend.sendUserText('hello')
+      await waitFor(() => frontend.activeResponses.size === 1)
+      frontend.cancel({ reason: 'user_interruption' })
+      peer.autoComplete = true
+      if (fullDuplex) {
+        // The backend response keeps running and the request waiting on it completes with it.
+        assert.equal(frontend.activeResponses.size, 1)
+        peer.finish()
+      }
+      // Other providers cancel exactly as without a reason.
+      assert.equal((await pending)[fullDuplex ? 'completed' : 'cancelled'], true)
+      await flush()
+      assert.equal(frontend.activeResponses.size, 0)
       assert.equal((await frontend.sendUserText('next turn')).completed, true)
       assert.equal(frontend.ready, true)
     })

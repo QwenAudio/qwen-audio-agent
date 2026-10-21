@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### 主要更新
+
+- 新增 GPT-Live 1 Realtime Provider（OpenAI Live API，全双工，推理与工具调用委托给 Responses 模型）；其他 Provider 行为不变。
+
 ### 修复与改进
 
 - 修复无效语音回合、工具结果发送或续答请求失败后，已完成后台任务的播报窗口未释放的问题；主动清空播放时同步清理 Gateway 状态，避免丢失取消回执后持续阻塞，正常音频仍等待播放结束（#549）。

@@ -55,6 +55,24 @@ test('reader uses its own manual text-only session, audio/image/commit ordering 
   assert.equal(sockets[0].readyState, 3)
   assert.equal(reader.active.size, 0)
 })
+test('reader uses the active adapter headers and endpoint without an independent API key', async () => {
+  const socket = new Socket()
+  let connection
+  const reader = new DashScopeVisualReader({
+    headers: { Authorization: 'Bearer canonical-only-key' },
+    model: 'qwen3.5-omni-plus-realtime',
+    endpoint: 'ws://127.0.0.1:24680/private/realtime?tenant=isolated&model=old',
+    connect: (url, options) => { connection = { url, options }; return socket },
+  })
+  const result = reader.read(frame(), 'What is visible?')
+  complete(socket, 'A local fixture.')
+  assert.equal(await result, 'A local fixture.')
+  assert.equal(connection.url.origin, 'ws://127.0.0.1:24680')
+  assert.equal(connection.url.pathname, '/private/realtime')
+  assert.equal(connection.url.searchParams.get('tenant'), 'isolated')
+  assert.deepEqual(connection.url.searchParams.getAll('model'), ['qwen3.5-omni-plus-realtime'])
+  assert.deepEqual(connection.options.headers, { Authorization: 'Bearer canonical-only-key' })
+})
 test('reader bounds concurrency, deadline and abort; provider details never escape', async () => {
   const { reader, sockets } = readerFixture({ maxConcurrent: 1, timeoutMs: 20 })
   const controller = new AbortController()

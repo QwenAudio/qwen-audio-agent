@@ -57,7 +57,7 @@ For the default Qwen configuration, set the following in `.env.local`:
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=dashscope
 QWEN_AUDIO_REALTIME_MODEL=qwen3.5-omni-plus-realtime
-DASHSCOPE_API_KEY=your-key
+QWEN_AUDIO_REALTIME_API_KEY=your-key
 AGENT_PROTOCOL=none
 ```
 
@@ -73,7 +73,7 @@ git-ignored `examples/x-omni/.runtime/`; it does not connect to the desktop
 Gateway. Explicit `QWAUDIO_*` directory overrides still apply.
 
 Credentials stay in Node.js, never in the browser bundle. For DashScope,
-`QWEN_AUDIO_REALTIME_BASE_URL` optionally changes the WebSocket endpoint for
+`QWEN_AUDIO_REALTIME_URL` optionally changes the WebSocket endpoint for
 both conversation and the visual reader.
 
 ### Choose WebRTC
@@ -108,13 +108,13 @@ Replace the provider configuration in `.env.local` with:
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=minicpm-o
-MINICPM_O_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=video
+QWEN_AUDIO_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=video
 AGENT_PROTOCOL=none
-# MINICPM_O_AUTH_TOKEN=your-token
+QWEN_AUDIO_REALTIME_API_KEY=
 ```
 
 Use the actual endpoint of your deployment; the local URL above assumes HTTP
-mode on loopback. Set `MINICPM_O_AUTH_TOKEN` only if the service requires one.
+mode on loopback. Set `QWEN_AUDIO_REALTIME_API_KEY` only if the service requires one.
 No DashScope key is required. Start the same command, select a visual source,
 and enable the microphone. The client automatically uses **Continuous frames**.
 The example does not install, start, or manage model inference services.

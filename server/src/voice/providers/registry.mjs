@@ -43,7 +43,7 @@ function providerDescriptor(provider) {
     model: provider.model(),
     realtimeModelIds: provider.modelCatalog?.().map(profile => profile.id)
       ?? (provider.key === 'dashscope'
-        ? listDashScopeRealtimeModelProfiles().map(profile => profile.id)
+        ? listDashScopeRealtimeModelProfiles(config.realtimeModelCatalogs).map(profile => profile.id)
         : null),
     configured: provider.isConfigured(),
   }
@@ -71,7 +71,7 @@ export function describeActiveRealtime(requested, {
     transportCapabilities: modelProfile?.transportCapabilities || null,
     modelCatalog: provider.modelCatalog?.()
       ?? (provider.key === 'dashscope'
-        ? listDashScopeRealtimeModelProfiles()
+        ? listDashScopeRealtimeModelProfiles(config.realtimeModelCatalogs)
         : []),
     voice: provider.voice(),
     inputSampleRate: provider.inputSampleRate,

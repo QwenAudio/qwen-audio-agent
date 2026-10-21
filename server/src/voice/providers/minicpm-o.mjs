@@ -1,6 +1,8 @@
-import { config } from '../../core/config.mjs'
+import { providerRuntimeConfiguration } from './runtime-configuration.mjs'
 import { buildFrontendInstructions } from '../../frontend/frontend-tools.mjs'
 import { createMiniCpmOProtocol } from './minicpm-o-protocol.mjs'
+
+const connection = providerRuntimeConfiguration('minicpm-o')
 
 const MODEL_ID = 'openbmb/MiniCPM-o-4_5'
 
@@ -14,7 +16,7 @@ const MODEL_CAPABILITIES = Object.freeze({
   functionCalling: false,
 })
 
-function videoModeEnabled(value = config.miniCpmORealtimeUrl) {
+function videoModeEnabled(value = connection.endpoint) {
   try {
     return new URL(value).searchParams.get('mode') === 'video'
   } catch {
@@ -72,12 +74,12 @@ export const miniCpmOProvider = {
   model: () => MODEL_ID,
   modelProfile,
   voice: () => null,
-  isConfigured: () => config.miniCpmOConfigured,
-  missingConfigurationMessage: '请先配置 MINICPM_O_REALTIME_URL',
+  isConfigured: () => connection.configured,
+  missingConfigurationMessage: '请先选择 minicpm-o 并配置 QWEN_AUDIO_REALTIME_URL',
   connectTimeoutMessage: '连接面壁智能 Realtime 服务超时，请检查服务地址和运行状态',
-  url: () => config.miniCpmORealtimeUrl,
-  headers: () => config.miniCpmOAuthToken
-    ? { Authorization: `Bearer ${config.miniCpmOAuthToken}` }
+  url: () => connection.endpoint,
+  headers: () => connection.credential
+    ? { Authorization: `Bearer ${connection.credential}` }
     : {},
   classifyError,
 

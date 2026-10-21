@@ -10,30 +10,19 @@ import { resolve } from 'node:path'
 import { parseEnv } from 'node:util'
 import { resolveRuntimePaths, runtimePathEnvironment, userConfigDirectory } from './runtime-paths.mjs'
 import { backendDefinitions } from './backend/catalog.mjs'
-import { assertRealtimeFrontendModel, resolveRealtimeFrontendConfiguration } from './realtime-provider-catalog.mjs'
-import { migrateRealtimeFileEnvironment, mergeRealtimeEnvironment } from './realtime-provider-definitions.mjs'
+import { assertRealtimeFrontendModel, DEFAULT_DASHSCOPE_REALTIME_VOICE, resolveRealtimeFrontendConfiguration } from './realtime-provider-catalog.mjs'
+import { mergeRealtimeEnvironment, realtimeRuntimeEnvironment } from './realtime-provider-definitions.mjs'
 
 const SECRET_KEY = 'QWEN_AUDIO_AGENT_AUTH_SECRET'
 const USER_CONFIG_TEMPLATE = [
   '# qwen-audio-agent 用户配置',
-  '# 前台 API Key：取消注释并填写；显式留空表示清除凭证',
-  '# 各 Provider 使用独立参数；切换时只需修改 Provider 选择项',
-  '# DASHSCOPE_API_KEY=',
-  '# STEPFUN_API_KEY=',
-  '# DOUBAO_API_KEY=',
-  'QWEN_AUDIO_REALTIME_PROVIDER=dashscope',
-  '# StepAudio 3 Realtime：将 Provider 改为 stepfun，并填写 STEPFUN_API_KEY',
-  '# STEPFUN_REALTIME_URL=wss://api.stepfun.com/v1/realtime',
-  '# STEPFUN_REALTIME_MODEL=stepaudio-3-realtime-preview',
-  '# STEPFUN_REALTIME_VOICE=',
-  '# 豆包 Seeduplex 端到端全双工：将 Provider 改为 doubao-seeduplex，并填写 DOUBAO_API_KEY',
-  '# DOUBAO_SEEDUPLEX_REALTIME_URL=wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue',
-  '# DOUBAO_SEEDUPLEX_REALTIME_MODEL=1.2.6.1',
-  '# DOUBAO_SEEDUPLEX_REALTIME_VOICE=zh_female_vv_jupiter_bigtts',
-  '# Hugging Face speech-to-speech：将上一行改为 speech-to-speech，并设置服务地址',
-  '# SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime',
-  '# MiniCPM-o 4.5：将 Provider 改为 minicpm-o，并先启动本地 Realtime 服务',
-  '# MINICPM_O_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=audio',
+  '# 前台 API Key：默认 DashScope 必填，请直接在等号后填写',
+  '# 所有前台使用同一组参数，只配置当前供应商；切换时同步更换密钥、模型和地址',
+  ...Object.entries(realtimeRuntimeEnvironment()).map(([key, value]) => `${key}=${value}`),
+  '# 模型、地址留空可恢复供应商默认值',
+  `# 音色留空跟随模型；默认模型的音色为 ${DEFAULT_DASHSCOPE_REALTIME_VOICE}`,
+  '# 可选 dashscope、stepfun、gpt-live、google-live、doubao-seeduplex、speech-to-speech、minicpm-o',
+  '# speech-to-speech / minicpm-o 的模型与音色由上游服务管理，只需地址及可选密钥',
   '',
   '# 可选目录：QWAUDIO_DATA_DIR / QWAUDIO_STATE_DIR / QWAUDIO_CACHE_DIR',
   '# 所有后台默认工作区：QWAUDIO_WORKSPACE=/absolute/path/to/projects',
@@ -43,7 +32,7 @@ const USER_CONFIG_TEMPLATE = [
   'AGENT_PROTOCOL=',
   '# 权限模式：native（后台自行询问）或 full（最高权限；仅支持安全映射的后端）',
   '# Pi 没有权限审批机制，无论配置什么都始终生效 full',
-  '# QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native',
+  'QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native',
   '# 可选：通过 ACP 标准覆盖 Session 模型；OpenCode/OpenClaw 托管初始化也会使用',
   '# 留空时完全沿用 Agent 原有模型；后台未声明 ACP 模型选项时显式覆盖会失败',
   '# QWEN_AUDIO_AGENT_BACKEND_MODEL=',
@@ -60,8 +49,8 @@ const USER_CONFIG_TEMPLATE = [
   '# 可选：前台 MCP 配置文件的绝对路径；MCP 引用的持久变量也写在本文件中',
   '# QWEN_AUDIO_FRONTEND_MCP_CONFIG=/absolute/path/to/frontend-mcp.json',
   '',
-  '# 可选记忆 Provider：markdown（默认）或 voicemem；VoiceMem 需先安装 Python 依赖',
-  '# QWEN_AUDIO_MEMORY_PROVIDER=voicemem',
+  '# 记忆 Provider：markdown（默认）或 voicemem；VoiceMem 需先安装 Python 依赖',
+  'QWEN_AUDIO_MEMORY_PROVIDER=markdown',
   '# VOICEMEM_INPUT_MODE=text',
   '# VOICEMEM_PYTHON=/absolute/path/to/voicemem-python',
   '# VOICEMEM_SIDECAR=/absolute/path/to/voicemem-sidecar.py',
@@ -72,10 +61,10 @@ const USER_CONFIG_TEMPLATE = [
   '# QWEN_AUDIO_GATEWAY_ACCESS_TOKEN=至少24字符的随机密钥',
   '# QWEN_AUDIO_AGENT_ALLOWED_ORIGINS=https://voice.example.com',
   '',
-  '# 可选日志设置：默认 info、单文件 10 MiB、保留 5 份',
-  '# QWEN_AUDIO_LOG_LEVEL=info',
-  '# QWEN_AUDIO_LOG_MAX_BYTES=10485760',
-  '# QWEN_AUDIO_LOG_MAX_FILES=5',
+  '# 日志设置：默认 info、单文件 10 MiB、保留 5 份',
+  'QWEN_AUDIO_LOG_LEVEL=info',
+  'QWEN_AUDIO_LOG_MAX_BYTES=10485760',
+  'QWEN_AUDIO_LOG_MAX_FILES=5',
   '',
 ].join('\n')
 const USER_MODEL_TEMPLATE = [
@@ -111,7 +100,7 @@ const MEMORY_TEMPLATE = [
 function loadFile(path, env) {
   let values
   try {
-    values = migrateRealtimeFileEnvironment(parseEnv(readFileSync(path, 'utf8')))
+    values = parseEnv(readFileSync(path, 'utf8'))
   } catch (error) {
     if (error.code === 'ENOENT') return false
     throw error
@@ -393,7 +382,7 @@ export function hasDashScopeCredential(env = process.env) {
 export function requireDashScopeCredential(env = process.env) {
   if (hasDashScopeCredential(env)) return
   throw new Error(
-    '缺少 DASHSCOPE_API_KEY。请运行 qwenaudio config 查看配置文件位置。',
+    '缺少 QWEN_AUDIO_REALTIME_API_KEY。请运行 qwenaudio config 查看配置文件位置。',
   )
 }
 

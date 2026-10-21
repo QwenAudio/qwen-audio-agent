@@ -98,6 +98,6 @@ for overrides and storage details.
 ## Obtain a DashScope API Key
 
 1. Open the [Bailian API Key page](https://bailian.console.aliyun.com/?tab=model#/api-key), sign in, and create a key.
-2. Enter it in Desktop settings or as `DASHSCOPE_API_KEY` in `config.env`.
+2. Enter it in Desktop settings or as `QWEN_AUDIO_REALTIME_API_KEY` in `config.env`.
 
 See the [official free-quota guide](https://help.aliyun.com/zh/model-studio/new-free-quota) for eligibility and conditions. Check available quota and billing settings before use. Do not expose keys or commit configuration files.

@@ -11,6 +11,8 @@ import {
   realtimeModelCatalog,
   resolveRealtimeModelProfile,
 } from '../../shared/realtime-provider-catalog.mjs'
+import { loadRealtimeModelCatalogs } from '../../shared/realtime-models/config-file.mjs'
+import { mergeRealtimeEnvironment, realtimeSettingsFromEnvironment } from '../../shared/realtime-provider-definitions.mjs'
 
 export const GATEWAY_RESTART_FOLLOW_UP = '配置已更新；请执行 qwenaudio gateway restart 使 Gateway 使用新模型'
 
@@ -22,15 +24,13 @@ function configText(path) {
 }
 
 export function resolveConfigModel(env = {}, content = '') {
-  const values = { ...parseEnv(content), ...env }
-  const catalog = realtimeModelCatalog(normalizeRealtimeProvider(values.QWEN_AUDIO_REALTIME_PROVIDER))
-  return catalog ? String(values[catalog.environment] || catalog.defaultModel).trim() : ''
+  return realtimeSettingsFromEnvironment(mergeRealtimeEnvironment(parseEnv(content), env)).realtimeModel
 }
 
-export function assertKnownRealtimeModel(model, provider = 'dashscope') {
-  const profile = resolveRealtimeModelProfile(model, provider)
-  if (!realtimeModelCatalog(provider)?.profiles.some(item => item.id === model)) {
-    throw new Error(`不支持的 Realtime 模型：${model}`)
+export function assertKnownRealtimeModel(model, provider = 'dashscope', modelCatalogs) {
+  const profile = resolveRealtimeModelProfile(model, provider, modelCatalogs)
+  if (!realtimeModelCatalog(provider, modelCatalogs)?.profiles.some(item => item.id === model)) {
+    throw new Error(`不支持的 Realtime 模型：${model}；请选择已注册模型，或在 frontend-models.json 注册其 API 配置`)
   }
   return profile
 }
@@ -51,10 +51,11 @@ function updateRealtimeModelConfigUnlocked(configPath, model, {
   env,
 }) {
   const existing = configText(configPath)
-  const values = { ...parseEnv(existing), ...env }
+  const values = mergeRealtimeEnvironment(parseEnv(existing), env)
   const provider = normalizeRealtimeProvider(values.QWEN_AUDIO_REALTIME_PROVIDER)
-  const profile = assertKnownRealtimeModel(model, provider)
-  const environment = realtimeModelCatalog(provider).environment
+  const catalogs = loadRealtimeModelCatalogs(values, { configDirectory: dirname(configPath) })
+  const profile = assertKnownRealtimeModel(model, provider, catalogs)
+  const environment = realtimeModelCatalog(provider, catalogs).environment
   const assignments = new Map([
     [environment, model],
   ])
@@ -104,9 +105,10 @@ function updateRealtimeModelConfigUnlocked(configPath, model, {
 }
 
 export function showConfig({ configPath, env = {}, content = configText(configPath) }) {
-  const values = { ...parseEnv(content), ...env }
+  const values = mergeRealtimeEnvironment(parseEnv(content), env)
   const provider = normalizeRealtimeProvider(values.QWEN_AUDIO_REALTIME_PROVIDER)
-  const catalog = realtimeModelCatalog(provider)
+  const catalogs = loadRealtimeModelCatalogs(values, { configDirectory: dirname(configPath) })
+  const catalog = realtimeModelCatalog(provider, catalogs)
   const model = resolveConfigModel(env, content)
   return [
     `Realtime 前台：${provider}`,

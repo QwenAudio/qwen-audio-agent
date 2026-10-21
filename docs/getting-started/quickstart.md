@@ -27,8 +27,8 @@ Start in frontend-only mode to verify voice conversation:
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=dashscope
-DASHSCOPE_API_KEY=your-key
-QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
+QWEN_AUDIO_REALTIME_API_KEY=your-key
+QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.1-realtime-plus
 AGENT_PROTOCOL=none
 ```
 

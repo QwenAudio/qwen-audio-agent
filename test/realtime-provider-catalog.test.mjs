@@ -6,7 +6,6 @@ import {
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
   DEFAULT_DASHSCOPE_REALTIME_VOICE,
   DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL,
-  DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE,
   resolveDashScopeRealtimeVoiceOverride,
   listDashScopeRealtimeModelProfiles,
   resolveDashScopeRealtimeModelProfile,
@@ -79,7 +78,8 @@ test('Doubao Seeduplex resolves aliases, endpoint, model and voice independently
   assert.equal(configuration.active.configured, true)
   assert.equal(configuration.credential, 'doubao-test')
   assert.equal(configuration.active.model, DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL)
-  assert.equal(configuration.active.voice, DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE)
+  assert.equal(configuration.active.voice, '')
+  assert.equal(configuration.active.modelProfile.sessionDefaults.voice, 'zh_female_vv_jupiter_bigtts')
   assert.equal(resolveRealtimeModelProfile(
     configuration.active.model,
     'doubao-seeduplex',
@@ -121,6 +121,8 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
   assert.deepEqual(listDashScopeRealtimeModelProfiles(), [
     {
       id: OMNI_38_FLASH_ID,
+      api: 'omni-v2',
+      sessionConstraints: { workspaceEndpoint: true },
       label: 'Qwen3.8 Omni Flash Realtime',
       family: 'omni',
       sessionDefaults: { voice: 'Tina', turnDetection: { type: 'semantic_vad' } },
@@ -129,6 +131,8 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
     },
     {
       id: OMNI_FLASH_ID,
+      api: 'omni',
+      sessionConstraints: { unsupportedVoices: ['Cherry'] },
       label: 'Qwen3.5 Omni Flash Realtime',
       family: 'omni',
       sessionDefaults: omniSessionDefaults,
@@ -137,6 +141,8 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
     },
     {
       id: OMNI_PLUS_ID,
+      api: 'omni',
+      sessionConstraints: { unsupportedVoices: ['Cherry'] },
       label: 'Qwen3.5 Omni Plus Realtime',
       family: 'omni',
       sessionDefaults: omniSessionDefaults,
@@ -145,6 +151,8 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
     },
     {
       id: AUDIO_31_PLUS_ID,
+      api: 'audio',
+      sessionConstraints: {},
       label: 'Qwen Audio 3.1 Realtime Plus',
       family: 'audio',
       sessionDefaults: {
@@ -169,6 +177,8 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
     },
     {
       id: AUDIO_PLUS_ID,
+      api: 'audio',
+      sessionConstraints: {},
       label: 'Qwen Audio 3.0 Realtime Plus',
       family: 'audio',
       sessionDefaults: legacySessionDefaults,
@@ -190,6 +200,8 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
     },
     {
       id: AUDIO_FLASH_ID,
+      api: 'audio',
+      sessionConstraints: {},
       label: 'Qwen Audio 3.0 Realtime Flash',
       family: 'audio',
       sessionDefaults: legacySessionDefaults,
@@ -234,13 +246,14 @@ test('resolves Omni and Audio Flash and Plus profiles by exact model id', () => 
   )
 })
 
-test('keeps the legacy model as the default', () => {
-  assert.equal(DEFAULT_DASHSCOPE_REALTIME_MODEL, AUDIO_PLUS_ID)
-  assert.equal(DEFAULT_DASHSCOPE_REALTIME_VOICE, 'longanqian')
+test('defaults to Audio 3.1 while preserving explicitly selected Audio 3.0 profiles', () => {
+  assert.equal(DEFAULT_DASHSCOPE_REALTIME_MODEL, AUDIO_31_PLUS_ID)
+  assert.equal(DEFAULT_DASHSCOPE_REALTIME_VOICE, 'longanqian_v3.1')
   assert.equal(
     resolveDashScopeRealtimeModelProfile().id,
     DEFAULT_DASHSCOPE_REALTIME_MODEL,
   )
+  assert.equal(resolveDashScopeRealtimeModelProfile().sessionDefaults.voice, DEFAULT_DASHSCOPE_REALTIME_VOICE)
   for (const modelId of [AUDIO_PLUS_ID, AUDIO_FLASH_ID]) {
     assert.deepEqual(resolveDashScopeRealtimeModelProfile(modelId).sessionDefaults, legacySessionDefaults)
   }
@@ -257,18 +270,18 @@ test('Audio 3.1 has its own default voice and retains Audio capabilities', () =>
   assert.deepEqual(profile.transportCapabilities, legacy.transportCapabilities)
 })
 
-test('Omni 3.8 resolves a workspace endpoint without inheriting an Audio voice override', () => {
+test('Omni 3.8 resolves a workspace endpoint and a unified voice override', () => {
   const endpoint = 'wss://workspace.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime'
   const configuration = resolveRealtimeFrontendConfiguration({
     QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope',
     QWEN_AUDIO_REALTIME_MODEL: OMNI_38_FLASH_ID,
     QWEN_AUDIO_REALTIME_BASE_URL: endpoint,
     DASHSCOPE_API_KEY: 'workspace-key',
-    QWEN_AUDIO_REALTIME_VOICE: 'audio-family-only',
+    QWEN_AUDIO_REALTIME_VOICE: 'workspace-voice',
   })
   assert.equal(configuration.active.model, OMNI_38_FLASH_ID)
   assert.equal(configuration.active.endpoint, endpoint)
-  assert.equal(configuration.active.voice, '')
+  assert.equal(configuration.active.voice, 'workspace-voice')
   assert.equal(resolveRealtimeModelProfile(configuration.active.model, 'dashscope').sessionDefaults.voice, 'Tina')
   assert.equal(configuration.active.credentialConfigured, true)
   assert.equal(configuration.credential, 'workspace-key')

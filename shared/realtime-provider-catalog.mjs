@@ -3,9 +3,12 @@ import {
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
   resolveDashScopeRealtimeModelProfile,
   realtimeModelCatalog,
+  resolveRealtimeModelProfile,
 } from './realtime-model-catalog.mjs'
+import { loadRealtimeModelCatalogs } from './realtime-models/config-file.mjs'
 
 export {
+  DASHSCOPE_AUDIO_30_REALTIME_MODEL,
   DASHSCOPE_AUDIO_31_REALTIME_MODEL,
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL,
@@ -65,14 +68,14 @@ export function resolveDashScopeRealtimeVoiceOverride(
   model = DEFAULT_DASHSCOPE_REALTIME_MODEL,
   env = process.env,
 ) {
-  const family = resolveDashScopeRealtimeModelProfile(model).family
+  const family = resolveDashScopeRealtimeModelProfile(model, loadRealtimeModelCatalogs(env)).family
   if (family !== 'audio' && family !== 'omni') return ''
   const settings = realtimeSettingsFromEnvironment({
     ...env,
     QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope',
     QWEN_AUDIO_REALTIME_MODEL: model,
   })
-  return family === 'audio' ? settings.audioRealtimeVoice : settings.omniRealtimeVoice
+  return settings.realtimeVoice
 }
 
 export function realtimeProviderNames() {
@@ -100,18 +103,21 @@ export function realtimeProviderDefinition(value) {
 
 export function assertRealtimeFrontendModel(active) {
   const catalog = realtimeModelCatalog(active.provider)
-  if (catalog && !catalog.profiles.some(profile => profile.id === active.model)) {
-    throw new Error(`${catalog.environment}=${active.model} 不属于 ${active.provider}；请为当前 Provider 选择正确的模型`)
+  const profile = active.modelProfile || resolveRealtimeModelProfile(active.model, active.provider)
+  if (catalog && (profile.id !== active.model || profile.family === 'unknown')) {
+    throw new Error(`${catalog.environment}=${active.model} 不属于 ${active.provider} 的已注册模型；请选择目录中的模型，或在 frontend-models.json 注册其 API 配置`)
   }
 }
 
-export function resolveRealtimeFrontendConfiguration(env = process.env) {
+export function resolveRealtimeFrontendConfiguration(env = process.env, {
+  modelCatalogs = loadRealtimeModelCatalogs(env),
+} = {}) {
   const provider = normalizeRealtimeProvider(env.QWEN_AUDIO_REALTIME_PROVIDER)
   const settings = realtimeSettingsFromEnvironment({
     ...env,
     QWEN_AUDIO_REALTIME_PROVIDER: provider,
   })
-  const connection = realtimeSettingsConnection(settings)
+  const connection = realtimeSettingsConnection(settings, modelCatalogs)
   const runtime = realtimeRuntimeEnvironment(settings)
   const endpoint = withoutTrailing(connection.endpoint, /[/?]+$/)
   const model = connection.model
@@ -122,7 +128,8 @@ export function resolveRealtimeFrontendConfiguration(env = process.env) {
   const environmentAliases = PROVIDERS[provider].settings
     .find(field => field.key === required.field).environment
     .filter(key => key !== required.key)
-  const identity = { provider, endpoint, model, voice, credential }
+  const modelProfile = model ? resolveRealtimeModelProfile(model, provider, modelCatalogs) : null
+  const identity = { provider, endpoint, model, voice, credential, modelProfile }
   const signature = createHash('sha256')
     .update(JSON.stringify(identity))
     .digest('hex')
@@ -132,6 +139,7 @@ export function resolveRealtimeFrontendConfiguration(env = process.env) {
     configured,
     endpoint,
     model: model || null,
+    modelProfile,
     voice,
     credentialConfigured: Boolean(credential),
     requiredConfiguration: PROVIDERS[provider].requiredConfiguration,
@@ -141,6 +149,7 @@ export function resolveRealtimeFrontendConfiguration(env = process.env) {
   return {
     active,
     credential,
+    modelCatalogs,
     missingConfigurationMessage: `缺少 ${PROVIDERS[provider].requiredConfiguration.key}`
       + (environmentAliases.length ? `（也支持 ${environmentAliases.join('、')}）` : '')
       + '。请运行 qwenaudio config 查看配置文件位置。',

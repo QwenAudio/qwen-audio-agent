@@ -194,6 +194,16 @@ test('manual text input supersedes speech and reaches the frontend once', async 
   )
 })
 
+test('user speech and typed input cancel the frontend as a user interruption', async () => {
+  const { runtime } = harness()
+  const reasons = []
+  runtime.getFrontend().cancel = options => reasons.push(options?.reason)
+  runtime.handleProviderEvent({ type: 'input_audio_buffer.speech_started', item_id: 'item-voice' })
+  runtime.submit({ text: '看一下这个问题' })
+  await Promise.resolve()
+  assert.deepEqual(reasons, ['user_interruption', 'user_interruption'])
+})
+
 test('invalid manual input fails before changing the current turn', () => {
   const { runtime, turns, events } = harness()
 

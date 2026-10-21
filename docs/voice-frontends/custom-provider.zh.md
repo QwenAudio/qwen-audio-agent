@@ -25,6 +25,10 @@ createGatewayApplication({
 - 每个 Provider 都是独立适配器，完整拥有自己的 URL、认证、模型、Session 和错误分类语义；不要通过改造另一个 Provider 来承载业务差异。
 - `url()`、`headers()`、`model()` 可从宿主配置闭包读取服务地址、令牌和模型；Gateway 不要求为业务 Provider 增加环境变量。
 - `createProtocol()` 每条 Realtime 连接调用一次，适合生成连接级 ID 和隔离状态。
+- `createProtocol({ emit, send })` 还会收到两个钩子：`emit(event)` 注入一条经 `normalizeIncoming()` 的合成服务端事件，例如在输出静默后收掉当前语音段；`send(payload, options)` 经 `encodeOutgoing()` 发出协议自己的事件，以 `{ correlate: false }` 发出的 `response.create` 不关联等待中的 Gateway 请求。
+- `concurrentVoicePlayback` 声明全双工服务：语音输出与后端工作并行，是否回复某一轮由模型决定，没有得到回复的轮次会被释放，不报错。只代表播放的合成 response 标 `__voicePlayback: true`，模型自发的发言再标 `__voiceAutomatic: true`；它们不阻挡 Gateway 请求，要求说话的请求只由播放 response 回复。用户打断调用可选的 `interruptPlayback()`，其他取消以 `{ stop: true }` 调用它，它可以返回一帧由运行时发出。用户后续的轮次只对 `respond_permission` 与 `update_agent_task` 顶掉更早的工具调用，更早轮次的 `cancel_agent_task` 也取消不到后来轮次发起的工作；权限请求和后台追问只能由 Gateway 询问之后开始的轮次回答。播报在其 response 完成时确认送达。默认关闭。
+- `transcriptTrailsAudio` 声明输出转写与播放分开计时：用户打断后，已开始的字幕继续补到模型停下，被打断的回答仍不记入历史。默认关闭。
+- `toolOutputsBeforeResponse` 声明服务在有调用未回传结果时拒绝 `response.create`，且发起调用的 response 只在之后的 `response.create` 上继续。函数结果不进响应队列，Gateway 请求等所有调用都有结果后才发出，运行时把这个 response 续上一次：由 Gateway 的后续请求，或由 `continueToolResults()`。当前连接并未在等的调用，其结果不发送。默认关闭。
 - 可选的同步 `validateSessionOptions({ sessionOptions })` 在上游连接前执行；只拒绝已确认无效的配置，未知值交给服务端验证。
 - `connectionMessages()` 在 WebSocket 打开后、`session.update` 之前发送原始握手帧。
 - 其余事件通过 `encodeOutgoing()` 与 `normalizeIncoming()` 转换，Gateway 的工具调用、任务和客户端协议保持不变。

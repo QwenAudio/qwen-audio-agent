@@ -84,9 +84,9 @@ for (const model of [
 ]) {
   for (const enabled of [true, false]) {
     test(`${model}: initial and persona-refresh session.update ${enabled ? 'include' : 'hide'} memory alongside all 37 cockpit MCP tools`, async t => {
-      const originalModel = config.audioModel
-      config.audioModel = model
-      t.after(() => { config.audioModel = originalModel })
+      const previous = { audioProvider: config.audioProvider, realtimeModel: config.realtimeModel }
+      Object.assign(config, { audioProvider: 'dashscope', realtimeModel: model })
+      t.after(() => { Object.assign(config, previous) })
       const tools = await cockpitToolDefinitions(t)
       const frontend = new RealtimeFrontend({
         provider: dashscopeProvider,

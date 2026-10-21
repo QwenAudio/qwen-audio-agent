@@ -21,8 +21,6 @@
 
 ## News
 
-- **2026-09-26 · [v2.0.1](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v2.0.1)**
-  🔧 优化本机后台发现与安装：优先复用已有 Agent，仅补装缺失组件的官方最新版，接入 DeepSeek Harness 原生 ACP；修复协调会话连续调用。
 - **2026-09-23 · [v2.0.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v2.0.0)**
   🏗️ 重构编排运行时，统一客户端协议与 ACP / A2A 后台接入；🎙️ 扩展[语音与视频模型](#语音前台)；🧠 完善前台工具、记忆与资料库；💬 新增桌面对话面板与手机远程连接；🧩 新增[客服、座舱、数字人等示例](#示例与场景扩展)；📄 发布[技术报告](https://arxiv.org/pdf/2609.25195)。
 - **2026-08-20 · [v1.11.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.11.0)**
@@ -156,9 +154,9 @@ qwenaudio config
 ```
 
 ```dotenv
-DASHSCOPE_API_KEY=your-key
-# 语音前台模型：可选，默认 Qwen Audio 3.0 Realtime Plus
-QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
+QWEN_AUDIO_REALTIME_API_KEY=your-key
+# 语音前台模型：可选，默认 Qwen Audio 3.1 Realtime Plus
+QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.1-realtime-plus
 # 后台Agent：可选，不设置或设置为 none 时，启动仅前台模式
 AGENT_PROTOCOL=openclaw
 # 后台模型：可为空；显式设置通过 ACP 标准覆盖，留空沿用 Agent 配置
@@ -171,6 +169,8 @@ QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 查看剩余额度。额度和计费规则以百炼官方页面为准。
 
 > 以上使用默认的 DashScope 语音前台。其他云端或自部署方案见[语音前台](#语音前台)。
+
+后台凭据沿用 Agent 自身配置；托管百炼配置见[后台配置](docs/configuration/backend.zh.md)。
 
 使用支持视觉的 Realtime 前台时，WebUI 可由用户显式开启相机，将有界画面帧与实时
 音频一同发送。详见[语音前台配置](docs/configuration/frontend.zh.md)。
@@ -230,7 +230,7 @@ npm run desktop:build:linux      # Linux（AppImage + deb，无需签名）
 
 | 微信交流群 | 个人微信 | 个人微信 |
 | :---: | :---: | :---: |
-| <img src="docs/wechat-group-qr.png" width="240" alt="微信交流群二维码"> | <img src="docs/wechat-contact-qr.png" width="240" alt="李旭个人微信二维码"> | <img src="docs/wechat-pigeon-dan-qr.png" width="240" alt="Pigeon.Dan 个人微信二维码"> |
+| <img src="docs/wechat-group-qr.png" height="345" alt="微信交流群二维码"> | <img src="docs/wechat-contact-qr.png" height="345" alt="李旭个人微信二维码"> | <img src="docs/wechat-pigeon-dan-qr.png" height="345" alt="Pigeon.Dan 个人微信二维码"> |
 
 ## 参与贡献与安全
 

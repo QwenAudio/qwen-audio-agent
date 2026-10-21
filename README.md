@@ -27,8 +27,6 @@ tells you:
 
 ## News
 
-- **2026-09-26 · [v2.0.1](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v2.0.1)**
-  🔧 Improved local backend discovery and installation: reuse existing Agents, install only missing components from official latest releases, and support DeepSeek Harness native ACP; fixed continued coordinator Session use.
 - **2026-09-23 · [v2.0.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v2.0.0)**
   🏗️ Rebuilt the orchestration runtime with a unified client protocol and ACP / A2A backend integration; 🎙️ expanded [voice and video model support](#voice-frontends); 🧠 enhanced frontend tools, memory, and knowledge libraries; 💬 added a desktop conversation panel and remote mobile access; 🧩 added [customer service, smart cockpit, digital human, and other examples](#examples-and-scenario-expansion); 📄 published the [technical report](https://arxiv.org/pdf/2609.25195).
 - **2026-08-20 · [v1.11.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.11.0)**
@@ -167,9 +165,9 @@ qwenaudio config
 ```
 
 ```dotenv
-DASHSCOPE_API_KEY=your-key
-# Voice frontend model: optional, defaults to Qwen Audio 3.0 Realtime Plus
-QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
+QWEN_AUDIO_REALTIME_API_KEY=your-key
+# Voice frontend model: optional, defaults to Qwen Audio 3.1 Realtime Plus
+QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.1-realtime-plus
 # Backend Agent: optional, leave empty or set to none for frontend-only mode
 AGENT_PROTOCOL=openclaw
 # Backend model: optional; explicit values use standard ACP, empty reuses Agent config
@@ -183,6 +181,9 @@ Quota and billing rules are subject to the current official Bailian documentatio
 
 > The example above uses the default DashScope voice frontend. See
 > [Voice Frontends](#voice-frontends) for other cloud and self-hosted options.
+
+Backend credentials remain in the Agent's own configuration. For managed Bailian setup,
+see [backend configuration](docs/configuration/backend.md).
 
 With a visual-capable Realtime frontend, WebUI can explicitly stream bounded
 camera frames alongside live audio. See [Realtime frontend configuration](docs/configuration/frontend.md).
@@ -249,7 +250,7 @@ to be invited.
 
 | WeChat Group | Personal | Personal |
 | :---: | :---: | :---: |
-| <img src="docs/wechat-group-qr.png" width="240" alt="WeChat group QR code"> | <img src="docs/wechat-contact-qr.png" width="240" alt="Li Xu personal WeChat QR code"> | <img src="docs/wechat-pigeon-dan-qr.png" width="240" alt="Pigeon.Dan personal WeChat QR code"> |
+| <img src="docs/wechat-group-qr.png" height="345" alt="WeChat group QR code"> | <img src="docs/wechat-contact-qr.png" height="345" alt="Li Xu personal WeChat QR code"> | <img src="docs/wechat-pigeon-dan-qr.png" height="345" alt="Pigeon.Dan personal WeChat QR code"> |
 
 ## Contributing and Security
 

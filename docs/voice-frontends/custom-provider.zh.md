@@ -2,6 +2,8 @@
 
 Realtime Provider 是运行时与实时模型服务之间的适配器，不是客户端，也不是编排运行时本身。业务宿主可以注入自定义 Provider，而不必修改通用会话与后台工作逻辑。下面通过 Gateway 应用入口进行装配。
 
+若只是新增与已有 API 接入预设兼容的模型，请[登记模型](../configuration/frontend.zh.md#登记额外模型)，无需新增 Provider。模型登记只扩展目录数据，不新增供应商或线协议。
+
 ```js
 import { createGatewayApplication } from 'qwen-audio-agent/gateway-application'
 import {
@@ -25,7 +27,7 @@ createGatewayApplication({
 - 每个 Provider 都是独立适配器，完整拥有自己的 URL、认证、模型、Session 和错误分类语义；不要通过改造另一个 Provider 来承载业务差异。
 - `url()`、`headers()`、`model()` 可从宿主配置闭包读取服务地址、令牌和模型；Gateway 不要求为业务 Provider 增加环境变量。
 - `createProtocol()` 每条 Realtime 连接调用一次，适合生成连接级 ID 和隔离状态。
-- 可选的同步 `validateSessionOptions({ sessionOptions })` 在上游连接前执行；只拒绝已确认无效的配置，未知值交给服务端验证。
+- 可选的同步 `validateSessionOptions({ sessionOptions })` 在上游连接前执行；拒绝已确认无效的服务参数，其他服务特有参数仍需上游验证。这不绕过模型 ID 的目录登记检查。
 - `connectionMessages()` 在 WebSocket 打开后、`session.update` 之前发送原始握手帧。
 - 其余事件通过 `encodeOutgoing()` 与 `normalizeIncoming()` 转换，Gateway 的工具调用、任务和客户端协议保持不变。
 - 不支持临时回复指令的协议可实现 `responseInstructionsItem(response)`，将内部回复指令转为普通对话项。Gateway 等待确认后调用 `responseCreate(response)`，后者负责去掉上游不支持的参数。此时 `perResponseInstructions` 为 `false`，指令会进入会话历史。
@@ -55,8 +57,8 @@ Provider 和 Protocol 会在注册与建连时校验；缺少方法或返回无�
 
 ## 桌面设置
 
-仓库内置前台的设置统一定义在 `shared/realtime-provider-definitions.mjs`，它不依赖 Node.js，也不包含密钥值或连接实现。新增内置前台时，在这里声明名称、字段、环境变量映射和默认值；有可选模型时，同时维护 `shared/realtime-model-catalog.mjs`。桌面选择器、表单、配置读写和状态名称会消费这些定义，无需新增供应商 HTML 面板。
+仓库内置前台的设置统一定义在 `shared/realtime-provider-definitions.mjs`，它不依赖 Node.js，也不包含密钥值或连接实现。在这里声明供应商名称、可配置字段和默认值。各供应商共用当前连接的 `QWEN_AUDIO_REALTIME_*` 环境变量，不需再新增一套 Key、模型、地址和音色变量。模型记录与可复用 API 接入预设位于 `shared/realtime-models/`，`shared/realtime-model-catalog.mjs` 是公共入口。预设集中定义线协议变体、默认能力声明、会话默认参数和接入约束，不表示使用同一上游 API 的所有模型能力一致。桌面模型下拉框消费有效目录；新模型必须登记，不通过名称或界面自由输入推断。
 
-界面固定显示“服务地址、API Key、模型、音色”四行，分别对应 `endpoint`、`credential`、`model`、`voice` 配置槽位。Provider 只声明可配置槽位的绑定；未绑定的行仍显示，但禁用且不写入配置。Bearer 令牌统一显示在 API Key 行，保留原有配置键。`activeDefault` 用于选中自部署服务时填入建议地址；`modelFamily` 用于保留不同模型系列的独立音色配置。已有配置键及别名不变，未选中前台的草稿不参与当前地址校验。连接远端 Gateway 时，仍由远端管理前台配置。
+界面显示“服务地址、API Key、模型、音色”四行，分别对应 `endpoint`、`credential`、`model`、`voice` 配置槽位。Provider 只暴露可配置槽位；由上游管理的模型、音色保持禁用。Bearer 令牌使用 API Key 字段。切换供应商时应清空或替换旧连接值，不能将旧凭据发送给另一家服务。旧变量别名只在配置读取边界处理，不进入 Adapter。连接远端 Gateway 时，仍由远端管理前台配置。
 
 这份设置定义与运行时适配器分离；宿主注入的自定义 Provider 不会自动注册到桌面设置页。

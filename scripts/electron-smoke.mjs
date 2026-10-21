@@ -1,13 +1,13 @@
 import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const executable = resolve(
-  root,
-  'node_modules/.bin',
-  process.platform === 'win32' ? 'electron.cmd' : 'electron',
-)
+// Resolve (and, on a clean install, download) Electron before the test clock
+// starts. Launch the binary directly so the watchdog terminates Electron,
+// not its CLI wrapper while leaving the application running.
+const executable = createRequire(import.meta.url)('electron')
 const fixture = resolve(root, 'desktop/smoke/electron-smoke.cjs')
 
 const child = spawn(executable, [fixture], {

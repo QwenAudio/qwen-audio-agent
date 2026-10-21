@@ -56,7 +56,7 @@ cp examples/lightrag/.env.example examples/lightrag/.env.local
 Set the voice frontend and LightRAG connection values:
 
 ```dotenv
-DASHSCOPE_API_KEY=your_dashscope_api_key
+QWEN_AUDIO_REALTIME_API_KEY=your_dashscope_api_key
 LIGHTRAG_URL=http://127.0.0.1:9621
 LIGHTRAG_API_KEY=your_lightrag_api_key
 LIGHTRAG_WORKSPACE=
@@ -73,7 +73,7 @@ Open `http://127.0.0.1:3101`, import a file from the Knowledge Library panel, wa
 then query it by voice or text. This isolated example uses frontend-only mode and does not start
 a backend Agent.
 
-`DASHSCOPE_API_KEY` belongs only to the voice frontend. LightRAG keeps its LLM and embedding
+`QWEN_AUDIO_REALTIME_API_KEY` belongs only to the voice frontend. LightRAG keeps its LLM and embedding
 configuration in its own process. qwen-audio-agent does not install, start, or modify LightRAG.
 
 ## Data and task boundaries

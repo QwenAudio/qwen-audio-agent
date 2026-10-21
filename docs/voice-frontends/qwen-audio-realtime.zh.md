@@ -1,15 +1,15 @@
 # Qwen Audio Realtime
 
 DashScope 的 Qwen Audio 3.0 和 3.1 Realtime 模型，专为语音直通语音的对话而生。
-装好 qwen-audio-agent、只填一个 API Key 时，默认仍使用 Qwen Audio 3.0 Realtime Plus。
+装好 qwen-audio-agent、只填一个 API Key 时，默认使用 Qwen Audio 3.1 Realtime Plus。
 
 ## 模型
 
 | 模型 | 说明 |
 | --- | --- |
-| `qwen-audio-3.0-realtime-plus` | **默认。** 质量更高 |
+| `qwen-audio-3.1-realtime-plus` | **默认。** 默认音色为 `longanqian_v3.1` |
+| `qwen-audio-3.0-realtime-plus` | 上一代 Plus 模型，仍可选择 |
 | `qwen-audio-3.0-realtime-flash` | 延迟更低、成本更低 |
-| `qwen-audio-3.1-realtime-plus` | 可选的 3.1 Plus 模型 |
 
 这些模型都接受文本和音频输入、产出文本和音频，并支持 Function Calling
 （网关的前台工具——任务委派、记忆、提醒——正是通过它到达模型）。
@@ -17,10 +17,14 @@ DashScope 的 Qwen Audio 3.0 和 3.1 Realtime 模型，专为语音直通语音�
 ## 配置
 
 ```dotenv
-DASHSCOPE_API_KEY=your-key
-QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
+QWEN_AUDIO_REALTIME_PROVIDER=dashscope
+QWEN_AUDIO_REALTIME_API_KEY=your-key
+QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.1-realtime-plus
+QWEN_AUDIO_REALTIME_URL=
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
+所有前台共用同一套[连接字段](../configuration/frontend.zh.md#连接配置)，凭据的具体用法由所选供应商决定。
 
 一个 Gateway 同一时刻只生效一个模型。在桌面版设置页或 CLI 切换后，
 重启 Gateway 生效：
@@ -31,14 +35,15 @@ qwenaudio config set --realtime-model qwen-audio-3.1-realtime-plus
 qwenaudio gateway restart
 ```
 
-3.1 Plus 复用 `dashscope` Provider 和现有 WebSocket 事件协议。如果已显式配置音色，
+3.1 Plus 复用 `dashscope` Provider 和现有 WebSocket 事件协议。已显式配置的 3.0 模型
+不会自动切换，需修改或清除模型配置。如果已显式配置音色，
 请改用与模型匹配的音色，或清除覆盖值以使用模型默认音色。详见[官方迁移说明](https://help.aliyun.com/zh/model-studio/qwen-audio-realtime-user-guides)。
 
 WebUI 和 TUI 只展示当前生效模型，不单独覆盖。
 
 ## 音色与话轮检测
 
-- 3.0 Plus / Flash 默认音色为 `longanqian`，3.1 Plus 为 `longanqian_v3.1`。
+- 默认的 3.1 Plus 使用 `longanqian_v3.1`；3.0 Plus / Flash 默认音色仍为 `longanqian`。
   可用 `QWEN_AUDIO_REALTIME_VOICE` 覆盖，但须选择当前模型支持的音色。
 - GCP 客户端可在首次 `session.hello` 的 `connection.output_voice` 中提供会话级音色；
   它优先于环境变量。运行时调用 `GatewayClient.updateOutputVoice(voice)`，Gateway 会
@@ -51,7 +56,7 @@ WebUI 和 TUI 只展示当前生效模型，不单独覆盖。
 
 | 配置项 | 作用 |
 | --- | --- |
-| `QWEN_AUDIO_REALTIME_BASE_URL` / `QWEN_AUDIO_REALTIME_URL` | 替换 DashScope Realtime 端点 |
+| `QWEN_AUDIO_REALTIME_URL` | 替换 DashScope Realtime 端点 |
 | `DASHSCOPE_WORKSPACE_ID` | 切换到百炼专属工作区端点（`wss://<workspace-id>.cn-beijing.maas.aliyuncs.com/...`） |
 
 如通过专属工作区接入，继续使用现有工作区配置或基础地址覆盖，填写对应地域、工作区提供的端点。

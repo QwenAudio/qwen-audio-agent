@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, statSync, writeFileSync, readdirSync, rmSync
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { PassThrough } from 'node:stream'
+import { parseEnv } from 'node:util'
 import test from 'node:test'
 import { main } from '../src/launcher.mjs'
 import {
@@ -14,6 +15,7 @@ import {
   showConfig,
   updateRealtimeModelConfig,
 } from '../src/config-command.mjs'
+import { realtimeSettingsFromEnvironment } from '../../shared/realtime-provider-definitions.mjs'
 
 function harness({ ownsProcesses = false } = {}) {
   const calls = []
@@ -923,7 +925,7 @@ test('CLI accepts Audio 3.1 in an isolated config without launching a runtime', 
   target.dependencies.prepareEnvironment = () => ({ configDirectory: directory, configPath })
 
   assert.equal(await main(['config', 'show'], target.dependencies), 0)
-  assert.match(target.calls.at(-1)[1], /Realtime 模型：qwen-audio-3\.0-realtime-plus/)
+  assert.match(target.calls.at(-1)[1], /Realtime 模型：qwen-audio-3\.1-realtime-plus/)
   assert.equal(await main([
     'config', 'set', '--realtime-model', 'qwen-audio-3.1-realtime-plus',
   ], target.dependencies), 0)
@@ -979,21 +981,21 @@ test('atomically preserves config comments and unknown keys', () => {
   }
 })
 
-test('config commands use the selected StepFun model catalog through the provider-owned model setting', () => {
+test('config commands use the selected StepFun catalog through the unified model setting', () => {
   const directory = mkdtempSync(join(tmpdir(), 'qwaudio-stepfun-config-'))
   const path = join(directory, 'config.env')
   writeFileSync(path, [
     'QWEN_AUDIO_REALTIME_PROVIDER=stepfun',
     'STEPFUN_API_KEY=step-secret',
-    'STEPFUN_REALTIME_MODEL=old',
-    'STEPFUN_REALTIME_MODEL=old-duplicate',
+    'QWEN_AUDIO_REALTIME_MODEL=old',
+    'QWEN_AUDIO_REALTIME_MODEL=old-duplicate',
     '',
   ].join('\n'))
   const result = updateRealtimeModelConfig(path, 'stepaudio-3-realtime-preview')
-  assert.equal(result.environment, 'STEPFUN_REALTIME_MODEL')
+  assert.equal(result.environment, 'QWEN_AUDIO_REALTIME_MODEL')
   const content = readFileSync(path, 'utf8')
-  assert.equal(content.match(/^STEPFUN_REALTIME_MODEL=/gm).length, 1)
-  assert.match(content, /STEPFUN_REALTIME_MODEL=stepaudio-3-realtime-preview/)
+  assert.equal(content.match(/^QWEN_AUDIO_REALTIME_MODEL=/gm).length, 1)
+  assert.match(content, /QWEN_AUDIO_REALTIME_MODEL=stepaudio-3-realtime-preview/)
   const shown = showConfig({ configPath: path })
   assert.match(shown, /Realtime 前台：stepfun/)
   assert.match(shown, /Realtime 模型：stepaudio-3-realtime-preview/)
@@ -1001,7 +1003,7 @@ test('config commands use the selected StepFun model catalog through the provide
   assert.throws(() => updateRealtimeModelConfig(path, 'qwen3.5-omni-plus-realtime'), /不支持的 Realtime 模型/)
 })
 
-test('changes only the model and preserves both family voice overrides', () => {
+test('changes only the model and keeps the unified voice override ahead of legacy family voices', () => {
   const directory = mkdtempSync(join(tmpdir(), 'qwaudio-config-voice-'))
   const path = join(directory, 'config.env')
   writeFileSync(path, [
@@ -1015,6 +1017,7 @@ test('changes only the model and preserves both family voice overrides', () => {
   assert.match(content, /QWEN_AUDIO_REALTIME_MODEL=qwen3\.5-omni-plus-realtime/)
   assert.match(content, /QWEN_AUDIO_REALTIME_VOICE=custom-audio/)
   assert.match(content, /QWEN_OMNI_REALTIME_VOICE=custom-omni/)
+  assert.equal(realtimeSettingsFromEnvironment(parseEnv(content)).realtimeVoice, 'custom-audio')
 })
 
 test('normalizes duplicate realtime model assignments to one effective value', () => {

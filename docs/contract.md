@@ -307,7 +307,7 @@ the lease. Locked by `test/consumer-install.test.mjs` and
 
 Starting `server/src/index.mjs` without the required realtime credential is
 refused before the lease is touched: the process exits non-zero and the error
-names every missing key (`DASHSCOPE_API_KEY`, or the Speech-to-Speech service
+names every missing key (`QWEN_AUDIO_REALTIME_API_KEY`, or the Speech-to-Speech service
 address when that provider is selected). `QWEN_AUDIO_ALLOW_UNCONFIGURED=1`
 opts out for harnesses that never open a voice connection. Locked by
 `test/gateway-setup.test.mjs` and `test/consumer-install.test.mjs`.

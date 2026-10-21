@@ -18,10 +18,11 @@ function withConfig(t, patch) {
 
 test('configures GPT-Live against the OpenAI Realtime WebSocket contract', t => {
   withConfig(t, {
-    openaiApiKey: 'openai-test',
-    gptLiveRealtimeUrl: 'wss://api.openai.com/v1/realtime?region=test',
-    gptLiveModel: 'gpt-realtime-2.1',
-    gptLiveVoice: 'marin',
+    audioProvider: 'gpt-live',
+    realtimeCredential: 'openai-test',
+    realtimeEndpoint: 'wss://api.openai.com/v1/realtime?region=test',
+    realtimeModel: 'gpt-realtime-2.1',
+    realtimeVoice: 'marin',
   })
 
   assert.equal(gptLiveProvider.isConfigured(), true)
@@ -108,9 +109,10 @@ test('maps Google Live WebSocket messages into the shared realtime lifecycle', (
 
 test('connects to a Google Live mock service with setup and text input', async t => {
   withConfig(t, {
-    googleApiKey: 'google-test',
-    googleLiveModel: 'gemini-3.8-live',
-    googleLiveVoice: '',
+    audioProvider: 'google-live',
+    realtimeCredential: 'google-test',
+    realtimeModel: 'gemini-3.8-live',
+    realtimeVoice: '',
   })
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   await new Promise(resolve => server.once('listening', resolve))
@@ -137,7 +139,7 @@ test('connects to a Google Live mock service with setup and text input', async t
   })
   const address = server.address()
   withConfig(t, {
-    googleLiveRealtimeUrl: `ws://127.0.0.1:${address.port}/ws`,
+    realtimeEndpoint: `ws://127.0.0.1:${address.port}/ws`,
   })
   const frontend = new RealtimeFrontend({
     provider: googleLiveProvider,

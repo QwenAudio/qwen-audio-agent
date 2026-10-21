@@ -14,7 +14,7 @@ qwenaudio config
 使用默认语音前台：
 
 ```dotenv
-DASHSCOPE_API_KEY=your-key
+QWEN_AUDIO_REALTIME_API_KEY=your-key
 ```
 
 已经安装并配置好后台时，选择它即可。例如 Qwen Code：

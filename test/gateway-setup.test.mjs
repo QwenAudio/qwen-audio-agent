@@ -5,17 +5,23 @@ import {
   gatewaySetupStatus,
 } from '../shared/gateway/setup.mjs'
 
+test('unknown providers are reported as provider configuration errors', () => {
+  const status = gatewaySetupStatus({ QWEN_AUDIO_REALTIME_PROVIDER: 'unknown-provider' })
+  assert.equal(status.ready, false)
+  assert.equal(status.missing[0].key, 'QWEN_AUDIO_REALTIME_PROVIDER')
+})
+
 for (const entry of [
   {
     provider: 'dashscope', field: 'realtimeModel', key: 'QWEN_AUDIO_REALTIME_MODEL',
     model: 'stepaudio-3-realtime-preview',
   },
   {
-    provider: 'stepfun', field: 'stepfunRealtimeModel', key: 'STEPFUN_REALTIME_MODEL',
+    provider: 'stepfun', field: 'realtimeModel', key: 'QWEN_AUDIO_REALTIME_MODEL',
     model: 'qwen-audio-3.0-realtime-plus',
   },
 ]) {
-  test(`${entry.provider}: invalid models report the provider-owned setting without crashing`, () => {
+  test(`${entry.provider}: invalid models report the unified setting without crashing`, () => {
     const env = {
       QWEN_AUDIO_REALTIME_PROVIDER: entry.provider,
       DASHSCOPE_API_KEY: 'private-dash-key',
@@ -39,7 +45,8 @@ for (const entry of [
 }
 
 test('missing credential messages do not repeat the canonical environment name as an alias', () => {
-  for (const [provider, key] of [['dashscope', 'DASHSCOPE_API_KEY'], ['stepfun', 'STEPFUN_API_KEY']]) {
+  for (const provider of ['dashscope', 'stepfun']) {
+    const key = 'QWEN_AUDIO_REALTIME_API_KEY'
     const status = gatewaySetupStatus({ QWEN_AUDIO_REALTIME_PROVIDER: provider })
     assert.equal(status.missing[0].key, key)
     assert.equal(status.missing[0].message.split(key).length - 1, 1)
@@ -51,8 +58,8 @@ test('reports the missing DashScope credential with an actionable entry', () => 
   assert.equal(status.ready, false)
   assert.equal(status.provider, 'dashscope')
   assert.equal(status.missing.length, 1)
-  assert.equal(status.missing[0].field, 'dashscopeApiKey')
-  assert.equal(status.missing[0].key, 'DASHSCOPE_API_KEY')
+  assert.equal(status.missing[0].field, 'realtimeApiKey')
+  assert.equal(status.missing[0].key, 'QWEN_AUDIO_REALTIME_API_KEY')
   assert.ok(status.missing[0].message)
 })
 
@@ -66,8 +73,8 @@ test('StepFun requires its own key and reports the correct settings field', () =
   const env = { QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun' }
   const missing = gatewaySetupStatus(env)
   assert.equal(missing.ready, false)
-  assert.equal(missing.missing[0].field, 'stepfunApiKey')
-  assert.equal(missing.missing[0].key, 'STEPFUN_API_KEY')
+  assert.equal(missing.missing[0].field, 'realtimeApiKey')
+  assert.equal(missing.missing[0].key, 'QWEN_AUDIO_REALTIME_API_KEY')
   assert.equal(gatewaySetupStatus({ ...env, STEPFUN_API_KEY: 'test' }).ready, true)
 })
 
@@ -77,8 +84,8 @@ test('GPT-Live and Google Live require their provider-specific keys', () => {
     DASHSCOPE_API_KEY: 'unrelated',
   })
   assert.equal(gpt.ready, false)
-  assert.equal(gpt.missing[0].field, 'openaiApiKey')
-  assert.equal(gpt.missing[0].key, 'OPENAI_API_KEY')
+  assert.equal(gpt.missing[0].field, 'realtimeApiKey')
+  assert.equal(gpt.missing[0].key, 'QWEN_AUDIO_REALTIME_API_KEY')
   assert.equal(gatewaySetupStatus({
     QWEN_AUDIO_REALTIME_PROVIDER: 'gpt-live',
     OPENAI_API_KEY: 'test',
@@ -88,8 +95,8 @@ test('GPT-Live and Google Live require their provider-specific keys', () => {
     QWEN_AUDIO_REALTIME_PROVIDER: 'google-live',
   })
   assert.equal(google.ready, false)
-  assert.equal(google.missing[0].field, 'googleApiKey')
-  assert.equal(google.missing[0].key, 'GOOGLE_API_KEY')
+  assert.equal(google.missing[0].field, 'realtimeApiKey')
+  assert.equal(google.missing[0].key, 'QWEN_AUDIO_REALTIME_API_KEY')
   assert.equal(gatewaySetupStatus({
     QWEN_AUDIO_REALTIME_PROVIDER: 'google-live',
     GEMINI_API_KEY: 'test',
@@ -100,20 +107,14 @@ test('names the service address for the speech-to-speech provider', () => {
   const status = gatewaySetupStatus({
     QWEN_AUDIO_REALTIME_PROVIDER: 'speech-to-speech',
   })
-  // speech-to-speech falls back to a default URL, so selecting the provider
-  // explicitly counts as configured; only the field mapping is asserted when
-  // a future provider reports missing configuration.
-  if (!status.ready) {
-    assert.equal(status.missing[0].field, 'speechToSpeechRealtimeUrl')
-    assert.equal(status.missing[0].key, 'SPEECH_TO_SPEECH_REALTIME_URL')
-  }
+  assert.equal(status.ready, true)
 })
 
 test('refuses an unconfigured start with a coded, listable error', () => {
   assert.throws(() => assertGatewaySetup({}), error => {
     assert.equal(error.code, 'QWAUDIO_GATEWAY_SETUP_REQUIRED')
-    assert.equal(error.missing[0].key, 'DASHSCOPE_API_KEY')
-    assert.match(error.message, /DASHSCOPE_API_KEY/)
+    assert.equal(error.missing[0].key, 'QWEN_AUDIO_REALTIME_API_KEY')
+    assert.match(error.message, /QWEN_AUDIO_REALTIME_API_KEY/)
     return true
   })
 })

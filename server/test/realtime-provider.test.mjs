@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { ClientToolSource } from '../src/frontend/tools/client-tool-source.mjs'
 import { desktopClientTools } from '../../web/src/desktop/client-tools.js'
-import test from 'node:test'
+import test, { beforeEach } from 'node:test'
 import { WebSocketServer } from 'ws'
 import { config } from '../src/core/config.mjs'
 import {
@@ -17,6 +17,7 @@ import { validateRealtimeProvider } from '../src/voice/providers/registry.mjs'
 import { buildFrontendToolContext } from '../src/frontend/tools/frontend-tool-context.mjs'
 import { inputRequestResponseInstructions } from '../src/frontend/frontend-tools.mjs'
 import {
+  DASHSCOPE_AUDIO_30_REALTIME_MODEL,
   DASHSCOPE_AUDIO_31_REALTIME_MODEL,
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL,
@@ -34,6 +35,14 @@ const FRONTEND_TOOL_NAMES = [
   'get_current_time',
   'notes',
 ]
+
+beforeEach(() => {
+  Object.assign(config, {
+    audioProvider: 'dashscope',
+    realtimeModel: DEFAULT_DASHSCOPE_REALTIME_MODEL,
+    realtimeVoice: '',
+  })
+})
 
 test('both realtime schemas omit unavailable tools and keep frontend-only reminders', () => {
   const agentContext = { frontend: buildFrontendToolContext({
@@ -532,11 +541,11 @@ test('configures Qwen Audio Realtime with Smart Turn only', () => {
 })
 
 test('resolves exact DashScope model profiles for sessions and responses', t => {
-  const originalModel = config.audioModel
-  const originalVoice = config.audioVoice
+  const originalModel = config.realtimeModel
+  const originalVoice = config.realtimeVoice
   t.after(() => {
-    config.audioModel = originalModel
-    config.audioVoice = originalVoice
+    config.realtimeModel = originalModel
+    config.realtimeVoice = originalVoice
   })
 
   for (const [model, label, family, voice, turnDetection] of [
@@ -562,15 +571,15 @@ test('resolves exact DashScope model profiles for sessions and responses', t => 
       { type: 'smart_turn' },
     ],
     [
-      DEFAULT_DASHSCOPE_REALTIME_MODEL,
+      DASHSCOPE_AUDIO_30_REALTIME_MODEL,
       'Qwen Audio 3.0 Realtime Plus',
       'audio',
       'longanqian',
       { type: 'smart_turn' },
     ],
   ]) {
-    config.audioModel = model
-    config.audioVoice = ''
+    config.realtimeModel = model
+    config.realtimeVoice = ''
     const profile = REALTIME_PROVIDERS.qwen.modelProfile()
     const session = REALTIME_PROVIDERS.qwen.buildSession({ configured: false })
 
@@ -598,17 +607,17 @@ test('resolves exact DashScope model profiles for sessions and responses', t => 
 })
 
 test('Audio 3.1 keeps voice overrides and initial-only configuration in the shared DashScope provider', t => {
-  const previous = { audioModel: config.audioModel, audioVoice: config.audioVoice,
-    audioRealtimeBaseUrl: config.audioRealtimeBaseUrl }
+  const previous = { realtimeModel: config.realtimeModel, realtimeVoice: config.realtimeVoice,
+    realtimeEndpoint: config.realtimeEndpoint }
   t.after(() => Object.assign(config, previous))
-  Object.assign(config, { audioModel: DASHSCOPE_AUDIO_31_REALTIME_MODEL, audioVoice: '',
-    audioRealtimeBaseUrl: 'wss://workspace.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime' })
+  Object.assign(config, { realtimeModel: DASHSCOPE_AUDIO_31_REALTIME_MODEL, realtimeVoice: '',
+    realtimeEndpoint: 'wss://workspace.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime' })
   const provider = REALTIME_PROVIDERS.qwen
   assert.doesNotThrow(() => provider.validateSessionOptions())
   assert.equal(new URL(provider.url()).searchParams.get('model'), DASHSCOPE_AUDIO_31_REALTIME_MODEL)
   assert.equal(provider.voice(), 'longanqian_v3.1')
   for (const voice of ['longanqian', 'longanhuan_v3.1', 'qwen-audio-3.1-realtime-plus-myvoice-example']) {
-    config.audioVoice = voice
+    config.realtimeVoice = voice
     assert.doesNotThrow(() => provider.validateSessionOptions())
     assert.equal(provider.buildSession({ configured: false }).voice, voice)
   }
@@ -621,15 +630,15 @@ test('Audio 3.1 keeps voice overrides and initial-only configuration in the shar
 })
 
 test('prefers the selected DashScope family voice override over the profile default', t => {
-  const originalModel = config.audioModel
-  const originalVoice = config.audioVoice
+  const originalModel = config.realtimeModel
+  const originalVoice = config.realtimeVoice
   t.after(() => {
-    config.audioModel = originalModel
-    config.audioVoice = originalVoice
+    config.realtimeModel = originalModel
+    config.realtimeVoice = originalVoice
   })
 
-  config.audioModel = DASHSCOPE_OMNI_PLUS_REALTIME_MODEL
-  config.audioVoice = 'custom-omni'
+  config.realtimeModel = DASHSCOPE_OMNI_PLUS_REALTIME_MODEL
+  config.realtimeVoice = 'custom-omni'
   assert.equal(
     REALTIME_PROVIDERS.qwen.buildSession({ configured: false }).voice,
     'custom-omni',
@@ -637,15 +646,15 @@ test('prefers the selected DashScope family voice override over the profile defa
 })
 
 test('prefers a per-session output voice over the process-wide default', t => {
-  const originalModel = config.audioModel
-  const originalVoice = config.audioVoice
+  const originalModel = config.realtimeModel
+  const originalVoice = config.realtimeVoice
   t.after(() => {
-    config.audioModel = originalModel
-    config.audioVoice = originalVoice
+    config.realtimeModel = originalModel
+    config.realtimeVoice = originalVoice
   })
 
-  config.audioModel = DEFAULT_DASHSCOPE_REALTIME_MODEL
-  config.audioVoice = 'longanqian'
+  config.realtimeModel = DEFAULT_DASHSCOPE_REALTIME_MODEL
+  config.realtimeVoice = 'longanqian'
 
   const session = REALTIME_PROVIDERS.qwen.buildSession({
     configured: false,
@@ -656,11 +665,11 @@ test('prefers a per-session output voice over the process-wide default', t => {
 })
 
 test('advertises Omni realtime visual frame transport without claiming turn images', t => {
-  const originalModel = config.audioModel
+  const originalModel = config.realtimeModel
   t.after(() => {
-    config.audioModel = originalModel
+    config.realtimeModel = originalModel
   })
-  config.audioModel = DASHSCOPE_OMNI_PLUS_REALTIME_MODEL
+  config.realtimeModel = DASHSCOPE_OMNI_PLUS_REALTIME_MODEL
 
   const profile = REALTIME_PROVIDERS.qwen.modelProfile()
   const frontend = createQwenFrontend()
@@ -675,11 +684,11 @@ test('advertises Omni realtime visual frame transport without claiming turn imag
 })
 
 test('fails closed for an unknown DashScope model without inferring Omni behavior', t => {
-  const originalModel = config.audioModel
+  const originalModel = config.realtimeModel
   t.after(() => {
-    config.audioModel = originalModel
+    config.realtimeModel = originalModel
   })
-  config.audioModel = 'qwen3.5-omni-plus-realtime-future'
+  config.realtimeModel = 'qwen3.5-omni-plus-realtime-future'
 
   const profile = REALTIME_PROVIDERS.qwen.modelProfile()
   const session = REALTIME_PROVIDERS.qwen.buildSession({ configured: false })
@@ -695,11 +704,11 @@ test('fails closed for an unknown DashScope model without inferring Omni behavio
 })
 
 test('rejects an unknown DashScope model before opening its WebSocket', async t => {
-  const originalModel = config.audioModel
+  const originalModel = config.realtimeModel
   t.after(() => {
-    config.audioModel = originalModel
+    config.realtimeModel = originalModel
   })
-  config.audioModel = 'qwen3.5-omni-flash-realtime-future'
+  config.realtimeModel = 'qwen3.5-omni-flash-realtime-future'
   const frontend = createQwenFrontend()
 
   await assert.rejects(
@@ -761,14 +770,14 @@ test('rejects malformed optional realtime model profiles', () => {
 })
 
 test('publishes the active DashScope profile without assigning one to s2s', t => {
-  const originalModel = config.audioModel
-  const originalApiKey = config.dashscopeApiKey
+  const originalModel = config.realtimeModel
+  const originalApiKey = config.realtimeCredential
   t.after(() => {
-    config.audioModel = originalModel
-    config.dashscopeApiKey = originalApiKey
+    config.realtimeModel = originalModel
+    config.realtimeCredential = originalApiKey
   })
-  config.audioModel = DASHSCOPE_OMNI_FLASH_REALTIME_MODEL
-  config.dashscopeApiKey = 'configured-for-provider-list-test'
+  config.realtimeModel = DASHSCOPE_OMNI_FLASH_REALTIME_MODEL
+  config.realtimeCredential = 'configured-for-provider-list-test'
 
   const active = describeActiveRealtime('dashscope')
 
@@ -789,7 +798,7 @@ test('publishes the active DashScope profile without assigning one to s2s', t =>
       DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
       DASHSCOPE_OMNI_PLUS_REALTIME_MODEL,
       DASHSCOPE_AUDIO_31_REALTIME_MODEL,
-      DEFAULT_DASHSCOPE_REALTIME_MODEL,
+      DASHSCOPE_AUDIO_30_REALTIME_MODEL,
       DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
     ],
   )
@@ -909,11 +918,11 @@ test('adds an event id to realtime client events', () => {
 })
 
 test('Omni can start video with a muted microphone using one silent audio prefix', t => {
-  const originalModel = config.audioModel
+  const originalModel = config.realtimeModel
   t.after(() => {
-    config.audioModel = originalModel
+    config.realtimeModel = originalModel
   })
-  config.audioModel = DASHSCOPE_OMNI_PLUS_REALTIME_MODEL
+  config.realtimeModel = DASHSCOPE_OMNI_PLUS_REALTIME_MODEL
   const frontend = createQwenFrontend()
   const sent = []
   frontend.ws = {

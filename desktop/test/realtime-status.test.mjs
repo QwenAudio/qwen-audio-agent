@@ -59,6 +59,21 @@ test('uses consistent product and version labels for known realtime models', () 
   assert.equal(realtimeModelStatusLabel('custom-model'), 'custom-model')
 })
 
+test('runtime model labels use matching Gateway metadata without trusting mismatched or missing labels', () => {
+  const profile = { id: 'custom-model', label: 'Private Audio Realtime', family: 'audio' }
+  assert.equal(realtimeRuntimeLabel('dashscope', 'custom-model', profile), 'Private Audio')
+  assert.equal(realtimeRuntimeLabel('dashscope', 'different-model', profile), 'different-model')
+  assert.equal(realtimeRuntimeLabel('dashscope', DEFAULT_DASHSCOPE_REALTIME_MODEL, profile), 'Qwen Audio 3.1 Plus')
+  for (const label of [undefined, null, '', ' ', 123]) {
+    assert.equal(realtimeRuntimeLabel('dashscope', DEFAULT_DASHSCOPE_REALTIME_MODEL,
+      { id: DEFAULT_DASHSCOPE_REALTIME_MODEL, label }), 'Qwen Audio 3.1 Plus')
+  }
+  assert.equal(realtimeRuntimeLabel('minicpm-o', 'custom-model', profile), 'MiniCPM-o 4.5')
+  assert.deepEqual(realtimeModelRuntimeStatus({
+    realtimeProvider: 'dashscope', realtimeModel: 'custom-model', realtimeModelProfile: profile,
+  }, 'custom-model'), { label: 'Private Audio', mismatch: false })
+})
+
 test('uses the shared profile label and reports runtime model mismatch', () => {
   assert.equal(
     realtimeModelStatusLabel(DASHSCOPE_OMNI_PLUS_REALTIME_MODEL),

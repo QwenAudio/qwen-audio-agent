@@ -45,7 +45,7 @@ cp examples/x-omni/.env.example examples/x-omni/.env.local
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=dashscope
 QWEN_AUDIO_REALTIME_MODEL=qwen3.5-omni-plus-realtime
-DASHSCOPE_API_KEY=your-key
+QWEN_AUDIO_REALTIME_API_KEY=your-key
 AGENT_PROTOCOL=none
 ```
 
@@ -60,7 +60,7 @@ npm run example:x-omni
 不连接桌面版 Gateway。显式设置的 `QWAUDIO_*` 目录仍会生效。
 
 凭据只留在 Node.js 进程，不进入浏览器构建产物。使用 DashScope 时，可选的
-`QWEN_AUDIO_REALTIME_BASE_URL` 同时设置对话和视觉读取的 WebSocket 地址。
+`QWEN_AUDIO_REALTIME_URL` 同时设置对话和视觉读取的 WebSocket 地址。
 
 ### 选择 WebRTC
 
@@ -88,13 +88,13 @@ WebRTC 已覆盖合成媒体与模拟模型的真实浏览器测试；不代表�
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=minicpm-o
-MINICPM_O_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=video
+QWEN_AUDIO_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=video
 AGENT_PROTOCOL=none
-# MINICPM_O_AUTH_TOKEN=your-token
+QWEN_AUDIO_REALTIME_API_KEY=
 ```
 
 地址以实际部署为准；上述本机地址假设服务在回环地址以 HTTP 模式启动。
-服务要求认证时再配置 `MINICPM_O_AUTH_TOKEN`，无需 DashScope Key。
+服务要求认证时再配置 `QWEN_AUDIO_REALTIME_API_KEY`，无需 DashScope Key。
 使用同一启动命令，选择视觉来源并开启麦克风，客户端会自动采用**持续画面**模式。
 示例不负责模型推理服务的安装、启动和进程管理。
 

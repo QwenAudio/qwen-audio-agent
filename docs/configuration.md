@@ -16,7 +16,7 @@ tokens, or local identity secrets.
 For the default voice frontend:
 
 ```dotenv
-DASHSCOPE_API_KEY=your-key
+QWEN_AUDIO_REALTIME_API_KEY=your-key
 ```
 
 If your Backend Agent is already installed and configured, simply select it. For Qwen Code:

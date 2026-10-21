@@ -1,3 +1,4 @@
+import { providerRuntimeConfiguration } from './runtime-configuration.mjs'
 import { config } from '../../core/config.mjs'
 import {
   realtimeModelCatalog,
@@ -15,8 +16,10 @@ import { isRecoverableRealtimeInactivityError } from '../realtime-errors.mjs'
 import { createStepFunProtocol } from './stepfun-protocol.mjs'
 import { openAiCompatibleProtocol } from './openai-compatible-protocol.mjs'
 
+const connection = providerRuntimeConfiguration('stepfun')
+
 function modelProfile() {
-  return resolveRealtimeModelProfile(config.stepfunModel, 'stepfun')
+  return resolveRealtimeModelProfile(connection.model, 'stepfun', config.realtimeModelCatalogs)
 }
 
 export const stepfunProvider = {
@@ -32,19 +35,19 @@ export const stepfunProvider = {
     perResponseInstructions: false,
     sessionOutputVoice: true,
   },
-  model: () => config.stepfunModel,
+  model: () => connection.model,
   modelProfile,
-  modelCatalog: () => realtimeModelCatalog('stepfun').profiles,
-  voice: () => config.stepfunVoice || null,
-  isConfigured: () => Boolean(config.stepfunApiKey),
-  missingConfigurationMessage: '请先配置 STEPFUN_API_KEY',
+  modelCatalog: () => realtimeModelCatalog('stepfun', config.realtimeModelCatalogs).profiles,
+  voice: () => String(connection.voice || '').trim() || modelProfile().sessionDefaults.voice,
+  isConfigured: () => connection.configured,
+  missingConfigurationMessage: '请先选择 stepfun 并配置 QWEN_AUDIO_REALTIME_API_KEY',
   connectTimeoutMessage: '连接 StepFun Realtime 超时',
   url: () => {
-    const url = new URL(config.stepfunRealtimeUrl)
-    url.searchParams.set('model', config.stepfunModel)
+    const url = new URL(connection.endpoint)
+    url.searchParams.set('model', connection.model)
     return url.toString()
   },
-  headers: () => ({ Authorization: `Bearer ${config.stepfunApiKey}` }),
+  headers: () => ({ Authorization: `Bearer ${connection.credential}` }),
   classifyError: message => {
     if (isRecoverableRealtimeInactivityError(message)) return 'inactivity'
     if (/another response is in progress|already has an active response/i.test(message)) return 'response_slot_busy'
@@ -67,7 +70,7 @@ export const stepfunProvider = {
         output_audio_format: 'pcm16',
         turn_detection: modelProfile().sessionDefaults.turnDetection,
       })
-      const voice = String(sessionOptions?.voice || config.stepfunVoice || '').trim()
+      const voice = String(sessionOptions?.voice || '').trim() || stepfunProvider.voice()
       if (voice) session.voice = voice
     }
     return session

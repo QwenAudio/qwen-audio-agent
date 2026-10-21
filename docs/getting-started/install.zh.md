@@ -91,6 +91,6 @@ CLI 与桌面版默认共享 `~/.config/qwaudio/config.env`，运行时状态分
 ## 获取 DashScope API Key
 
 1. 打开百炼控制台的 [API Key 页面](https://bailian.console.aliyun.com/?tab=model#/api-key)，登录并创建 Key。
-2. 将 Key 填入桌面设置，或写入 `config.env` 的 `DASHSCOPE_API_KEY`。
+2. 将 Key 填入桌面设置，或写入 `config.env` 的 `QWEN_AUDIO_REALTIME_API_KEY`。
 
 免费额度及适用条件以[百炼官方说明](https://help.aliyun.com/zh/model-studio/new-free-quota)为准。开始前确认账户可用额度与计费设置，不要公开 Key 或提交配置文件。

@@ -1152,7 +1152,8 @@ export class RealtimeFrontend {
         this.settlePending(pending, { cancelled: true, phase: 'start' })
         return
       }
-      if (pending.isCurrent?.() === false) {
+      // A refused request never ran: let its gate re-check.
+      if (pending.isCurrent?.({ refused: true }) === false) {
         this.settlePending(pending, { skipped: true, phase: 'superseded' })
         return
       }

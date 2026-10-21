@@ -36,9 +36,11 @@ export async function startXOmni({ port = 18_890, host = '127.0.0.1', envFile = 
   }
   if (!provider.isConfigured()) throw new Error(provider.missingConfigurationMessage)
   const reader = features.visualTools ? new DashScopeVisualReader({
-    apiKey: process.env.DASHSCOPE_API_KEY,
-    model: process.env.QWEN_AUDIO_REALTIME_MODEL,
-    endpoint: process.env.QWEN_AUDIO_REALTIME_BASE_URL || undefined,
+    // The adapter owns the effective connection, including canonical settings
+    // and legacy precedence. The independent reader must use that same target.
+    headers: provider.headers(),
+    model: provider.model(),
+    endpoint: provider.url(),
   }) : null
   const tools = reader ? createVisionTools({ reader }) : null
   const { createGatewayApplication } = await import('qwen-audio-agent/gateway-application')

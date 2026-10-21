@@ -25,30 +25,33 @@
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=dashscope
-DASHSCOPE_API_KEY=your-key
+QWEN_AUDIO_REALTIME_API_KEY=your-key
 QWEN_AUDIO_REALTIME_MODEL=qwen3.8-omni-flash-realtime
-QWEN_AUDIO_REALTIME_BASE_URL=wss://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime
+QWEN_AUDIO_REALTIME_URL=wss://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
 将 `<WorkspaceId>` 替换为真实业务空间 ID；新加坡地址使用
 `<WorkspaceId>.ap-southeast-1.maas.aliyuncs.com`。参见[官方连接说明](https://help.aliyun.com/zh/model-studio/realtime)。
 桌面版仍选择 DashScope，在现有“服务地址”“API Key”“模型”中填写即可，无需新增 Provider。
 该模型不能使用默认的 DashScope 公共服务地址。
-一个 Gateway 同一时刻只生效一个模型；修改配置后应用设置或重启 Gateway。默认模型不变。
+一个 Gateway 同一时刻只生效一个模型；修改配置后应用设置或重启 Gateway。Omni 需显式选择；默认前台模型为 `qwen-audio-3.1-realtime-plus`。
 
 ### Qwen3.5 Omni
 
-3.5 系列沿用 [Qwen Audio 3.0 Realtime](qwen-audio-realtime.zh.md) 的凭据与服务地址配置。
+3.5 系列沿用 [Qwen Audio Realtime](qwen-audio-realtime.zh.md) 的凭据与服务地址配置。
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=dashscope
-DASHSCOPE_API_KEY=your-key
+QWEN_AUDIO_REALTIME_API_KEY=your-key
 QWEN_AUDIO_REALTIME_MODEL=qwen3.5-omni-flash-realtime
+QWEN_AUDIO_REALTIME_URL=
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
 ## 音色与话轮检测
 
-- 项目默认音色：3.8 为 `Tina`，3.5 为 `Ethan`；可用 `QWEN_OMNI_REALTIME_VOICE` 覆盖。
+- 项目默认音色：3.8 为 `Tina`，3.5 为 `Ethan`；可用 `QWEN_AUDIO_REALTIME_VOICE` 覆盖。
 - 3.5 已确认不兼容的 `Cherry` 会在连接前被拒绝，并提示改用项目为该模型配置的默认音色。
   未知和复刻音色仍交给供应商验证，不使用完整白名单或 ID 前缀推断，不自动替换配置。
   参见[官方音色列表](https://help.aliyun.com/zh/model-studio/omni-voice-list)。
@@ -69,13 +72,13 @@ WebUI 可以把摄像头画面采样为有界 JPEG 帧，并通过协商后的 G
 
 ## 两个系列怎么选？
 
-- **Audio**（`qwen-audio-3.0-realtime-*`）——默认选择；语音优先的对话，
+- **Audio**（默认 `qwen-audio-3.1-realtime-plus`）——语音优先的对话，
   无其他依赖。
 - **Omni**——需要前台结合实时画面与语音时选择；3.8 需额外配置业务空间服务地址。
 
 ## 继续阅读
 
-- [Qwen Audio 3.0 Realtime](qwen-audio-realtime.zh.md)——默认系列
+- [Qwen Audio Realtime](qwen-audio-realtime.zh.md)——默认系列
 - [GPT-Live / OpenAI Realtime](gpt-live.zh.md)——OpenAI 云端实时语音前台
 - [Google Gemini Live](google-live.zh.md)——Google 云端实时语音前台
 - [前台配置参考](../configuration/frontend.zh.md)

@@ -1,0 +1,13 @@
+{
+  "providers": {
+    "dashscope": {
+      "models": {
+        "replace-with-supported-model-id": {
+          "api": "audio",
+          "label": "My Audio Model",
+          "voice": null
+        }
+      }
+    }
+  }
+}

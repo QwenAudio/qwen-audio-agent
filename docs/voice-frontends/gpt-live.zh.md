@@ -10,15 +10,17 @@ Gateway 仍负责前台工具、记忆、提醒、任务委派和后台 Agent �
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=gpt-live
-OPENAI_API_KEY=your-openai-key
+QWEN_AUDIO_REALTIME_API_KEY=your-openai-key
+QWEN_AUDIO_REALTIME_MODEL=gpt-realtime-2.1
+QWEN_AUDIO_REALTIME_URL=
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
 | 可选配置 | 默认值 | 说明 |
 | --- | --- | --- |
-| `GPT_LIVE_REALTIME_URL` / `OPENAI_REALTIME_URL` | `wss://api.openai.com/v1/realtime` | WebSocket 端点 |
-| `GPT_LIVE_REALTIME_MODEL` / `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1` | 当前内置模型档案 |
-| `GPT_LIVE_REALTIME_VOICE` / `OPENAI_REALTIME_VOICE` | 空 | 使用服务默认音色，或填写模型支持的音色 ID |
-| `GPT_LIVE_API_KEY` | 空 | 当实时语音前台需要独立凭据时，作为 `OPENAI_API_KEY` 的别名 |
+| `QWEN_AUDIO_REALTIME_URL` | `wss://api.openai.com/v1/realtime` | WebSocket 端点 |
+| `QWEN_AUDIO_REALTIME_MODEL` | `gpt-realtime-2.1` | 当前内置模型档案 |
+| `QWEN_AUDIO_REALTIME_VOICE` | 空 | 使用服务默认音色，或填写模型支持的音色 ID |
 
 桌面端在 **语音前台 -> GPT-Live** 下暴露同样字段。终端 Gateway 修改文件后需重启；
 若是已安装的后台服务，执行 `qwenaudio gateway restart`。

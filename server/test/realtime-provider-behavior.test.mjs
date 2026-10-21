@@ -8,8 +8,9 @@ import { RealtimeFrontend } from '../src/voice/realtime-provider.mjs'
 import { RealtimeProviderSession } from '../src/voice/realtime-provider-session.mjs'
 import { defaultRealtimeProviderRegistry } from '../src/voice/providers/registry.mjs'
 import {
+  DASHSCOPE_AUDIO_30_REALTIME_MODEL,
   DASHSCOPE_AUDIO_31_REALTIME_MODEL,
-  DEFAULT_DASHSCOPE_REALTIME_MODEL,
+  realtimeModelCatalog,
 } from '../../shared/realtime-model-catalog.mjs'
 
 const PCM_REPLY = Buffer.alloc(480).toString('base64')
@@ -147,14 +148,14 @@ async function connect(t, key) {
 }
 
 const cases = defaultRealtimeProviderRegistry.list().flatMap(({ key }) => key === 'dashscope'
-  ? [DEFAULT_DASHSCOPE_REALTIME_MODEL, DASHSCOPE_AUDIO_31_REALTIME_MODEL].map(model => ({ key, model }))
+  ? [DASHSCOPE_AUDIO_30_REALTIME_MODEL, DASHSCOPE_AUDIO_31_REALTIME_MODEL].map(model => ({ key, model }))
   : [{ key }])
 
 for (const { key, model } of cases) {
   test(`${key}${model ? ` / ${model}` : ''}: shared runtime behavior contract`, async t => {
-    // Keep the DashScope profile independent from the developer's config.env.
-    const previous = { audioModel: config.audioModel, audioVoice: config.audioVoice }
-    Object.assign(config, { audioModel: model || DEFAULT_DASHSCOPE_REALTIME_MODEL, audioVoice: '' })
+    // Keep every selected profile independent from the developer's config.env.
+    const previous = { audioProvider: config.audioProvider, realtimeModel: config.realtimeModel, realtimeVoice: config.realtimeVoice }
+    Object.assign(config, { audioProvider: key, realtimeModel: model || realtimeModelCatalog(key)?.defaultModel || null, realtimeVoice: '' })
     t.after(() => Object.assign(config, previous))
 
     if (key === 'dashscope') {

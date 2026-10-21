@@ -9,14 +9,17 @@ Edit the user configuration file shown by `qwenaudio config`:
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=stepfun
-STEPFUN_API_KEY=your-stepfun-key
+QWEN_AUDIO_REALTIME_API_KEY=your-stepfun-key
+QWEN_AUDIO_REALTIME_MODEL=stepaudio-3-realtime-preview
+QWEN_AUDIO_REALTIME_URL=
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
 | Optional setting | Default | Description |
 | --- | --- | --- |
-| `STEPFUN_REALTIME_URL` | `wss://api.stepfun.com/v1/realtime` | WebSocket endpoint |
-| `STEPFUN_REALTIME_MODEL` | `stepaudio-3-realtime-preview` | Currently supported model profile |
-| `STEPFUN_REALTIME_VOICE` | Empty | Service default, or a voice ID supported by the model |
+| `QWEN_AUDIO_REALTIME_URL` | `wss://api.stepfun.com/v1/realtime` | WebSocket endpoint |
+| `QWEN_AUDIO_REALTIME_MODEL` | `stepaudio-3-realtime-preview` | Currently supported model profile |
+| `QWEN_AUDIO_REALTIME_VOICE` | Empty | Service default, or a voice ID supported by the model |
 
 Credentials and voices are independent of DashScope. Unknown model IDs fail
 before connecting; new models require a capability profile. Preview availability

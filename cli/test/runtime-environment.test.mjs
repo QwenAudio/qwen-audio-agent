@@ -109,18 +109,18 @@ test('generates and reuses a private stable local identity secret', () => {
   )
   assert.match(readFileSync(result.identityPath, 'utf8'), /AUTH_SECRET=/)
   const configContent = readFileSync(result.configPath, 'utf8')
-  assert.match(configContent, /DASHSCOPE_API_KEY=/)
+  assert.match(configContent, /^QWEN_AUDIO_REALTIME_API_KEY=$/m)
   assert.match(
     configContent,
     /QWEN_AUDIO_REALTIME_PROVIDER=dashscope/,
   )
   assert.match(
     configContent,
-    /SPEECH_TO_SPEECH_REALTIME_URL=ws:\/\/127\.0\.0\.1:8765\/v1\/realtime/,
+    /^QWEN_AUDIO_REALTIME_URL=wss:\/\/dashscope\.aliyuncs\.com\/api-ws\/v1\/realtime$/m,
   )
   assert.match(
     configContent,
-    /MINICPM_O_REALTIME_URL=ws:\/\/127\.0\.0\.1:8006\/v1\/realtime\?mode=audio/,
+    /speech-to-speech.*minicpm-o/,
   )
   assert.doesNotMatch(configContent, /S2S_REALTIME_URL=/)
   assertPrivateMode(result.configPath)
@@ -322,7 +322,7 @@ test('requires only a DashScope credential from the user', () => {
   assert.doesNotThrow(() => requireDashScopeCredential({
     DASHSCOPE_API_KEY: 'key',
   }))
-  assert.throws(() => requireDashScopeCredential({}), /DASHSCOPE_API_KEY/)
+  assert.throws(() => requireDashScopeCredential({}), /QWEN_AUDIO_REALTIME_API_KEY/)
 })
 
 test('does not require a DashScope credential for speech-to-speech', () => {
@@ -334,7 +334,7 @@ test('does not require a DashScope credential for speech-to-speech', () => {
   }))
   assert.throws(
     () => requireRealtimeFrontendConfiguration({}),
-    /DASHSCOPE_API_KEY/,
+    /QWEN_AUDIO_REALTIME_API_KEY/,
   )
   assert.throws(
     () => requireRealtimeFrontendConfiguration({

@@ -55,7 +55,7 @@ cp examples/lightrag/.env.example examples/lightrag/.env.local
 填写语音前台和 LightRAG 连接信息：
 
 ```dotenv
-DASHSCOPE_API_KEY=your_dashscope_api_key
+QWEN_AUDIO_REALTIME_API_KEY=your_dashscope_api_key
 LIGHTRAG_URL=http://127.0.0.1:9621
 LIGHTRAG_API_KEY=your_lightrag_api_key
 LIGHTRAG_WORKSPACE=
@@ -71,7 +71,7 @@ node --env-file=examples/lightrag/.env.local examples/lightrag/gateway.mjs
 打开 `http://127.0.0.1:3101`，在资料库面板中导入文件，等待索引完成后即可通过语音或
 文字查询。这个示例使用仅前台模式，不会启动后台 Agent。
 
-`DASHSCOPE_API_KEY` 只用于语音前台；LightRAG 的 LLM 和 Embedding 配置保留在它自己的
+`QWEN_AUDIO_REALTIME_API_KEY` 只用于语音前台；LightRAG 的 LLM 和 Embedding 配置保留在它自己的
 进程中。qwen-audio-agent 不会安装、启动或修改 LightRAG。
 
 ## 数据与任务边界

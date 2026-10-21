@@ -5,63 +5,26 @@ import { join } from 'node:path'
 import { parseEnv } from 'node:util'
 import test from 'node:test'
 import {
-  mergeRealtimeEnvironment,
-  realtimeCredentialFromEnvironment,
-  realtimeRuntimeEnvironment,
-  realtimeSettingsFromEnvironment,
+  REALTIME_PROVIDERS, mergeRealtimeEnvironment, realtimeCredentialFromEnvironment,
+  realtimeRuntimeEnvironment, realtimeSettingsFromEnvironment,
 } from '../shared/realtime-provider-definitions.mjs'
 import {
-  DEFAULT_DASHSCOPE_REALTIME_MODEL,
-  DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL,
-  DEFAULT_STEPFUN_REALTIME_MODEL,
-  resolveDashScopeRealtimeVoiceOverride,
-  resolveRealtimeFrontendConfiguration,
+  DEFAULT_DASHSCOPE_REALTIME_MODEL, DEFAULT_STEPFUN_REALTIME_MODEL,
+  resolveDashScopeRealtimeVoiceOverride, resolveRealtimeFrontendConfiguration,
 } from '../shared/realtime-provider-catalog.mjs'
 import { loadRuntimeEnvironment, requireRealtimeFrontendConfiguration } from '../shared/runtime-environment.mjs'
 import { createSettingsStore } from '../desktop/src/settings-store.mjs'
 import { desktopGatewayEnvironment } from '../desktop/src/gateway-process.mjs'
 
-const providerCases = [
-  {
-    provider: 'dashscope',
-    env: { DASHSCOPE_API_KEY: 'dash-key', QWEN_AUDIO_REALTIME_BASE_URL: 'wss://dash.example/realtime' },
-    credential: 'dash-key', endpoint: 'wss://dash.example/realtime',
-    model: DEFAULT_DASHSCOPE_REALTIME_MODEL, voice: '',
-  },
-  {
-    provider: 'stepfun',
-    env: {
-      STEPFUN_API_KEY: 'step-key', STEPFUN_REALTIME_URL: 'wss://step.example/realtime',
-      STEPFUN_REALTIME_MODEL: DEFAULT_STEPFUN_REALTIME_MODEL, STEPFUN_REALTIME_VOICE: 'step-voice',
-      DASHSCOPE_API_KEY: 'not-the-stepfun-key',
-    },
-    credential: 'step-key', endpoint: 'wss://step.example/realtime',
-    model: DEFAULT_STEPFUN_REALTIME_MODEL, voice: 'step-voice',
-  },
-  {
-    provider: 'doubao-seeduplex',
-    env: {
-      DOUBAO_API_KEY: 'doubao-key',
-      DOUBAO_SEEDUPLEX_REALTIME_URL: 'wss://doubao.example/realtime',
-      DOUBAO_SEEDUPLEX_REALTIME_MODEL: DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL,
-      DOUBAO_SEEDUPLEX_REALTIME_VOICE: 'doubao-voice',
-      DASHSCOPE_API_KEY: 'not-the-doubao-key',
-    },
-    credential: 'doubao-key', endpoint: 'wss://doubao.example/realtime',
-    model: DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL, voice: 'doubao-voice',
-  },
-  {
-    provider: 'speech-to-speech',
-    env: { SPEECH_TO_SPEECH_AUTH_TOKEN: 's2s-key', SPEECH_TO_SPEECH_REALTIME_URL: 'ws://s2s.example/realtime' },
-    credential: 's2s-key', endpoint: 'ws://s2s.example/realtime', model: null, voice: '',
-  },
-  {
-    provider: 'minicpm-o',
-    env: { MINICPM_O_AUTH_TOKEN: 'mini-key', MINICPM_O_REALTIME_URL: 'ws://mini.example/realtime?mode=audio' },
-    credential: 'mini-key', endpoint: 'ws://mini.example/realtime?mode=audio', model: null, voice: '',
-  },
-]
-
+const legacyKeys = {
+  dashscope: ['DASHSCOPE_API_KEY', 'QWEN_AUDIO_REALTIME_BASE_URL'],
+  stepfun: ['STEPFUN_API_KEY', 'STEPFUN_REALTIME_URL'],
+  'gpt-live': ['OPENAI_API_KEY', 'GPT_LIVE_REALTIME_URL'],
+  'google-live': ['GOOGLE_API_KEY', 'GOOGLE_LIVE_REALTIME_URL'],
+  'doubao-seeduplex': ['DOUBAO_API_KEY', 'DOUBAO_SEEDUPLEX_REALTIME_URL'],
+  'speech-to-speech': ['SPEECH_TO_SPEECH_AUTH_TOKEN', 'SPEECH_TO_SPEECH_REALTIME_URL'],
+  'minicpm-o': ['MINICPM_O_AUTH_TOKEN', 'MINICPM_O_REALTIME_URL'],
+}
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'qwaudio-provider-env-'))
   t.after(() => rmSync(root, { recursive: true, force: true }))
@@ -69,242 +32,256 @@ function fixture(t) {
   mkdirSync(configDir)
   return { root, configDir, configPath: join(configDir, 'config.env'), clientDir: join(root, 'desktop') }
 }
-
-function encode(env) {
-  return Object.entries(env).map(([key, value]) => `${key}=${value}`).join('\n') + '\n'
-}
-
+const encode = env => Object.entries(env).map(([key, value]) => key + '=' + value).join('\n') + '\n'
 function cliConfiguration({ root, configDir }, overrides = {}) {
   const env = { QWAUDIO_CONFIG_DIR: configDir, ...overrides }
   const loaded = loadRuntimeEnvironment({ root, env, readOnly: true })
   return { env, loaded, ...resolveRealtimeFrontendConfiguration(env) }
 }
 
-for (const entry of providerCases) {
-  test(`${entry.provider}: provider-owned inputs round-trip without changing the active profile`, () => {
-    const env = { ...entry.env, QWEN_AUDIO_REALTIME_PROVIDER: entry.provider }
+for (const provider of REALTIME_PROVIDERS) {
+  const local = !provider.settings.some(field => field.slot === 'model')
+  test(provider.key + ': the same five fields round-trip from env through desktop to runtime', () => {
+    const env = {
+      QWEN_AUDIO_REALTIME_PROVIDER: provider.key,
+      QWEN_AUDIO_REALTIME_API_KEY: 'active-key',
+      QWEN_AUDIO_REALTIME_URL: 'wss://service.example/realtime?mode=video',
+      QWEN_AUDIO_REALTIME_MODEL: local ? 'upstream-controlled' : '',
+      QWEN_AUDIO_REALTIME_VOICE: 'voice-override',
+    }
     const result = resolveRealtimeFrontendConfiguration(env)
-    assert.equal(result.credential, entry.credential)
-    assert.equal(result.active.endpoint, entry.endpoint)
-    assert.equal(result.active.model, entry.model)
-    assert.equal(result.active.voice, entry.voice)
+    assert.equal(result.credential, 'active-key')
+    assert.equal(result.active.endpoint, env.QWEN_AUDIO_REALTIME_URL)
+    assert.equal(result.active.voice, local ? '' : 'voice-override')
+    assert.equal(result.active.model, local ? null : provider.settings.find(field => field.slot === 'model').default)
     assert.equal(result.active.configured, true)
-    assert.equal(realtimeCredentialFromEnvironment(env), entry.credential)
+    assert.equal(realtimeCredentialFromEnvironment(env), 'active-key')
     assert.equal(Object.hasOwn(result.active, 'credential'), false)
-    const unified = realtimeRuntimeEnvironment(realtimeSettingsFromEnvironment(env))
-    assert.deepEqual(resolveRealtimeFrontendConfiguration(unified), result)
+    const runtime = realtimeRuntimeEnvironment(realtimeSettingsFromEnvironment(env))
+    assert.equal(Object.keys(runtime).length, 5)
+    assert.deepEqual(resolveRealtimeFrontendConfiguration(runtime), result)
+    assert.doesNotThrow(() => requireRealtimeFrontendConfiguration(runtime))
   })
 
-  test(`${entry.provider}: removed global overrides are ignored and own credentials can be cleared`, () => {
-    const keys = { dashscope: 'DASHSCOPE_API_KEY', stepfun: 'STEPFUN_API_KEY', 'doubao-seeduplex': 'DOUBAO_API_KEY', 'speech-to-speech': 'SPEECH_TO_SPEECH_AUTH_TOKEN', 'minicpm-o': 'MINICPM_O_AUTH_TOKEN' }
-    const env = {
-      ...entry.env, QWEN_AUDIO_REALTIME_PROVIDER: entry.provider,
-      QWEN_AUDIO_REALTIME_API_KEY: 'must-not-use',
-      QWEN_AUDIO_REALTIME_ENDPOINT: 'wss://must-not-use.example/realtime',
-    }
-    assert.equal(resolveRealtimeFrontendConfiguration(env).credential, entry.credential)
-    assert.equal(resolveRealtimeFrontendConfiguration(env).active.endpoint, entry.endpoint)
-    env[keys[entry.provider]] = ''
-    assert.equal(resolveRealtimeFrontendConfiguration(env).credential, '')
-    assert.equal(realtimeCredentialFromEnvironment(env), '')
+  test(provider.key + ': canonical fields override old names, including explicit blanks', () => {
+    const [key, url] = legacyKeys[provider.key]
+    const old = { QWEN_AUDIO_REALTIME_PROVIDER: provider.key, [key]: 'old-key', [url]: 'wss://old.example/realtime' }
+    assert.equal(resolveRealtimeFrontendConfiguration(old).credential, 'old-key')
+    const result = resolveRealtimeFrontendConfiguration({
+      ...old, QWEN_AUDIO_REALTIME_API_KEY: '', QWEN_AUDIO_REALTIME_URL: '',
+    })
+    assert.equal(result.credential, '')
+    assert.equal(result.active.endpoint, provider.settings.find(field => field.slot === 'endpoint').default)
+    assert.equal(result.active.configured, local)
+  })
+
+  test(provider.key + ': blank optional fields use provider/model defaults', () => {
+    const result = resolveRealtimeFrontendConfiguration({
+      QWEN_AUDIO_REALTIME_PROVIDER: provider.key, QWEN_AUDIO_REALTIME_API_KEY: 'key',
+      QWEN_AUDIO_REALTIME_MODEL: '', QWEN_AUDIO_REALTIME_URL: '', QWEN_AUDIO_REALTIME_VOICE: '',
+    })
+    assert.equal(result.active.model, local ? null : provider.settings.find(field => field.slot === 'model').default)
+    assert.equal(result.active.voice, '')
+    assert.equal(result.active.endpoint, provider.settings.find(field => field.slot === 'endpoint').default)
   })
 }
 
-test('legacy DashScope key works without a provider setting and supports endpoint aliases', () => {
-  const result = resolveRealtimeFrontendConfiguration({
-    DASHSCOPE_API_KEY: 'legacy-key', QWEN_AUDIO_REALTIME_URL: 'wss://legacy.example/realtime',
-  })
-  assert.equal(result.active.provider, 'dashscope')
-  assert.equal(result.active.configured, true)
-  assert.equal(result.active.endpoint, 'wss://legacy.example/realtime')
-  assert.equal(resolveRealtimeFrontendConfiguration({
-    QWEN_AUDIO_REALTIME_PROVIDER: 'qwen', DASHSCOPE_API_KEY: 'legacy-key',
-  }).credential, 'legacy-key')
-})
-
-test('provider credentials are never borrowed by another provider', () => {
-  for (const provider of ['stepfun', 'doubao-seeduplex', 'speech-to-speech', 'minicpm-o']) {
+test('legacy credential fallback never borrows another provider key', () => {
+  for (const provider of REALTIME_PROVIDERS.filter(item => item.key !== 'dashscope')) {
     assert.equal(resolveRealtimeFrontendConfiguration({
-      QWEN_AUDIO_REALTIME_PROVIDER: provider, DASHSCOPE_API_KEY: 'dash-only',
+      QWEN_AUDIO_REALTIME_PROVIDER: provider.key, DASHSCOPE_API_KEY: 'dash-only',
     }).credential, '')
   }
-  assert.equal(resolveRealtimeFrontendConfiguration({ STEPFUN_API_KEY: 'step-only' }).credential, '')
 })
 
-test('Omni voice is family-scoped and an empty Audio voice does not override it', () => {
-  const env = { QWEN_OMNI_REALTIME_VOICE: 'legacy-omni' }
-  assert.equal(resolveDashScopeRealtimeVoiceOverride(DEFAULT_DASHSCOPE_REALTIME_MODEL, env), '')
-  assert.equal(resolveDashScopeRealtimeVoiceOverride('qwen3.5-omni-plus-realtime', env), 'legacy-omni')
-  assert.equal(resolveRealtimeFrontendConfiguration({
-    ...env, QWEN_AUDIO_REALTIME_MODEL: 'qwen3.5-omni-plus-realtime',
-  }).active.voice, 'legacy-omni')
-  assert.equal(resolveDashScopeRealtimeVoiceOverride('qwen3.5-omni-plus-realtime', {
-    ...env, QWEN_AUDIO_REALTIME_VOICE: '',
-  }), 'legacy-omni')
-})
-
-test('Audio 3.1 accepts only the Audio family voice and keeps profile defaults implicit', () => {
-  const env = {
-    QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope',
-    QWEN_AUDIO_REALTIME_MODEL: 'qwen-audio-3.1-realtime-plus',
-    DASHSCOPE_API_KEY: 'audio-31-test-key',
-    QWEN_OMNI_REALTIME_VOICE: 'omni-only-voice',
+test('DashScope audio and both Omni APIs use one explicit voice setting', () => {
+  for (const model of [DEFAULT_DASHSCOPE_REALTIME_MODEL, 'qwen3.5-omni-plus-realtime', 'qwen3.8-omni-flash-realtime']) {
+    assert.equal(resolveDashScopeRealtimeVoiceOverride(model, { QWEN_AUDIO_REALTIME_VOICE: 'chosen' }), 'chosen')
+    assert.equal(resolveDashScopeRealtimeVoiceOverride(model, {
+      QWEN_AUDIO_REALTIME_VOICE: '', QWEN_OMNI_REALTIME_VOICE: 'legacy',
+    }), '')
   }
-  assert.doesNotThrow(() => requireRealtimeFrontendConfiguration(env))
-  const configuration = resolveRealtimeFrontendConfiguration(env)
-  assert.equal(configuration.active.model, 'qwen-audio-3.1-realtime-plus')
-  assert.equal(configuration.active.voice, '')
-  assert.equal(configuration.credential, 'audio-31-test-key')
-  assert.equal(resolveDashScopeRealtimeVoiceOverride(env.QWEN_AUDIO_REALTIME_MODEL, env), '')
-  const overridden = { ...env, QWEN_AUDIO_REALTIME_VOICE: 'custom-audio-31' }
-  assert.doesNotThrow(() => requireRealtimeFrontendConfiguration(overridden))
-  assert.equal(resolveRealtimeFrontendConfiguration(overridden).active.voice, 'custom-audio-31')
-  assert.deepEqual(
-    resolveRealtimeFrontendConfiguration(realtimeRuntimeEnvironment(realtimeSettingsFromEnvironment(overridden))),
-    resolveRealtimeFrontendConfiguration(overridden),
-  )
+  assert.equal(resolveDashScopeRealtimeVoiceOverride('qwen3.5-omni-plus-realtime', { QWEN_OMNI_REALTIME_VOICE: 'legacy' }), 'legacy')
+  assert.equal(resolveDashScopeRealtimeVoiceOverride(DEFAULT_DASHSCOPE_REALTIME_MODEL, { QWEN_OMNI_REALTIME_VOICE: 'legacy' }), '')
 })
 
-test('S2S aliases are supported without overriding explicitly cleared primary variables', () => {
-  const env = {
-    QWEN_AUDIO_REALTIME_PROVIDER: 's2s',
-    S2S_REALTIME_URL: 'ws://alias.example/realtime', S2S_API_KEY: 'alias-key',
-  }
-  assert.equal(resolveRealtimeFrontendConfiguration(env).credential, 'alias-key')
-  assert.equal(resolveRealtimeFrontendConfiguration(env).active.endpoint, 'ws://alias.example/realtime')
-  assert.equal(resolveRealtimeFrontendConfiguration({ ...env, SPEECH_TO_SPEECH_AUTH_TOKEN: '' }).credential, '')
+test('legacy workspace shortcut works; canonical URL takes precedence even when blank', () => {
+  const env = { DASHSCOPE_WORKSPACE_ID: 'workspace-test' }
+  assert.match(resolveRealtimeFrontendConfiguration(env).active.endpoint, /workspace-test\.cn-beijing/)
+  assert.equal(resolveRealtimeFrontendConfiguration({ ...env, QWEN_AUDIO_REALTIME_URL: '' }).active.endpoint,
+    'wss://dashscope.aliyuncs.com/api-ws/v1/realtime')
 })
 
-test('invalid provider-owned models are rejected without consulting another provider', () => {
+test('invalid model/provider combinations fail instead of guessing an API', () => {
   assert.throws(() => requireRealtimeFrontendConfiguration({
-    QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun',
+    QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun', QWEN_AUDIO_REALTIME_API_KEY: 'key',
     QWEN_AUDIO_REALTIME_MODEL: DEFAULT_DASHSCOPE_REALTIME_MODEL,
-    STEPFUN_REALTIME_MODEL: DEFAULT_DASHSCOPE_REALTIME_MODEL,
-    STEPFUN_API_KEY: 'step-key',
-  }), /STEPFUN_REALTIME_MODEL.*stepfun/)
+  }), /QWEN_AUDIO_REALTIME_MODEL.*stepfun/)
 })
 
-test('explicit provider-owned fields supersede inactive draft fallbacks', () => {
-  const env = { DASHSCOPE_API_KEY: 'dash-key', STEPFUN_API_KEY: 'step-key' }
-  assert.equal(realtimeSettingsFromEnvironment(env).stepfunApiKey, 'step-key')
-  assert.equal(realtimeSettingsFromEnvironment(env, { stepfunApiKey: '' }).stepfunApiKey, 'step-key')
-  assert.equal(realtimeSettingsFromEnvironment(env, { stepfunApiKey: 'saved-step-key' }).stepfunApiKey, 'step-key')
+test('provider switch between config sources clears all four connection fields', () => {
+  const base = {
+    QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope', QWEN_AUDIO_REALTIME_API_KEY: 'dash-key',
+    QWEN_AUDIO_REALTIME_MODEL: DEFAULT_DASHSCOPE_REALTIME_MODEL,
+    QWEN_AUDIO_REALTIME_URL: 'wss://dash.example/realtime', QWEN_AUDIO_REALTIME_VOICE: 'dash-voice',
+    OPENAI_API_KEY: 'backend-key',
+  }
+  const env = mergeRealtimeEnvironment(base, { QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun' })
+  const result = resolveRealtimeFrontendConfiguration(env)
+  assert.equal(result.credential, '')
+  assert.equal(result.active.model, DEFAULT_STEPFUN_REALTIME_MODEL)
+  assert.equal(result.active.voice, '')
+  assert.equal(result.active.endpoint, 'wss://api.stepfun.com/v1/realtime')
+  assert.equal(env.OPENAI_API_KEY, 'backend-key')
+  const same = resolveRealtimeFrontendConfiguration(mergeRealtimeEnvironment(base, {
+    QWEN_AUDIO_REALTIME_PROVIDER: 'qwen', QWEN_AUDIO_REALTIME_VOICE: 'new-voice',
+  }))
+  assert.equal(same.credential, 'dash-key')
+  assert.equal(same.active.voice, 'new-voice')
 })
 
-test('CLI migrates each file before applying a provider-only project selection', t => {
+test('CLI respects file and process precedence with provider-scoped legacy fallback', t => {
   const paths = fixture(t)
   writeFileSync(paths.configPath, encode({
-    QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope',
-    QWEN_AUDIO_REALTIME_API_KEY: 'dash-unified',
-    QWEN_AUDIO_REALTIME_ENDPOINT: 'wss://dash.example/realtime',
-    QWEN_AUDIO_REALTIME_MODEL: DEFAULT_DASHSCOPE_REALTIME_MODEL,
-    QWEN_AUDIO_REALTIME_VOICE: 'dash-voice',
-    STEPFUN_API_KEY: 'step-key', STEPFUN_REALTIME_VOICE: 'step-voice',
-    OTHER_VALUE: 'user-config',
+    QWEN_AUDIO_REALTIME_API_KEY: 'dash-key', QWEN_AUDIO_REALTIME_MODEL: DEFAULT_DASHSCOPE_REALTIME_MODEL,
+    STEPFUN_API_KEY: 'step-key', OTHER_VALUE: 'user',
   }))
-  writeFileSync(join(paths.root, '.env'), 'OTHER_VALUE=project-env\n')
-  writeFileSync(join(paths.root, '.env.local'), 'QWEN_AUDIO_REALTIME_PROVIDER=stepfun\nOTHER_VALUE=project-local\n')
-  const result = cliConfiguration(paths, { PROCESS_ONLY: 'keep' })
-  assert.equal(result.active.provider, 'stepfun')
-  assert.equal(result.active.model, DEFAULT_STEPFUN_REALTIME_MODEL)
-  assert.equal(result.active.endpoint, 'wss://api.stepfun.com/v1/realtime')
-  assert.equal(result.active.voice, 'step-voice')
+  writeFileSync(join(paths.root, '.env'), 'OTHER_VALUE=project\n')
+  writeFileSync(join(paths.root, '.env.local'), 'QWEN_AUDIO_REALTIME_PROVIDER=stepfun\nOTHER_VALUE=local\n')
+  const result = cliConfiguration(paths, { QWEN_AUDIO_REALTIME_VOICE: 'shell-voice' })
   assert.equal(result.credential, 'step-key')
-  assert.equal(result.env.QWEN_AUDIO_REALTIME_API_KEY, undefined)
-  assert.equal(result.env.DASHSCOPE_API_KEY, 'dash-unified')
-  assert.equal(result.env.OTHER_VALUE, 'project-local')
-  assert.equal(result.env.PROCESS_ONLY, 'keep')
+  assert.equal(result.active.model, DEFAULT_STEPFUN_REALTIME_MODEL)
+  assert.equal(result.active.voice, 'shell-voice')
+  assert.equal(result.env.OTHER_VALUE, 'local')
   assert.deepEqual(result.loaded.loadedFiles, [join(paths.root, '.env.local'), join(paths.root, '.env'), paths.configPath])
 })
 
-test('CLI process provider overrides are isolated while same-provider partial overrides inherit', t => {
-  const paths = fixture(t)
-  writeFileSync(paths.configPath, encode({
-    QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope',
-    QWEN_AUDIO_REALTIME_API_KEY: 'dash-key',
-    QWEN_AUDIO_REALTIME_MODEL: DEFAULT_DASHSCOPE_REALTIME_MODEL,
-    STEPFUN_API_KEY: 'step-key',
-  }))
-  const switched = cliConfiguration(paths, { QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun' })
-  assert.equal(switched.credential, 'step-key')
-  assert.equal(switched.active.model, DEFAULT_STEPFUN_REALTIME_MODEL)
-  const same = cliConfiguration(paths, {
-    QWEN_AUDIO_REALTIME_PROVIDER: 'qwen', QWEN_AUDIO_REALTIME_VOICE: 'process-voice',
-  })
-  assert.equal(same.credential, 'dash-key')
-  assert.equal(same.active.voice, 'process-voice')
-  assert.equal(same.active.model, DEFAULT_DASHSCOPE_REALTIME_MODEL)
+test('higher-priority old key overrides lower-priority canonical key of same provider', () => {
+  const env = mergeRealtimeEnvironment({ QWEN_AUDIO_REALTIME_API_KEY: 'file-key' }, { DASHSCOPE_API_KEY: 'shell-key' })
+  assert.equal(resolveRealtimeFrontendConfiguration(env).credential, 'shell-key')
+  const cleared = mergeRealtimeEnvironment(env, { QWEN_AUDIO_REALTIME_API_KEY: '', DASHSCOPE_API_KEY: 'ignored' })
+  assert.equal(resolveRealtimeFrontendConfiguration(cleared).credential, '')
 })
 
-test('Desktop readiness and child configuration agree when saved provider replaces stale environment', t => {
+test('higher-priority legacy Omni voices use the merged model and support explicit clearing', () => {
+  for (const original of [
+    { QWEN_OMNI_REALTIME_VOICE: 'Ethan' },
+    { QWEN_AUDIO_REALTIME_VOICE: 'Ethan' },
+  ]) {
+    const base = mergeRealtimeEnvironment({}, {
+      QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope',
+      QWEN_AUDIO_REALTIME_MODEL: 'qwen3.5-omni-plus-realtime',
+      ...original,
+    })
+    for (const voice of ['Chelsie', '']) {
+      const merged = mergeRealtimeEnvironment(base, { QWEN_OMNI_REALTIME_VOICE: voice })
+      assert.equal(realtimeSettingsFromEnvironment(merged).realtimeVoice, voice)
+      assert.equal(realtimeSettingsFromEnvironment(mergeRealtimeEnvironment(merged, {})).realtimeVoice, voice)
+    }
+    for (const voice of ['canonical-voice', '']) {
+      const merged = mergeRealtimeEnvironment(base, {
+        QWEN_OMNI_REALTIME_VOICE: 'ignored', QWEN_AUDIO_REALTIME_VOICE: voice,
+      })
+      assert.equal(realtimeSettingsFromEnvironment(merged).realtimeVoice, voice)
+    }
+  }
+})
+
+test('legacy Omni voice stays model-scoped through source changes without erasing explicit voices', () => {
+  const omni = mergeRealtimeEnvironment({}, {
+    QWEN_AUDIO_REALTIME_MODEL: 'qwen3.5-omni-plus-realtime', QWEN_OMNI_REALTIME_VOICE: 'Ethan',
+  })
+  const audio = mergeRealtimeEnvironment(omni, { QWEN_AUDIO_REALTIME_MODEL: DEFAULT_DASHSCOPE_REALTIME_MODEL })
+  assert.equal(realtimeSettingsFromEnvironment(audio).realtimeVoice, '')
+  const backToOmni = mergeRealtimeEnvironment(audio, { QWEN_AUDIO_REALTIME_MODEL: 'qwen3.8-omni-flash-realtime' })
+  assert.equal(realtimeSettingsFromEnvironment(backToOmni).realtimeVoice, 'Ethan')
+  for (const voice of ['explicit-voice', '']) {
+    const explicitAudio = mergeRealtimeEnvironment(audio, { QWEN_AUDIO_REALTIME_VOICE: voice })
+    const updatedLegacy = mergeRealtimeEnvironment(explicitAudio, { QWEN_OMNI_REALTIME_VOICE: 'Chelsie' })
+    assert.equal(realtimeSettingsFromEnvironment(updatedLegacy).realtimeVoice, voice)
+    const explicitOmni = mergeRealtimeEnvironment(explicitAudio, { QWEN_AUDIO_REALTIME_MODEL: 'qwen3.5-omni-plus-realtime' })
+    assert.equal(realtimeSettingsFromEnvironment(explicitOmni).realtimeVoice, voice)
+  }
+})
+
+test('CLI resolves legacy Omni voices after all file and process sources have merged', t => {
+  const paths = fixture(t)
+  writeFileSync(paths.configPath, encode({
+    QWEN_AUDIO_REALTIME_MODEL: 'qwen3.5-omni-plus-realtime', QWEN_AUDIO_REALTIME_VOICE: 'Ethan',
+  }))
+  writeFileSync(join(paths.root, '.env'), 'QWEN_OMNI_REALTIME_VOICE=Chelsie\n')
+  writeFileSync(join(paths.root, '.env.local'), 'OTHER_VALUE=local\n')
+  assert.equal(cliConfiguration(paths).active.voice, 'Chelsie')
+  assert.equal(cliConfiguration(paths, { QWEN_OMNI_REALTIME_VOICE: '' }).active.voice, '')
+  assert.equal(cliConfiguration(paths, { QWEN_AUDIO_REALTIME_MODEL: DEFAULT_DASHSCOPE_REALTIME_MODEL }).active.voice, '')
+  assert.equal(cliConfiguration(paths, {
+    QWEN_AUDIO_REALTIME_MODEL: DEFAULT_DASHSCOPE_REALTIME_MODEL, QWEN_AUDIO_REALTIME_VOICE: 'audio-voice',
+  }).active.voice, 'audio-voice')
+})
+
+test('Desktop readiness and child configuration agree when saved provider replaces environment', t => {
   const paths = fixture(t)
   const env = {
-    QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope',
+    QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope', QWEN_AUDIO_REALTIME_API_KEY: 'stale-dash',
     QWEN_AUDIO_REALTIME_MODEL: DEFAULT_DASHSCOPE_REALTIME_MODEL,
-    QWEN_AUDIO_REALTIME_API_KEY: 'stale-dash-key',
   }
-  const configured = { QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun', STEPFUN_API_KEY: 'saved-step-key' }
+  const configured = { QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun', QWEN_AUDIO_REALTIME_API_KEY: 'saved-step' }
   writeFileSync(paths.configPath, encode(configured))
   const store = createSettingsStore({ ...paths, env })
   assert.equal(store.status().provider, 'stepfun')
   assert.equal(store.ready(), true)
-  assert.equal(store.load().stepfunApiKey, 'saved-step-key')
+  assert.equal(store.load().realtimeApiKey, 'saved-step')
   const child = resolveRealtimeFrontendConfiguration(desktopGatewayEnvironment({ env, configured }))
-  assert.equal(child.credential, 'saved-step-key')
+  assert.equal(child.credential, 'saved-step')
   assert.equal(child.active.model, DEFAULT_STEPFUN_REALTIME_MODEL)
 })
 
-test('Desktop imports old providers and preserves credentials through save, restart, switch and clear', t => {
+test('Desktop saves only the active connection and does not overwrite backend keys', t => {
   const paths = fixture(t)
-  writeFileSync(paths.configPath, encode({
-    QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope',
-    DASHSCOPE_API_KEY: 'legacy-dash-key',
-    QWEN_AUDIO_REALTIME_BASE_URL: 'wss://dash.example/realtime',
-    STEPFUN_API_KEY: 'legacy-step-key',
-    STEPFUN_REALTIME_URL: 'wss://step.example/realtime',
-    STEPFUN_REALTIME_MODEL: DEFAULT_STEPFUN_REALTIME_MODEL,
-    STEPFUN_REALTIME_VOICE: 'legacy-step-voice',
-  }))
+  writeFileSync(paths.configPath, encode({ DASHSCOPE_API_KEY: 'backend-key' }))
   const store = createSettingsStore({ ...paths, env: {} })
-  assert.equal(store.ready(), true)
-  assert.equal(store.load().stepfunApiKey, 'legacy-step-key')
-  store.save({ realtimeProvider: 'stepfun' })
-  const cli = cliConfiguration(paths)
-  assert.equal(cli.credential, 'legacy-step-key')
-  assert.equal(cli.active.endpoint, 'wss://step.example/realtime')
-  assert.equal(cli.active.voice, 'legacy-step-voice')
-  assert.equal(parseEnv(readFileSync(paths.configPath, 'utf8')).DASHSCOPE_API_KEY, 'legacy-dash-key')
-  store.save({ stepfunApiKey: '' })
-  store.save({ realtimeProvider: 'dashscope' })
+  assert.equal(store.load().realtimeApiKey, 'backend-key')
+  store.save({ realtimeProvider: 'stepfun', realtimeApiKey: 'frontend-step' })
+  const saved = parseEnv(readFileSync(paths.configPath, 'utf8'))
+  assert.equal(saved.DASHSCOPE_API_KEY, 'backend-key')
+  assert.equal(saved.QWEN_AUDIO_REALTIME_API_KEY, 'frontend-step')
+  assert.equal(saved.QWEN_AUDIO_REALTIME_MODEL, DEFAULT_STEPFUN_REALTIME_MODEL)
   const reopened = createSettingsStore({ ...paths, env: {} })
-  assert.equal(reopened.load().stepfunApiKey, '')
-  assert.equal(cliConfiguration(paths).credential, 'legacy-dash-key')
-  reopened.save({ realtimeProvider: 'stepfun' })
-  assert.equal(reopened.ready(), false)
+  assert.equal(reopened.load().realtimeApiKey, 'frontend-step')
+  reopened.save({ realtimeApiKey: '' })
   assert.equal(cliConfiguration(paths).credential, '')
+  assert.equal(reopened.ready(), false)
 })
 
-test('generated templates do not mask legacy credentials on subsequent launches', t => {
+test('generated template exposes the required key without masking higher-priority shell credentials', t => {
   const paths = fixture(t)
   const env = {
-    QWAUDIO_CONFIG_DIR: paths.configDir,
-    QWAUDIO_DATA_DIR: join(paths.root, 'data'),
-    QWAUDIO_STATE_DIR: join(paths.root, 'state'),
-    QWAUDIO_CACHE_DIR: join(paths.root, 'cache'),
-    QWAUDIO_WORKSPACE: join(paths.root, 'workspace'),
-    DASHSCOPE_API_KEY: 'shell-dash-key',
+    QWAUDIO_CONFIG_DIR: paths.configDir, QWAUDIO_DATA_DIR: join(paths.root, 'data'),
+    QWAUDIO_STATE_DIR: join(paths.root, 'state'), QWAUDIO_CACHE_DIR: join(paths.root, 'cache'),
+    QWAUDIO_WORKSPACE: join(paths.root, 'workspace'), DASHSCOPE_API_KEY: 'shell-key',
   }
   loadRuntimeEnvironment({ root: paths.root, env, generateSecret: false, prepareBackendRuntime: false })
-  assert.equal(parseEnv(readFileSync(paths.configPath, 'utf8')).QWEN_AUDIO_REALTIME_API_KEY, undefined)
-  assert.equal(cliConfiguration(paths, env).credential, 'shell-dash-key')
-})
-
-test('merging a provider switch retains provider-owned variables and explicit blanks', () => {
-  const env = mergeRealtimeEnvironment({
-    QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope',
-    QWEN_AUDIO_REALTIME_API_KEY: 'dash-key',
-    STEPFUN_API_KEY: 'step-key',
-  }, { QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun', STEPFUN_API_KEY: '' })
-  assert.equal(env.STEPFUN_API_KEY, '')
-  assert.equal(resolveRealtimeFrontendConfiguration(env).credential, '')
+  const content = readFileSync(paths.configPath, 'utf8')
+  assert.match(content, /^QWEN_AUDIO_REALTIME_API_KEY=$/m)
+  const generated = parseEnv(content)
+  const frontendDefaults = realtimeRuntimeEnvironment()
+  assert.deepEqual(Object.fromEntries(Object.keys(frontendDefaults).map(key => [key, generated[key]])), frontendDefaults)
+  assert.equal(generated.QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE, 'native')
+  assert.equal(generated.QWEN_AUDIO_MEMORY_PROVIDER, 'markdown')
+  assert.equal(generated.QWEN_AUDIO_LOG_LEVEL, 'info')
+  assert.equal(generated.QWEN_AUDIO_LOG_MAX_BYTES, '10485760')
+  assert.equal(generated.QWEN_AUDIO_LOG_MAX_FILES, '5')
+  assert.equal(generated.VOICEMEM_PYTHON, undefined, 'optional integration examples must not become active paths')
+  assert.equal(generated.QWEN_AUDIO_GATEWAY_LAN, undefined, 'generating defaults must not enable remote access')
+  assert.equal(generated.QWEN_AUDIO_GATEWAY_TAILNET, undefined)
+  assert.match(content, /音色留空跟随模型/)
+  assert.equal(cliConfiguration(paths).active.configured, false)
+  assert.equal(cliConfiguration(paths, { DASHSCOPE_API_KEY: 'shell-key' }).credential, 'shell-key')
+  assert.equal(cliConfiguration(paths, { QWEN_AUDIO_REALTIME_API_KEY: 'new-shell-key' }).credential, 'new-shell-key')
+  for (const provider of REALTIME_PROVIDERS) {
+    const selected = cliConfiguration(paths, { QWEN_AUDIO_REALTIME_PROVIDER: provider.key, QWEN_AUDIO_REALTIME_API_KEY: 'test-key' })
+    assert.equal(selected.active.model, provider.settings.find(field => field.slot === 'model')?.default || null)
+    assert.equal(selected.active.endpoint, provider.settings.find(field => field.slot === 'endpoint').default)
+  }
+  assert.equal(readFileSync(paths.configPath, 'utf8'), content, 'loading overrides must not rewrite visible defaults')
 })

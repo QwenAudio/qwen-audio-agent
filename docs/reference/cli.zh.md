@@ -9,14 +9,14 @@
 | `qwenaudio --version` | 查看 CLI 版本 |
 | `qwenaudio config` | 显示配置路径，文件缺失时创建模板 |
 | `qwenaudio config show` | 显示已配置的语音 Provider、模型及可选模型，不显示凭据 |
-| `qwenaudio config set --realtime-model ID` | 修改当前 Provider 的模型配置 |
+| `qwenaudio config set --realtime-model ID` | 为当前 Provider 选择已登记模型 |
 | `qwenaudio doctor` | 只读检查配置、连接与状态 |
 | `qwenaudio doctor --json` | 输出诊断 JSON |
 | `qwenaudio doctor --turn ID` | 从本机日志整理某一轮时间线 |
 | `qwenaudio setup` | 检测所有后台的接入准备情况 |
 | `qwenaudio setup --backend qwen --json` | 检测指定后台并输出 JSON |
 
-`config show` 显示的是配置，不是线上模型探测；`setup` 不验证后台账号或额度。修改模型后需[应用配置](../operations/gateway.zh.md#修改配置后生效)。
+`config show` 显示内置模型与用户登记合并后的有效目录，不是线上模型探测。未知 ID 必须[先登记](../configuration/frontend.zh.md#登记额外模型)；`config set` 不会登记模型或猜测 API。`setup` 不验证后台账号或额度。修改模型后需[应用配置](../operations/gateway.zh.md#修改配置后生效)。
 
 ## Gateway
 

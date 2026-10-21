@@ -196,7 +196,7 @@ export class RealtimeFrontend {
     if (this.modelProfile?.family === 'unknown') {
       return Promise.reject(new RealtimeConfigurationError(
         `不支持的 Realtime 模型：${this.modelProfile.id}`
-        + `（${this.provider.label}）`,
+        + `（${this.provider.label}）；请先在 frontend-models.json 中登记该模型及其 API`,
       ))
     }
     if (!this.provider.isConfigured()) {

@@ -268,7 +268,7 @@ startedAt, heartbeatAt }`。定位实例的方式：读租约、探活 `origin`�
 
 ## 启动门禁（setup gate）
 
-缺少必填的实时语音凭据（`DASHSCOPE_API_KEY`，或选择 Speech-to-Speech 时的
+缺少必填的实时语音凭据（`QWEN_AUDIO_REALTIME_API_KEY`，或选择 Speech-to-Speech 时的
 服务地址）时，`server/src/index.mjs` 在触碰租约之前即拒绝启动：进程以非零
 退出，错误信息点名每一个缺失的键。`QWEN_AUDIO_ALLOW_UNCONFIGURED=1` 供
 从不建立语音连接的调试场景显式跳过。锁定测试：`test/gateway-setup.test.mjs`、

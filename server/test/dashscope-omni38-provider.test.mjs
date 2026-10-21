@@ -10,8 +10,9 @@ import { DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL as MODEL } from '../../shared/re
 
 function configure(t) {
   const values = {
-    audioModel: MODEL, audioVoice: '', dashscopeApiKey: 'test-key',
-    audioRealtimeBaseUrl: 'wss://workspace.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime',
+    audioProvider: 'dashscope',
+    realtimeModel: MODEL, realtimeVoice: '', realtimeCredential: 'test-key',
+    realtimeEndpoint: 'wss://workspace.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime',
   }
   const previous = Object.fromEntries(Object.keys(values).map(key => [key, config[key]]))
   Object.assign(config, values)
@@ -31,7 +32,7 @@ async function harness(t) {
   configure(t)
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   await once(server, 'listening')
-  config.audioRealtimeBaseUrl = `ws://127.0.0.1:${server.address().port}/realtime`
+  config.realtimeEndpoint = `ws://127.0.0.1:${server.address().port}/realtime`
   const received = [], events = [], errors = []
   let socket, connection
   const emit = event => socket.send(JSON.stringify(event))
@@ -81,7 +82,7 @@ test('3.8 configures nested PCM formats, Tina and semantic VAD only on initial s
   for (const key of ['voice', 'input_audio_format', 'output_audio_format']) assert.equal(key in session, false)
   assert.ok(session.tools.length)
   assert.ok(session.tools.every(tool => tool.type === 'function' && tool.function.parameters))
-  config.audioVoice = 'custom-voice'
+  config.realtimeVoice = 'custom-voice'
   assert.equal(dashscopeProvider.buildSession({ configured: false }).audio.output.voice, 'custom-voice')
   assert.equal(dashscopeProvider.buildSession({ configured: false, sessionOptions: { voice: 'session-voice' } }).audio.output.voice, 'session-voice')
   const refresh = dashscopeProvider.buildSession({ configured: true })
@@ -91,23 +92,23 @@ test('3.8 configures nested PCM formats, Tina and semantic VAD only on initial s
 test('3.8 rejects legacy public endpoints before connecting and allows workspace/proxy endpoints', async t => {
   configure(t)
   for (const host of ['dashscope.aliyuncs.com', 'dashscope-intl.aliyuncs.com', 'dashscope-us.aliyuncs.com']) {
-    config.audioRealtimeBaseUrl = `wss://${host}/api-ws/v1/realtime`
+    config.realtimeEndpoint = `wss://${host}/api-ws/v1/realtime`
     const frontend = new RealtimeFrontend({ provider: dashscopeProvider })
     await assert.rejects(frontend.connect(), /业务空间专属地址/)
     assert.equal(frontend.ws, null)
   }
   for (const url of ['wss://workspace.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime',
     'wss://workspace.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/realtime', 'wss://proxy.example/realtime']) {
-    config.audioRealtimeBaseUrl = url
+    config.realtimeEndpoint = url
     assert.doesNotThrow(() => dashscopeProvider.validateSessionOptions())
   }
-  config.audioRealtimeBaseUrl = ''
+  config.realtimeEndpoint = ''
   assert.throws(() => dashscopeProvider.validateSessionOptions(), /有效的.*WebSocket/)
 })
 
 test('3.8 handshake and audio replies use the existing DashScope transport', async t => {
   const h = await harness(t)
-  assert.equal(new URL(h.connection.url, config.audioRealtimeBaseUrl).searchParams.get('model'), MODEL)
+  assert.equal(new URL(h.connection.url, config.realtimeEndpoint).searchParams.get('model'), MODEL)
   assert.equal(h.connection.headers.authorization, 'Bearer test-key')
   const pending = h.frontend.sendUserText('你好')
   await waitFor(() => h.received.some(event => event.type === 'response.create'))

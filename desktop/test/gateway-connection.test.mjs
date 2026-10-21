@@ -209,17 +209,21 @@ test('local Gateway detection distinguishes attaching from starting one', async 
   const target = parseDesktopGatewayInput('http://localhost:3101')
   const options = { profileStore: emptyProfiles, fetchImpl: async () => Response.json({ backend: { kind: 'none' } }) }
   assert.deepEqual(await prepareDesktopGatewayConnection(target, options), { credential: '', connected: true })
+  options.fetchImpl = async () => Response.json({ backend: { kind: 'none' }, realtimeConfigurationSignature: 'running-config' })
+  assert.deepEqual(await prepareDesktopGatewayConnection(target, options), {
+    credential: '', connected: true, realtimeConfigurationSignature: 'running-config',
+  })
   options.fetchImpl = async () => { throw new Error('connection refused') }
   assert.deepEqual(await prepareDesktopGatewayConnection(target, options), { credential: '', connected: false })
 })
 
 test('remote settings apply client preferences without modifying local Gateway configuration', t => {
   const { settings } = stores(t)
-  settings.save({ dashscopeApiKey: 'local-key', realtimeModel: 'local-model', agentProtocol: 'none' })
+  settings.save({ realtimeApiKey: 'local-key', realtimeModel: 'qwen-audio-3.0-realtime-plus', agentProtocol: 'none' })
   const before = readFileSync(settings.path, 'utf8')
   const patch = clientSettingsPatch({
     gatewayUrl: 'https://gateway.example', orbSkin: 'goo', autoHideSeconds: 300,
-    dashscopeApiKey: '', realtimeModel: 'different-model', agentProtocol: 'missing-agent',
+    realtimeApiKey: '', realtimeModel: 'different-model', agentProtocol: 'missing-agent',
     backendUrl: 'invalid-url', backendOwnership: 'external',
   })
   assert.doesNotThrow(() => settings.preview(patch))

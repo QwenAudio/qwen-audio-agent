@@ -46,6 +46,21 @@ test('settings renderer dependency graph stays browser-safe', () => {
   assert.ok(dependencies.size > 1)
 })
 
+test('model catalogs come from main-process snapshots and never become editable settings', () => {
+  const renderer = readFileSync(resolve(sourceDirectory, 'settings.js'), 'utf8')
+  const realtimeForm = readFileSync(resolve(sourceDirectory, 'realtime-settings-form.mjs'), 'utf8')
+  assert.match(renderer, /realtimeModelCatalogs = value\.realtimeModelCatalogs/)
+  assert.match(renderer, /realtimeModelCatalogs = result\.realtimeModelCatalogs/)
+  assert.match(renderer, /realtimeConfigurationPending = value\.realtimeConfigurationPending === true/)
+  assert.match(renderer, /realtimeConfigurationPending = result\.realtimeConfigurationPending === true/)
+  assert.match(renderer, /realtimeForm\.load\(settings, realtimeModelCatalogs, realtimeModelCatalogError\)/)
+  const editableSettings = renderer.slice(renderer.indexOf('function formSettings()'), renderer.indexOf('function fingerprint('))
+  assert.doesNotMatch(editableSettings, /realtimeModelCatalogs|realtimeConfigurationPending/)
+  assert.match(realtimeForm, /realtimeModelCatalog\(provider\.key, modelCatalogs\)/)
+  assert.match(realtimeForm, /resolveRealtimeModelProfile\(values\[model\.key\], provider\.key, catalogs\)/)
+  assert.doesNotMatch(realtimeForm, /readFile|createRealtimeModelCatalogs|datalist|realtimeProtocolProfile/)
+})
+
 test('desktop settings consumes Gateway pairing codes but does not issue them', () => {
   const html = readFileSync(resolve(sourceDirectory, 'settings.html'), 'utf8')
   const renderer = readFileSync(resolve(sourceDirectory, 'settings.js'), 'utf8')

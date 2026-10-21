@@ -69,14 +69,18 @@ OpenAI 兼容端点指向百炼等云端模型。具体参数见 speech-to-speec
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech
-SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
+QWEN_AUDIO_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
+QWEN_AUDIO_REALTIME_API_KEY=
+QWEN_AUDIO_REALTIME_MODEL=
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
 在全本地模式下无需云端 API Key。如果 Realtime 接口位于需要 Bearer 认证的代理
 后方，可设置：
 
 ```dotenv
-SPEECH_TO_SPEECH_AUTH_TOKEN=your-token
+QWEN_AUDIO_REALTIME_API_KEY=your-token
 ```
 
-`SPEECH_TO_SPEECH_AUTH_TOKEN` 仅用于代理认证，不是本地服务的访问密码。
+模型和音色在 speech-to-speech 配置，不由 Gateway 选择。可选的
+`QWEN_AUDIO_REALTIME_API_KEY` 作为 Bearer token 发送；填写它不会自动为未设防的本地服务开启认证。

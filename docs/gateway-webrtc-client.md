@@ -45,12 +45,12 @@ An alternative source launch is:
 ```sh
 QWAUDIO_WEBRTC_ENABLED=1 \
 QWEN_AUDIO_REALTIME_PROVIDER=dashscope \
-QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus \
+QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.1-realtime-plus \
 npm run start --workspace server
 ```
 
 For Omni, change the model to `qwen3.5-omni-plus-realtime` and restart. Reuse the
-server's existing `DASHSCOPE_API_KEY` and regional/workspace configuration. Never
+server's existing `QWEN_AUDIO_REALTIME_API_KEY` and regional/workspace configuration. Never
 enter a provider key in the browser. Requests cannot override the Gateway's
 configured model or upstream URL.
 
@@ -88,7 +88,7 @@ clients, and the response is not cacheable.
 ### SDP negotiation
 
 ```http
-POST /api/v1/webrtc/realtime?model=qwen-audio-3.0-realtime-plus&sessionId=my-session
+POST /api/v1/webrtc/realtime?model=qwen-audio-3.1-realtime-plus&sessionId=my-session
 Authorization: Bearer <Gateway access credential>
 Content-Type: application/sdp
 

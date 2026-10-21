@@ -14,30 +14,9 @@ const REALTIME_DEFAULTS = {
   wakeShortcut: 'CommandOrControl+Shift+Space',
   wakeWordEnabled: false,
   realtimeProvider: 'dashscope',
-  realtimeBaseUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
-  realtimeModel: 'qwen-audio-3.0-realtime-plus',
-  audioRealtimeVoice: '',
-  omniRealtimeVoice: '',
-  stepfunApiKey: '',
-  stepfunRealtimeUrl: 'wss://api.stepfun.com/v1/realtime',
-  stepfunRealtimeModel: 'stepaudio-3-realtime-preview',
-  stepfunRealtimeVoice: '',
-  speechToSpeechRealtimeUrl: '',
-  speechToSpeechAuthToken: '',
-  miniCpmORealtimeUrl: '',
-  miniCpmOAuthToken: '',
-  openaiApiKey: '',
-  gptLiveRealtimeUrl: 'wss://api.openai.com/v1/realtime',
-  gptLiveRealtimeModel: 'gpt-realtime-2.1',
-  gptLiveRealtimeVoice: '',
-  googleApiKey: '',
-  googleLiveRealtimeUrl: 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent',
-  googleLiveRealtimeModel: 'gemini-3.8-live',
-  googleLiveRealtimeVoice: '',
-  doubaoApiKey: '',
-  doubaoSeeduplexRealtimeUrl: 'wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue',
-  doubaoSeeduplexRealtimeModel: '1.2.6.1',
-  doubaoSeeduplexRealtimeVoice: 'zh_female_vv_jupiter_bigtts',
+  realtimeUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
+  realtimeModel: 'qwen-audio-3.1-realtime-plus',
+  realtimeVoice: '',
 }
 
 const BACKEND_CONNECTION_DEFAULTS = {
@@ -49,26 +28,24 @@ const BACKEND_CONNECTION_DEFAULTS = {
 const DESKTOP_LANGUAGE_DEFAULT = { language: 'auto' }
 
 test('round-trips StepFun settings and detects only active provider changes', () => {
-  const content = updateSettingsContent('STEPFUN_API_KEY=keep\n', {
-    realtimeProvider: 'stepfun', stepfunApiKey: 'step-test',
-    stepfunRealtimeVoice: 'custom-voice',
+  const content = updateSettingsContent('QWEN_AUDIO_REALTIME_API_KEY=keep\n', {
+    realtimeProvider: 'stepfun', realtimeApiKey: 'step-test',
+    realtimeVoice: 'custom-voice',
   })
   const settings = parseSettings(content)
-  assert.equal(settings.stepfunApiKey, 'step-test')
-  assert.equal(settings.dashscopeApiKey, '')
-  assert.equal(settings.stepfunRealtimeVoice, 'custom-voice')
+  assert.equal(settings.realtimeApiKey, 'step-test')
+  assert.equal(settings.realtimeVoice, 'custom-voice')
   assert.equal(realtimeSettingsConfigured(settings), true)
-  assert.equal(realtimeSettingsConfigured({ ...settings, stepfunApiKey: '' }), false)
-  assert.equal(realtimeSettingsConfigured({ ...settings, stepfunRealtimeUrl: 'https://example.com' }), false)
+  assert.equal(realtimeSettingsConfigured({ ...settings, realtimeApiKey: '' }), false)
+  assert.equal(realtimeSettingsConfigured({ ...settings, realtimeUrl: 'https://example.com' }), false)
   const signature = value => realtimeSettingsConfiguration(value).active.signature
-  assert.notEqual(signature(settings), signature({ ...settings, stepfunRealtimeVoice: 'new-voice' }))
-  assert.notEqual(signature(settings), signature({ ...settings, stepfunApiKey: 'new-key' }))
-  assert.equal(signature(settings), signature({ ...settings, audioRealtimeVoice: 'qwen-only' }))
+  assert.notEqual(signature(settings), signature({ ...settings, realtimeVoice: 'new-voice' }))
+  assert.notEqual(signature(settings), signature({ ...settings, realtimeApiKey: 'new-key' }))
   const env = applySettingsEnvironment(settings, {})
-  assert.equal(env.STEPFUN_API_KEY, 'step-test')
-  assert.equal(env.STEPFUN_REALTIME_MODEL, 'stepaudio-3-realtime-preview')
-  applySettingsEnvironment({ stepfunApiKey: '' }, env)
-  assert.equal(env.STEPFUN_API_KEY, '')
+  assert.equal(env.QWEN_AUDIO_REALTIME_API_KEY, 'step-test')
+  assert.equal(env.QWEN_AUDIO_REALTIME_MODEL, 'stepaudio-3-realtime-preview')
+  applySettingsEnvironment({ realtimeApiKey: '' }, env)
+  assert.equal(env.QWEN_AUDIO_REALTIME_API_KEY, '')
 })
 
 test('reads desktop-owned settings with friendly defaults', () => {
@@ -77,7 +54,7 @@ test('reads desktop-owned settings with friendly defaults', () => {
     orbStyle: 'fluid',
     orbSkin: 'fluid',
     autoHideSeconds: 60,
-    dashscopeApiKey: '',
+    realtimeApiKey: '',
     ...REALTIME_DEFAULTS,
     agentProtocol: 'none',
     backendModel: '',
@@ -91,13 +68,13 @@ test('shows effective client settings when user config is empty', () => {
   assert.deepEqual(parseSettings('', {
     QWEN_AUDIO_AGENT_URL: 'http://127.0.0.1:3200',
     QWEN_AUDIO_ORB_STYLE: 'goo',
-    DASHSCOPE_API_KEY: 'sk-from-env',
+    QWEN_AUDIO_REALTIME_API_KEY: 'sk-from-env',
   }), {
     gatewayUrl: 'http://127.0.0.1:3200',
     orbStyle: 'goo',
     orbSkin: 'goo',
     autoHideSeconds: 60,
-    dashscopeApiKey: 'sk-from-env',
+    realtimeApiKey: 'sk-from-env',
     ...REALTIME_DEFAULTS,
     agentProtocol: 'none',
     backendModel: '',
@@ -113,12 +90,11 @@ test('keeps profile defaults out of persisted desktop voice overrides', () => {
   )
 
   assert.equal(settings.realtimeModel, 'qwen3.5-omni-plus-realtime')
-  assert.equal(settings.audioRealtimeVoice, '')
-  assert.equal(settings.omniRealtimeVoice, '')
+  assert.equal(settings.realtimeVoice, '')
   assert.equal(
     normalizeSettings({
       realtimeModel: 'qwen3.5-omni-flash-realtime',
-    }).omniRealtimeVoice,
+    }).realtimeVoice,
     '',
   )
 })
@@ -126,43 +102,39 @@ test('keeps profile defaults out of persisted desktop voice overrides', () => {
 test('Audio 3.1 settings round-trip without persisting the default voice', () => {
   const content = updateSettingsContent('', {
     realtimeModel: 'qwen-audio-3.1-realtime-plus',
-    dashscopeApiKey: 'audio-31-test-key',
-    omniRealtimeVoice: 'omni-only-voice',
+    realtimeApiKey: 'audio-31-test-key',
   })
   const settings = parseSettings(content)
   assert.equal(settings.realtimeModel, 'qwen-audio-3.1-realtime-plus')
-  assert.equal(settings.audioRealtimeVoice, '')
+  assert.equal(settings.realtimeVoice, '')
   assert.match(content, /^QWEN_AUDIO_REALTIME_VOICE=$/m)
   assert.doesNotMatch(content, /longanqian_v3\.1/)
   assert.equal(realtimeSettingsConfigured(settings), true)
   assert.equal(realtimeSettingsConfiguration(settings).active.voice, '')
   const overridden = parseSettings(updateSettingsContent(content, {
-    audioRealtimeVoice: 'custom-audio-31',
+    realtimeVoice: 'custom-audio-31',
   }))
   assert.equal(realtimeSettingsConfiguration(overridden).active.voice, 'custom-audio-31')
   assert.equal(applySettingsEnvironment(overridden, {}).QWEN_AUDIO_REALTIME_VOICE, 'custom-audio-31')
-  assert.equal(overridden.omniRealtimeVoice, 'omni-only-voice')
 })
 
-test('persists both model family voices and clears only the selected family', () => {
+test('persists and explicitly clears one voice override', () => {
   const settings = {
     realtimeModel: 'qwen3.5-omni-plus-realtime',
-    audioRealtimeVoice: 'custom-audio', omniRealtimeVoice: 'custom-omni',
+    realtimeVoice: 'custom-omni',
   }
   const content = updateSettingsContent('', settings)
-  assert.equal(parseSettings(content).omniRealtimeVoice, 'custom-omni')
-  assert.equal(parseSettings(content).audioRealtimeVoice, 'custom-audio')
-  assert.match(content, /QWEN_OMNI_REALTIME_VOICE=custom-omni/)
-  const cleared = updateSettingsContent(content, { omniRealtimeVoice: '' })
-  assert.equal(parseSettings(cleared, { QWEN_OMNI_REALTIME_VOICE: 'stale' }).omniRealtimeVoice, '')
-  assert.equal(parseSettings(cleared).audioRealtimeVoice, 'custom-audio')
+  assert.equal(parseSettings(content).realtimeVoice, 'custom-omni')
+  assert.match(content, /QWEN_AUDIO_REALTIME_VOICE=custom-omni/)
+  const cleared = updateSettingsContent(content, { realtimeVoice: '' })
+  assert.equal(parseSettings(cleared, { QWEN_AUDIO_REALTIME_VOICE: 'stale' }).realtimeVoice, '')
 })
 
 test('updates client settings without changing Gateway-owned configuration', () => {
   const content = updateSettingsContent([
     '# local settings',
     'CUSTOM_SETTING=keep',
-    'DASHSCOPE_API_KEY=secret',
+    'QWEN_AUDIO_REALTIME_API_KEY=secret',
     'QWEN_AUDIO_REALTIME_MODEL=realtime-model',
     'AGENT_PROTOCOL=qoder',
     'QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=full',
@@ -174,7 +146,7 @@ test('updates client settings without changing Gateway-owned configuration', () 
   })
 
   assert.match(content, /CUSTOM_SETTING=keep/)
-  assert.match(content, /DASHSCOPE_API_KEY=secret/)
+  assert.match(content, /QWEN_AUDIO_REALTIME_API_KEY=secret/)
   assert.match(content, /QWEN_AUDIO_REALTIME_MODEL=realtime-model/)
   assert.match(content, /AGENT_PROTOCOL=qoder/)
   assert.match(content, /QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=full/)
@@ -185,7 +157,7 @@ test('updates client settings without changing Gateway-owned configuration', () 
     orbStyle: 'goo',
     orbSkin: 'goo',
     autoHideSeconds: 120,
-    dashscopeApiKey: 'secret',
+    realtimeApiKey: 'secret',
     ...REALTIME_DEFAULTS,
     agentProtocol: 'qoder',
     realtimeModel: 'realtime-model',
@@ -198,51 +170,51 @@ test('updates client settings without changing Gateway-owned configuration', () 
 
 test('updates the DashScope key without touching other settings', () => {
   const content = updateSettingsContent([
-    'DASHSCOPE_API_KEY=old-secret',
+    'QWEN_AUDIO_REALTIME_API_KEY=old-secret',
     'QWEN_AUDIO_AGENT_URL=http://127.0.0.1:3200',
     '',
   ].join('\n'), {
-    dashscopeApiKey: 'sk-new',
+    realtimeApiKey: 'sk-new',
   })
 
-  assert.match(content, /DASHSCOPE_API_KEY=sk-new/)
+  assert.match(content, /QWEN_AUDIO_REALTIME_API_KEY=sk-new/)
   assert.match(content, /QWEN_AUDIO_AGENT_URL=http:\/\/127\.0\.0\.1:3200/)
   assert.doesNotMatch(content, /old-secret/)
 })
 
 test('keeps the stored DashScope key when the field is not part of the update', () => {
-  const content = updateSettingsContent('DASHSCOPE_API_KEY=secret\n', {
+  const content = updateSettingsContent('QWEN_AUDIO_REALTIME_API_KEY=secret\n', {
     gatewayUrl: 'http://127.0.0.1:3101',
     orbStyle: 'fluid',
     autoHideSeconds: 120,
   })
 
-  assert.match(content, /DASHSCOPE_API_KEY=secret/)
+  assert.match(content, /QWEN_AUDIO_REALTIME_API_KEY=secret/)
 })
 
 test('clears the DashScope key when the field is emptied', () => {
-  const content = updateSettingsContent('DASHSCOPE_API_KEY=secret\n', {
-    dashscopeApiKey: '',
+  const content = updateSettingsContent('QWEN_AUDIO_REALTIME_API_KEY=secret\n', {
+    realtimeApiKey: '',
   })
 
-  assert.match(content, /DASHSCOPE_API_KEY=\n?/)
+  assert.match(content, /QWEN_AUDIO_REALTIME_API_KEY=\n?/)
   assert.doesNotMatch(content, /secret/)
 })
 
 test('an explicitly empty key and backend override stale process values', () => {
   assert.deepEqual(parseSettings([
-    'DASHSCOPE_API_KEY=',
+    'QWEN_AUDIO_REALTIME_API_KEY=',
     'AGENT_PROTOCOL=none',
     '',
   ].join('\n'), {
-    DASHSCOPE_API_KEY: 'stale-key',
+    QWEN_AUDIO_REALTIME_API_KEY: 'stale-key',
     AGENT_PROTOCOL: 'openclaw',
   }), {
     gatewayUrl: 'http://127.0.0.1:3101',
     orbStyle: 'fluid',
     orbSkin: 'fluid',
     autoHideSeconds: 60,
-    dashscopeApiKey: '',
+    realtimeApiKey: '',
     ...REALTIME_DEFAULTS,
     agentProtocol: 'none',
     backendModel: '',
@@ -353,81 +325,91 @@ test('reads and updates a supported desktop wake shortcut', () => {
   )
 })
 
-test('writes provider-owned endpoint, model and both voices and clears a backend model', () => {
+test('writes uniform endpoint, model and voice and clears a backend model', () => {
   const content = updateSettingsContent('QWEN_AUDIO_AGENT_BACKEND_MODEL=old\n', {
-    realtimeBaseUrl: 'wss://voice.example.test/v1/realtime',
+    realtimeUrl: 'wss://voice.example.test/v1/realtime',
     realtimeModel: 'qwen-audio-3.0-realtime-plus',
-    audioRealtimeVoice: 'custom-voice', omniRealtimeVoice: 'custom-omni',
+    realtimeVoice: 'custom-voice',
     backendModel: '',
   })
   const settings = parseSettings(content)
-  assert.equal(settings.realtimeBaseUrl, 'wss://voice.example.test/v1/realtime')
+  assert.equal(settings.realtimeUrl, 'wss://voice.example.test/v1/realtime')
   assert.equal(settings.realtimeModel, 'qwen-audio-3.0-realtime-plus')
-  assert.equal(settings.audioRealtimeVoice, 'custom-voice')
-  assert.equal(settings.omniRealtimeVoice, 'custom-omni')
+  assert.equal(settings.realtimeVoice, 'custom-voice')
   assert.equal(settings.backendModel, '')
-  assert.match(content, /QWEN_AUDIO_REALTIME_BASE_URL=/)
+  assert.match(content, /QWEN_AUDIO_REALTIME_URL=/)
   assert.match(content, /^QWEN_AUDIO_AGENT_BACKEND_MODEL=$/m)
 })
 
 test('imports legacy provider settings without sharing their endpoints or credentials', () => {
-  const content = 'QWEN_AUDIO_REALTIME_URL=wss://legacy.example/realtime\nDASHSCOPE_API_KEY=legacy-dash\nSTEPFUN_API_KEY=legacy-step\n'
+  const content = 'QWEN_AUDIO_REALTIME_BASE_URL=wss://legacy.example/realtime\nDASHSCOPE_API_KEY=legacy-dash\nSTEPFUN_API_KEY=legacy-step\n'
   const settings = parseSettings(content)
-  assert.equal(settings.realtimeBaseUrl, 'wss://legacy.example/realtime')
-  assert.equal(settings.dashscopeApiKey, 'legacy-dash')
-  assert.equal(settings.stepfunApiKey, 'legacy-step')
+  assert.equal(settings.realtimeUrl, 'wss://legacy.example/realtime')
+  assert.equal(settings.realtimeApiKey, 'legacy-dash')
   const switched = parseSettings('QWEN_AUDIO_REALTIME_PROVIDER=stepfun\n' + content)
-  assert.equal(switched.stepfunRealtimeUrl, 'wss://api.stepfun.com/v1/realtime')
-  assert.equal(switched.stepfunApiKey, 'legacy-step')
+  assert.equal(switched.realtimeUrl, 'wss://api.stepfun.com/v1/realtime')
+  assert.equal(switched.realtimeApiKey, 'legacy-step')
+})
+
+test('legacy file keys are resolved against the effective provider, not the default provider', () => {
+  const content = 'DASHSCOPE_API_KEY=backend-only\nQWEN_AUDIO_REALTIME_BASE_URL=wss://dash.example/realtime\n'
+  const fallback = { QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun', QWEN_AUDIO_REALTIME_API_KEY: 'step-key' }
+  const settings = parseSettings(content, fallback)
+  assert.equal(settings.realtimeProvider, 'stepfun')
+  assert.equal(settings.realtimeApiKey, 'step-key')
+  assert.equal(settings.realtimeUrl, 'wss://api.stepfun.com/v1/realtime')
+  const withoutKey = parseSettings(content, { QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun' })
+  assert.equal(withoutKey.realtimeApiKey, '')
+  assert.equal(realtimeSettingsConfigured(withoutKey), false)
 })
 
 test('reads and updates the Doubao Seeduplex desktop configuration', () => {
   const settings = parseSettings([
     'QWEN_AUDIO_REALTIME_PROVIDER=doubao',
-    'DOUBAO_API_KEY=doubao-key',
-    'DOUBAO_SEEDUPLEX_REALTIME_URL=wss://doubao.example/realtime',
-    'DOUBAO_SEEDUPLEX_REALTIME_MODEL=1.2.6.1',
-    'DOUBAO_SEEDUPLEX_REALTIME_VOICE=doubao-voice',
+    'QWEN_AUDIO_REALTIME_API_KEY=doubao-key',
+    'QWEN_AUDIO_REALTIME_URL=wss://doubao.example/realtime',
+    'QWEN_AUDIO_REALTIME_MODEL=1.2.6.1',
+    'QWEN_AUDIO_REALTIME_VOICE=doubao-voice',
     '',
   ].join('\n'))
 
   assert.equal(settings.realtimeProvider, 'doubao-seeduplex')
-  assert.equal(settings.doubaoApiKey, 'doubao-key')
-  assert.equal(settings.doubaoSeeduplexRealtimeUrl, 'wss://doubao.example/realtime')
-  assert.equal(settings.doubaoSeeduplexRealtimeModel, '1.2.6.1')
-  assert.equal(settings.doubaoSeeduplexRealtimeVoice, 'doubao-voice')
+  assert.equal(settings.realtimeApiKey, 'doubao-key')
+  assert.equal(settings.realtimeUrl, 'wss://doubao.example/realtime')
+  assert.equal(settings.realtimeModel, '1.2.6.1')
+  assert.equal(settings.realtimeVoice, 'doubao-voice')
   assert.equal(realtimeSettingsConfigured(settings), true)
 
   const content = updateSettingsContent('', settings)
   assert.match(content, /QWEN_AUDIO_REALTIME_PROVIDER=doubao-seeduplex/)
-  assert.match(content, /DOUBAO_API_KEY=doubao-key/)
-  assert.match(content, /DOUBAO_SEEDUPLEX_REALTIME_URL=wss:\/\/doubao\.example\/realtime/)
-  assert.match(content, /DOUBAO_SEEDUPLEX_REALTIME_VOICE=doubao-voice/)
+  assert.match(content, /QWEN_AUDIO_REALTIME_API_KEY=doubao-key/)
+  assert.match(content, /QWEN_AUDIO_REALTIME_URL=wss:\/\/doubao\.example\/realtime/)
+  assert.match(content, /QWEN_AUDIO_REALTIME_VOICE=doubao-voice/)
 })
 
 test('reads and updates the Speech-to-Speech desktop configuration', () => {
   const settings = parseSettings([
     'QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech',
-    'SPEECH_TO_SPEECH_REALTIME_URL=wss://voice.example.test/v1/realtime',
-    'SPEECH_TO_SPEECH_AUTH_TOKEN=private-token',
+    'QWEN_AUDIO_REALTIME_URL=wss://voice.example.test/v1/realtime',
+    'QWEN_AUDIO_REALTIME_API_KEY=private-token',
     '',
   ].join('\n'))
 
   assert.equal(settings.realtimeProvider, 'speech-to-speech')
   assert.equal(
-    settings.speechToSpeechRealtimeUrl,
+    settings.realtimeUrl,
     'wss://voice.example.test/v1/realtime',
   )
-  assert.equal(settings.speechToSpeechAuthToken, 'private-token')
+  assert.equal(settings.realtimeApiKey, 'private-token')
   assert.equal(realtimeSettingsConfigured(settings), true)
 
   const content = updateSettingsContent('', settings)
   assert.match(content, /QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech/)
   assert.match(
     content,
-    /SPEECH_TO_SPEECH_REALTIME_URL=wss:\/\/voice\.example\.test\/v1\/realtime/,
+    /QWEN_AUDIO_REALTIME_URL=wss:\/\/voice\.example\.test\/v1\/realtime/,
   )
-  assert.match(content, /SPEECH_TO_SPEECH_AUTH_TOKEN=private-token/)
+  assert.match(content, /QWEN_AUDIO_REALTIME_API_KEY=private-token/)
 })
 
 test('uses the standard Speech-to-Speech URL as an effective default', () => {
@@ -436,47 +418,45 @@ test('uses the standard Speech-to-Speech URL as an effective default', () => {
   )
 
   assert.equal(
-    settings.speechToSpeechRealtimeUrl,
+    settings.realtimeUrl,
     'ws://127.0.0.1:8765/v1/realtime',
   )
   assert.equal(realtimeSettingsConfigured(settings), true)
   assert.equal(realtimeSettingsConfigured({
     realtimeProvider: 'speech-to-speech',
-    speechToSpeechRealtimeUrl: '',
+    realtimeUrl: '',
   }), true)
 })
 
 test('reads the unified endpoint and token only into the selected provider', () => {
   const settings = parseSettings('QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech\nSPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:9000/realtime\nSPEECH_TO_SPEECH_AUTH_TOKEN=local-token\n')
-  assert.equal(settings.speechToSpeechRealtimeUrl, 'ws://127.0.0.1:9000/realtime')
-  assert.equal(settings.speechToSpeechAuthToken, 'local-token')
-  assert.equal(settings.dashscopeApiKey, '')
-  assert.equal(settings.stepfunApiKey, '')
+  assert.equal(settings.realtimeUrl, 'ws://127.0.0.1:9000/realtime')
+  assert.equal(settings.realtimeApiKey, 'local-token')
 })
 
 test('reads and updates the MiniCPM-o desktop configuration', () => {
   const settings = parseSettings([
     'QWEN_AUDIO_REALTIME_PROVIDER=minicpmo',
-    'MINICPM_O_REALTIME_URL=ws://127.0.0.1:9000/v1/realtime?mode=audio',
-    'MINICPM_O_AUTH_TOKEN=private-token',
+    'QWEN_AUDIO_REALTIME_URL=ws://127.0.0.1:9000/v1/realtime?mode=audio',
+    'QWEN_AUDIO_REALTIME_API_KEY=private-token',
     '',
   ].join('\n'))
 
   assert.equal(settings.realtimeProvider, 'minicpm-o')
   assert.equal(
-    settings.miniCpmORealtimeUrl,
+    settings.realtimeUrl,
     'ws://127.0.0.1:9000/v1/realtime?mode=audio',
   )
-  assert.equal(settings.miniCpmOAuthToken, 'private-token')
+  assert.equal(settings.realtimeApiKey, 'private-token')
   assert.equal(realtimeSettingsConfigured(settings), true)
 
   const content = updateSettingsContent('', settings)
   assert.match(content, /QWEN_AUDIO_REALTIME_PROVIDER=minicpm-o/)
   assert.match(
     content,
-    /MINICPM_O_REALTIME_URL="ws:\/\/127\.0\.0\.1:9000\/v1\/realtime\?mode=audio"/,
+    /QWEN_AUDIO_REALTIME_URL="ws:\/\/127\.0\.0\.1:9000\/v1\/realtime\?mode=audio"/,
   )
-  assert.match(content, /MINICPM_O_AUTH_TOKEN=private-token/)
+  assert.match(content, /QWEN_AUDIO_REALTIME_API_KEY=private-token/)
 })
 
 test('uses the official MiniCPM-o loopback endpoint as an effective default', () => {
@@ -485,7 +465,7 @@ test('uses the official MiniCPM-o loopback endpoint as an effective default', ()
   )
 
   assert.equal(
-    settings.miniCpmORealtimeUrl,
+    settings.realtimeUrl,
     'ws://127.0.0.1:8006/v1/realtime?mode=audio',
   )
   assert.equal(realtimeSettingsConfigured(settings), true)
@@ -494,51 +474,50 @@ test('uses the official MiniCPM-o loopback endpoint as an effective default', ()
 test('requires the selected realtime provider configuration', () => {
   assert.equal(realtimeSettingsConfigured({
     realtimeProvider: 'dashscope',
-    dashscopeApiKey: '',
+    realtimeApiKey: '',
   }), false)
   assert.equal(realtimeSettingsConfigured({
     realtimeProvider: 'dashscope',
-    dashscopeApiKey: 'sk-valid',
+    realtimeApiKey: 'sk-valid',
   }), true)
   assert.equal(realtimeSettingsConfigured({
     realtimeProvider: 'dashscope',
-    dashscopeApiKey: 'sk-valid',
-    realtimeBaseUrl: 'https://voice.example.test/realtime',
+    realtimeApiKey: 'sk-valid',
+    realtimeUrl: 'https://voice.example.test/realtime',
   }), false)
   assert.equal(realtimeSettingsConfigured({
     realtimeProvider: 'speech-to-speech',
-    speechToSpeechRealtimeUrl: 'not-a-websocket-url',
+    realtimeUrl: 'not-a-websocket-url',
   }), false)
   assert.equal(realtimeSettingsConfigured({
     realtimeProvider: 'minicpm-o',
-    miniCpmORealtimeUrl: 'http://127.0.0.1:8006/v1/realtime',
+    realtimeUrl: 'http://127.0.0.1:8006/v1/realtime',
   }), false)
 })
 
-test('persists inactive service configuration without changing the selected provider', () => {
+test('ignores obsolete inactive settings in an IPC patch', () => {
   const content = updateSettingsContent('', {
-    realtimeProvider: 'dashscope', dashscopeApiKey: 'sk-valid',
+    realtimeProvider: 'dashscope', realtimeApiKey: 'sk-valid',
     speechToSpeechRealtimeUrl: 'ws://127.0.0.1:8765/realtime',
     speechToSpeechAuthToken: 'inactive-secret',
   })
   const settings = parseSettings(content)
   assert.equal(settings.realtimeProvider, 'dashscope')
-  assert.equal(settings.dashscopeApiKey, 'sk-valid')
-  assert.equal(settings.speechToSpeechRealtimeUrl, 'ws://127.0.0.1:8765/realtime')
-  assert.equal(settings.speechToSpeechAuthToken, 'inactive-secret')
-  assert.match(content, /SPEECH_TO_SPEECH_AUTH_TOKEN=inactive-secret/)
+  assert.equal(settings.realtimeApiKey, 'sk-valid')
+  assert.equal(settings.realtimeUrl, 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime')
+  assert.doesNotMatch(content, /inactive-secret|SPEECH_TO_SPEECH/)
 })
 
 test('rejects invalid Speech-to-Speech service URLs', () => {
   assert.throws(() => updateSettingsContent('', {
     realtimeProvider: 'speech-to-speech',
-    speechToSpeechRealtimeUrl: 'https://voice.example.test/realtime',
+    realtimeUrl: 'https://voice.example.test/realtime',
   }), /只支持 WS 或 WSS/)
 })
 
 test('rejects invalid Qwen Audio service URLs', () => {
   assert.throws(() => updateSettingsContent('', {
-    realtimeBaseUrl: 'https://voice.example.test/realtime',
+    realtimeUrl: 'https://voice.example.test/realtime',
   }), /服务地址只支持 WS 或 WSS/)
 })
 
@@ -660,14 +639,14 @@ test('rejects external mode for unsupported backends and missing addresses', () 
 
 test('applies a saved settings patch to the live environment', () => {
   const env = {
-    DASHSCOPE_API_KEY: 'stale-key',
+    QWEN_AUDIO_REALTIME_API_KEY: 'stale-key',
     QWEN_AUDIO_REALTIME_MODEL: 'old-model',
     UNRELATED: 'kept',
   }
   // 只写回本次保存的字段：config.env 只填充未设置的槽位，不同步会让
   // 本进程继续沿用首次加载的旧值，刚保存的 Key 看起来像被忽略。
-  applySettingsEnvironment({ dashscopeApiKey: 'fresh-key' }, env)
-  assert.equal(env.DASHSCOPE_API_KEY, 'fresh-key')
+  applySettingsEnvironment({ realtimeApiKey: 'fresh-key' }, env)
+  assert.equal(env.QWEN_AUDIO_REALTIME_API_KEY, 'fresh-key')
   assert.equal(env.QWEN_AUDIO_REALTIME_MODEL, 'old-model')
   assert.equal(env.UNRELATED, 'kept')
 })

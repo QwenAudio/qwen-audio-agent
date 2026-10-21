@@ -85,13 +85,14 @@
             data-settings-panel="voice"
           >
             <p class="setting-hint" data-remote-gateway-note hidden>语音和后台 Agent 由远端 Gateway 配置。</p>
+            <p id="realtime-model-catalog-error" class="setting-hint" role="alert" hidden></p>
             <div class="settings-card realtime-settings-card" data-local-gateway-settings>
               <div class="setting-row">
                 <label for="realtime-provider-trigger">供应商</label>
                 <div id="realtime-provider" class="settings-picker"></div>
               </div>
               <div id="realtime-settings-panel">
-                <!-- Four standard fields, bound by the shared provider definitions. -->
+                <!-- Model, credential, endpoint and voice, bound to the shared catalog snapshot. -->
               </div>
             </div>
           </section>

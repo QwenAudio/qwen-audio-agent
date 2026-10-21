@@ -90,7 +90,11 @@ export async function prepareDesktopGatewayConnection(target, {
   // does not require configuring or installing another backend on this client.
   if (!target.remote && !target.pairingCode && !target.directConnection) {
     const health = await readGatewayHealth(target.origin, fetchImpl, { accessToken: credential })
-    return { credential, connected: Boolean(health) }
+    return {
+      credential, connected: Boolean(health),
+      ...(health?.realtimeConfigurationSignature
+        ? { realtimeConfigurationSignature: health.realtimeConfigurationSignature } : {}),
+    }
   }
   if (!credential) {
     throw new Error('Gateway 需要认证，请粘贴其主机生成的新连接链接')

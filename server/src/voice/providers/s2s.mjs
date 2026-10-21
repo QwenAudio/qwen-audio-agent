@@ -1,4 +1,4 @@
-import { config } from '../../core/config.mjs'
+import { providerRuntimeConfiguration } from './runtime-configuration.mjs'
 import { PERMISSION_DECISIONS } from '../../../../shared/permission-decisions.mjs'
 import {
   buildFrontendInstructions,
@@ -8,6 +8,8 @@ import {
   permissionResponseInstructions,
 } from '../../frontend/frontend-tools.mjs'
 import { gaRealtimeProtocol } from './ga-protocol.mjs'
+
+const connection = providerRuntimeConfiguration('speech-to-speech')
 
 const INPUT_SAMPLE_RATE = 16000
 const OUTPUT_SAMPLE_RATE = 24000
@@ -55,13 +57,13 @@ export const s2sProvider = {
 
   model: () => 'default',
   voice: () => null,
-  isConfigured: () => config.speechToSpeechConfigured,
-  missingConfigurationMessage: '请先配置 SPEECH_TO_SPEECH_REALTIME_URL',
-  connectTimeoutMessage: `连接 Hugging Face speech-to-speech 服务超时（${config.speechToSpeechRealtimeUrl}），请确认 speech-to-speech 服务已启动`,
+  isConfigured: () => connection.configured,
+  missingConfigurationMessage: '请先选择 speech-to-speech 并配置 QWEN_AUDIO_REALTIME_URL',
+  connectTimeoutMessage: '连接 Hugging Face speech-to-speech 服务超时，请确认服务已启动',
 
-  url: () => config.speechToSpeechRealtimeUrl,
-  headers: () => config.speechToSpeechAuthToken
-    ? { Authorization: `Bearer ${config.speechToSpeechAuthToken}` }
+  url: () => connection.endpoint,
+  headers: () => connection.credential
+    ? { Authorization: `Bearer ${connection.credential}` }
     : {},
   classifyError,
 

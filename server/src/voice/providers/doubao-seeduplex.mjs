@@ -1,3 +1,4 @@
+import { providerRuntimeConfiguration } from './runtime-configuration.mjs'
 import { config } from '../../core/config.mjs'
 import {
   realtimeModelCatalog,
@@ -12,10 +13,13 @@ import {
 import { isRecoverableRealtimeInactivityError } from '../realtime-errors.mjs'
 import { createDoubaoSeeduplexProtocol } from './doubao-seeduplex-protocol.mjs'
 
+const connection = providerRuntimeConfiguration('doubao-seeduplex')
+
 function modelProfile() {
   return resolveRealtimeModelProfile(
-    config.doubaoSeeduplexModel,
+    connection.model,
     'doubao-seeduplex',
+    config.realtimeModelCatalogs,
   )
 }
 
@@ -40,15 +44,15 @@ export const doubaoSeeduplexProvider = {
     perResponseInstructions: false,
     sessionOutputVoice: true,
   },
-  model: () => config.doubaoSeeduplexModel,
+  model: () => connection.model,
   modelProfile,
-  modelCatalog: () => realtimeModelCatalog('doubao-seeduplex').profiles,
-  voice: () => config.doubaoSeeduplexVoice || modelProfile().sessionDefaults.voice,
-  isConfigured: () => Boolean(config.doubaoApiKey),
-  missingConfigurationMessage: '请先配置 DOUBAO_API_KEY（也支持 SEEDUPLEX_API_KEY）',
+  modelCatalog: () => realtimeModelCatalog('doubao-seeduplex', config.realtimeModelCatalogs).profiles,
+  voice: () => cleanText(connection.voice) || modelProfile().sessionDefaults.voice,
+  isConfigured: () => connection.configured,
+  missingConfigurationMessage: '请先选择 doubao-seeduplex 并配置 QWEN_AUDIO_REALTIME_API_KEY',
   connectTimeoutMessage: '连接 Doubao Seeduplex Realtime 超时',
-  url: () => config.doubaoSeeduplexRealtimeUrl,
-  headers: () => ({ 'X-Api-Key': config.doubaoApiKey }),
+  url: () => connection.endpoint,
+  headers: () => ({ 'X-Api-Key': connection.credential }),
   classifyError: message => {
     if (isRecoverableRealtimeInactivityError(message)) return 'inactivity'
     if (/no active response|no response.*cancel/i.test(message)) return 'no_active_response'
@@ -68,7 +72,7 @@ export const doubaoSeeduplexProvider = {
         },
         output: {
           format: { type: 'pcm', rate: 24000 },
-          voice,
+          ...(voice ? { voice } : {}),
           speed: 0,
           loudness: 0,
         },

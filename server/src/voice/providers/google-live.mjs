@@ -1,3 +1,4 @@
+import { providerRuntimeConfiguration } from './runtime-configuration.mjs'
 import { config } from '../../core/config.mjs'
 import {
   realtimeModelCatalog,
@@ -13,14 +14,16 @@ import {
 } from '../../frontend/frontend-tools.mjs'
 import { createGoogleLiveProtocol } from './google-live-protocol.mjs'
 
+const connection = providerRuntimeConfiguration('google-live')
+
 function modelProfile() {
-  return resolveRealtimeModelProfile(config.googleLiveModel, 'google-live')
+  return resolveRealtimeModelProfile(connection.model, 'google-live', config.realtimeModelCatalogs)
 }
 
 function googleLiveUrl() {
-  const url = new URL(config.googleLiveRealtimeUrl)
+  const url = new URL(connection.endpoint)
   if (!url.searchParams.has('key') && !url.searchParams.has('access_token')) {
-    url.searchParams.set('key', config.googleApiKey)
+    url.searchParams.set('key', connection.credential)
   }
   return url.toString()
 }
@@ -69,12 +72,12 @@ export const googleLiveProvider = {
     mutableSession: false,
   },
 
-  model: () => config.googleLiveModel,
+  model: () => connection.model,
   modelProfile,
-  modelCatalog: () => realtimeModelCatalog('google-live').profiles,
-  voice: () => config.googleLiveVoice || null,
-  isConfigured: () => Boolean(config.googleApiKey),
-  missingConfigurationMessage: '请先配置 GOOGLE_API_KEY 或 GEMINI_API_KEY',
+  modelCatalog: () => realtimeModelCatalog('google-live', config.realtimeModelCatalogs).profiles,
+  voice: () => String(connection.voice || '').trim() || modelProfile().sessionDefaults.voice,
+  isConfigured: () => connection.configured,
+  missingConfigurationMessage: '请先选择 google-live 并配置 QWEN_AUDIO_REALTIME_API_KEY',
   connectTimeoutMessage: '连接 Google Live 超时',
   url: googleLiveUrl,
   headers: () => ({}),
@@ -87,12 +90,12 @@ export const googleLiveProvider = {
   },
 
   buildSession: ({ agentContext, sessionOptions }) => {
-    const voice = String(sessionOptions?.voice || config.googleLiveVoice || '').trim()
+    const voice = String(sessionOptions?.voice || '').trim() || googleLiveProvider.voice()
     const configuredSpeech = speechConfig(voice)
     return {
-      model: config.googleLiveModel.startsWith('models/')
-        ? config.googleLiveModel
-        : `models/${config.googleLiveModel}`,
+      model: connection.model.startsWith('models/')
+        ? connection.model
+        : `models/${connection.model}`,
       generationConfig: {
         responseModalities: ['AUDIO'],
         ...(configuredSpeech ? { speechConfig: configuredSpeech } : {}),

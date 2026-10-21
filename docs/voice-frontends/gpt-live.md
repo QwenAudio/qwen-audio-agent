@@ -11,15 +11,17 @@ Edit the user configuration file shown by `qwenaudio config`:
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=gpt-live
-OPENAI_API_KEY=your-openai-key
+QWEN_AUDIO_REALTIME_API_KEY=your-openai-key
+QWEN_AUDIO_REALTIME_MODEL=gpt-realtime-2.1
+QWEN_AUDIO_REALTIME_URL=
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
 | Optional setting | Default | Description |
 | --- | --- | --- |
-| `GPT_LIVE_REALTIME_URL` / `OPENAI_REALTIME_URL` | `wss://api.openai.com/v1/realtime` | WebSocket endpoint |
-| `GPT_LIVE_REALTIME_MODEL` / `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1` | Current built-in model profile |
-| `GPT_LIVE_REALTIME_VOICE` / `OPENAI_REALTIME_VOICE` | Empty | Service default, or a voice ID supported by the model |
-| `GPT_LIVE_API_KEY` | Empty | Alias for `OPENAI_API_KEY` when the realtime frontend needs a separate credential |
+| `QWEN_AUDIO_REALTIME_URL` | `wss://api.openai.com/v1/realtime` | WebSocket endpoint |
+| `QWEN_AUDIO_REALTIME_MODEL` | `gpt-realtime-2.1` | Current built-in model profile |
+| `QWEN_AUDIO_REALTIME_VOICE` | Empty | Service default, or a voice ID supported by the model |
 
 Desktop exposes the same fields under **Voice frontend → GPT-Live**. Restart a
 terminal Gateway after editing the file; for an installed service, run

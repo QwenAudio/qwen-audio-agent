@@ -2,6 +2,8 @@
 
 这是本示例的代码扩展点，不是主框架协议。目标是让自部署 DHAV 和商业 RTC 服务复用同一客户端调度，不强迫它们共享媒体格式。
 
+框架保持不变。官方 Client SDK 提供现有 `audio.delta` / `audio.done` 和全量 `playback.clear`；适配器只补充渲染与真实播放边界，不要求新的 GCP 事件或模型终态。普通 WebSocket 的通用 `error` 不用于按文案推断某条回复失败或取消。
+
 ## 浏览器适配器
 
 `client/renderer-adapters.mjs` 注册 `createPlayer(options)` 和 `createController(options)`。DHAV 实现在 `client/renderers/dhav.mjs`。
@@ -26,7 +28,7 @@ const renderer = {
 - `onDrained` 必须同时满足：该响应不会再产生媒体，播放器已排空。
 - `cancelTurn` 同步停止本地媒体并隔离旧回调；远端取消可以异步完成。
 - 若音频已实际起播但 JS 回调延迟，取消时需先补报真实起播，再返回，避免公共控制器误以为可以从头回退。
-- 同步异常、返回 false、Promise 拒绝或 `onError` 都表示失败；队列必须有界。
+- 适配器的同步异常、返回 false、Promise 拒绝或 `onError` 表示渲染 / 播放失败，不代表模型执行终态；队列必须有界。
 - 异步服务初始化由适配器完成后，桥接发送通用的 `session.ready`。厂商 session 字段不进入公共控制器。
 
 浏览器播放器可以是 WebAudio + canvas，也可以是厂商 RTC `<video>`。商业适配器不能用另一条静音 PCM 轨的播放时钟代替真正的 RTC 播放。

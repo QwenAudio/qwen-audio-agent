@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { GatewayClient } from 'qwen-audio-agent/gateway-client-sdk'
+import { acceptsGatewayVoiceState } from 'qwen-audio-agent/gateway-client-state'
 import { getRendererAdapter } from './renderer-adapters.mjs'
 
 // This example is a normal Gateway Client. The renderer is a second,
@@ -193,11 +194,14 @@ export function useDualConnection({ sessionId, config }) {
             reconnect: false,
             onEvent: event => {
               if (!current()) return
+              if (event.type === 'turn.started') runtime.currentTurnId = event.turnId || ''
               controller.handleGateway(event)
               transcript(event)
-              if (event.type === 'playback.clear') interruptMessages(event.responseId)
+              if (event.type === 'playback.clear'
+                || (event.type === 'voice.state' && event.state === 'listening'
+                  && acceptsGatewayVoiceState(event, runtime.currentTurnId))) interruptMessages()
+              if (event.type === 'response.interrupted') interruptMessages(event.responseId)
               if (event.type === 'error') setError(event.message || event.error?.message)
-              if (event.type === 'response.done' && event.response?.status === 'failed') setError('模型回复失败，请重试。')
               if (event.type === 'input.suspend') {
                 stopCapture(runtime)
                 setMicEnabled(false)

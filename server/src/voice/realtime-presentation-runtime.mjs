@@ -104,9 +104,6 @@ export class RealtimePresentationRuntime {
     this.turnCitations = turnCitations
     this.contexts = new Map()
     this.playbackTurns = new Map()
-    // A provider error can precede its final response.done. Keep a bounded
-    // tombstone so public completion is emitted once and late audio stays dead.
-    this.responseOutcomes = new Map()
     this.lastCorrectionTurn = null
   }
 
@@ -161,7 +158,6 @@ export class RealtimePresentationRuntime {
     const id = realtimeResponseId(event)
     if (!id) return null
     const existing = this.contexts.get(id)
-    if (!existing && this.responseOutcomes.has(id)) return null
     const automaticResponse = (
       !existing
       && (event.__voiceOrigin || 'model') === 'model'
@@ -221,12 +217,6 @@ export class RealtimePresentationRuntime {
 
   handle(event) {
     if (!PRESENTATION_RESPONSE_EVENTS.has(event?.type)) return false
-    const id = realtimeResponseId(event)
-    const outcome = this.responseOutcomes.get(id)
-    if (event.type !== 'response.done' && outcome && (
-      !this.contexts.has(id)
-      || ['failed', 'cancelled', 'incomplete'].includes(outcome.status)
-    )) return true
     if (event.type === 'response.created') return true
     if (
       event.type === 'response.audio.delta'
@@ -353,7 +343,6 @@ export class RealtimePresentationRuntime {
 
   #responseDone(event) {
     const id = realtimeResponseId(event)
-    if (this.responseOutcomes.get(id)?.providerDone) return
     const context = this.contexts.get(id)
     const terminalToolResponse = this.toolCalls.consumeTerminalToolResponse(id)
     const responseTurnId = context?.turnId || this.turns.turnId
@@ -456,27 +445,7 @@ export class RealtimePresentationRuntime {
       message: error.message,
     }))
     if (guardDecision) this.#requestGuardCorrection(guardDecision, context, responseTurnId)
-    if (failed && id && !context?.suppressed) {
-      this.send({ type: GatewayServerEvent.PLAYBACK_CLEAR, responseId: id, reason: 'provider_failure' })
-    }
-    this.#publishResponseDone(id, responseStatus, { providerDone: true })
     this.#flushAnnouncementsSoon()
-  }
-
-  #publishResponseDone(id, status, { providerDone = false } = {}) {
-    if (!id) return
-    const previous = this.responseOutcomes.get(id)
-    if (previous) {
-      previous.providerDone ||= providerDone
-      return
-    }
-    const normalized = ['completed', 'failed', 'cancelled', 'incomplete'].includes(status)
-      ? status : 'unknown'
-    this.responseOutcomes.set(id, { status: normalized, providerDone })
-    while (this.responseOutcomes.size > 128) {
-      this.responseOutcomes.delete(this.responseOutcomes.keys().next().value)
-    }
-    this.send({ type: GatewayServerEvent.RESPONSE_DONE, response: { id, status: normalized } })
   }
 
   #requestGuardCorrection(decision, context, responseTurnId) {
@@ -667,13 +636,10 @@ export class RealtimePresentationRuntime {
     this.#flushAnnouncementsSoon()
   }
 
-  clearPlayback({ responseId = null, reason = '' } = {}) {
+  clearPlayback({ reason = '' } = {}) {
     // A Gateway playback.clear is authoritative. Do not keep cleared audio
     // blocking results just because a client cancellation receipt is lost.
-    const ids = responseId
-      ? (this.contexts.has(responseId) || this.playbackTurns.has(responseId) ? [responseId] : [])
-      : [...this.playbackTurns.keys()]
-    for (const id of ids) {
+    for (const id of this.playbackTurns.keys()) {
       this.cancelPlayback(id, { reason })
     }
   }
@@ -723,16 +689,15 @@ export class RealtimePresentationRuntime {
         && !context.suppressed
       ) {
         this.cancelPlayback(responseId, { reason: 'permission_resolved' })
-        // State is already suppressed before the event re-enters clearPlayback.
-        this.send({ type: GatewayServerEvent.PLAYBACK_CLEAR, responseId, reason: 'permission_resolved' })
       }
     }
   }
 
-  failResponse(event, { reason = 'provider_failure' } = {}) {
+  failResponse(event) {
     const id = realtimeResponseId(event)
     const context = this.contexts.get(id)
     if (context?.origin === 'announcement') {
+      this.send({ type: GatewayServerEvent.PLAYBACK_CLEAR })
       this.announcementWindow.finishPlayback(id)
       this.playbackTurns.delete(id)
       this.contexts.delete(id)
@@ -744,11 +709,6 @@ export class RealtimePresentationRuntime {
           responseId: id,
           turnId: context.turnId || this.turns.turnId,
         })
-        context.suppressed = true
-        context.playbackEnded = true
-        context.pendingTranscripts = []
-        this.playbackTurns.delete(id)
-        this.announcementWindow.finishPlayback(id, { awaitsToolFollowUp: false })
         this.#scheduleContextCleanup(id, context)
       } else if (id) {
         this.contexts.delete(id)
@@ -757,14 +717,10 @@ export class RealtimePresentationRuntime {
       this.announcementWindow.responseDone({
         turnId: context?.turnId || this.turns.turnId,
         origin: context?.origin || 'model',
-        hasAudio: false,
+        hasAudio: Boolean(context?.hasAudio),
         awaitsToolFollowUp: false,
         failed: true,
       })
-    }
-    if (id) {
-      this.send({ type: GatewayServerEvent.PLAYBACK_CLEAR, responseId: id, reason })
-      this.#publishResponseDone(id, 'failed')
     }
     this.#flushAnnouncementsSoon()
   }
@@ -772,6 +728,5 @@ export class RealtimePresentationRuntime {
   clear() {
     this.contexts.clear()
     this.playbackTurns.clear()
-    this.responseOutcomes.clear()
   }
 }

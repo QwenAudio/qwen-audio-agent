@@ -35,7 +35,7 @@ function setup(options = {}) {
   return { controller, renderer, player, receipts, timings }
 }
 
-test('renderer-neutral controller opens first turn only for actual audio; generation done is not delivery', () => {
+test('existing GCP audio events complete only after actual playback, with no model terminal event', () => {
   const { controller, renderer, receipts, timings } = setup()
   controller.handleGateway({ type: 'response.started', responseId: 'a' })
   controller.handleGateway({ type: 'transcript.delta', responseId: 'a', text: 'hello' })
@@ -43,7 +43,6 @@ test('renderer-neutral controller opens first turn only for actual audio; genera
   controller.handleGateway(delta())
   assert.deepEqual(renderer.calls.map(call => call[0]), ['start', 'append'])
   controller.handleGateway(done())
-  controller.handleGateway({ type: 'response.done', response: { id: 'a', status: 'completed' } })
   assert.deepEqual(receipts, [])
   renderer.callbacks.onStarted()
   assert.deepEqual(receipts.map(event => event.type), ['playback.started'])
@@ -72,14 +71,14 @@ test('queues independent audio responses until actual drain; text-only responses
   controller.close()
 })
 
-test('targeted and global clear fence late source, media callbacks and queued turns', () => {
+test('existing global clear fences late source, media callbacks and queued turns even with an extra id', () => {
   const { controller, renderer, receipts } = setup()
   controller.handleGateway(delta('a'))
   const stale = renderer.callbacks
   controller.handleGateway(delta('b'))
   controller.handleGateway({ type: 'response.started', responseId: 'not-yet-audio' })
   controller.handleGateway({ type: 'playback.clear', responseId: 'b' })
-  assert.equal(renderer.turn.responseId, 'a')
+  assert.equal(controller.records.size, 0)
   controller.handleGateway({ type: 'playback.clear' })
   stale.onStarted()
   stale.onDrained()
@@ -87,21 +86,53 @@ test('targeted and global clear fence late source, media callbacks and queued tu
   controller.handleGateway(delta('b'))
   controller.handleGateway(delta('not-yet-audio'))
   assert.equal(renderer.calls.filter(call => call[0] === 'start').length, 1)
-  assert.deepEqual(receipts.map(event => [event.type, event.responseId]), [['playback.cancelled', 'b'], ['playback.cancelled', 'a']])
+  assert.deepEqual(receipts.map(event => [event.type, event.responseId]), [['playback.cancelled', 'a'], ['playback.cancelled', 'b']])
   controller.handleGateway(delta('new'))
   assert.equal(renderer.turn.responseId, 'new')
   controller.close()
 })
 
-test('failed response and interruption cancel only the matching response', () => {
+test('existing response.interrupted cancels only the matching response', () => {
   const { controller, renderer, receipts } = setup()
   controller.handleGateway(delta('a'))
   controller.handleGateway(delta('b'))
-  controller.handleGateway({ type: 'response.done', response: { id: 'b', status: 'failed' } })
+  controller.handleGateway({ type: 'response.interrupted', responseId: 'b' })
   assert.equal(renderer.turn.responseId, 'a')
   renderer.callbacks.onStarted()
   controller.handleGateway({ type: 'response.interrupted', responseId: 'a' })
   assert.deepEqual(receipts.map(e => e.type), ['playback.cancelled', 'playback.started', 'playback.cancelled'])
+  assert.equal(controller.records.size, 0)
+})
+
+test('generic Gateway errors do not guess model status; authoritative global clear cancels playback', () => {
+  const { controller, renderer, receipts } = setup()
+  controller.handleGateway(delta())
+  const callbacks = renderer.callbacks
+  controller.handleGateway({ type: 'error', responseId: 'a', message: 'backend tool failed' })
+  controller.handleGateway({ type: 'response.done', response: { id: 'a', status: 'failed' } })
+  assert.equal(controller.active.id, 'a')
+  assert.deepEqual(receipts, [])
+  callbacks.onStarted()
+  controller.handleGateway({ type: 'playback.clear', reason: 'provider_content_safety' })
+  callbacks.onDrained()
+  assert.deepEqual(receipts.map(event => event.type), ['playback.started', 'playback.cancelled'])
+  assert.equal(receipts.at(-1).reason, 'provider_content_safety')
+})
+
+test('current listening state stops all audio for barge-in; stale model state is ignored', () => {
+  const { controller, renderer, receipts } = setup()
+  controller.handleGateway({ type: 'turn.started', turnId: 'current' })
+  controller.handleGateway(delta('a'))
+  const callbacks = renderer.callbacks
+  controller.handleGateway(delta('b'))
+  controller.handleGateway({ type: 'voice.state', state: 'listening', turnId: 'previous', origin: 'model' })
+  assert.equal(controller.records.size, 2)
+  controller.handleGateway({ type: 'voice.state', state: 'listening', turnId: 'current' })
+  callbacks.onStarted()
+  callbacks.onDrained()
+  assert.deepEqual(receipts.map(event => [event.type, event.responseId, event.reason]), [
+    ['playback.cancelled', 'a', 'user_interruption'], ['playback.cancelled', 'b', 'user_interruption'],
+  ])
   assert.equal(controller.records.size, 0)
 })
 

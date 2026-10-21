@@ -62,7 +62,7 @@ process.on('message', async message => {
     else if (message.type === 'begin') media.begin(message.responseId)
     else if (message.type === 'append') media.append(message.event)
     else if (message.type === 'finish') media.finish(message.responseId)
-    else if (message.type === 'clear') media.clear(message.responseId)
+    else if (message.type === 'clear') media.clear()
     else if (message.type === 'rate') media.inputSampleRate = message.value
   } catch (error) {
     send({ type: message.type === 'answer' ? 'answer.error' : 'failure', id: message.id, error: publicError(error) })

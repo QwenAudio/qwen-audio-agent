@@ -2,11 +2,13 @@
 
 数字人是**客户端的呈现扩展**，不是 Gateway 的语音 Provider，也不是后台 Agent。
 
+实现全部位于本示例内，使用官方公开 Client SDK 与现有 GCP；不修改框架运行时、SDK、协议或框架依赖。
+
 ## 职责划分
 
 | 部分 | 负责 | 不负责 |
 | --- | --- | --- |
-| 官方 Gateway | 模型连接、对话、工具、任务、权限、响应状态 | 厂商数字人会话、人物配置、视频播放 |
+| 官方 Gateway | 模型连接、对话、工具、任务、权限、助手音频输出 | 厂商数字人会话、人物配置、视频播放 |
 | 示例客户端 | 麦克风 / 文本输入、转交助手音频、真实播放回执、打断隔离 | 第二套语音理解或对话历史 |
 | 示例本地服务 | GCP 透明代理、厂商凭据、渲染服务适配 | 改写模型输出、注入数字人协议到 Gateway |
 | 数字人服务 | 助手音频驱动画面、配对音频或实时媒体流 | 决定助手说什么 |
@@ -14,35 +16,36 @@
 ## 一轮响应
 
 1. 客户端用标准 GCP 提交用户输入。
-2. Gateway 产生助手 PCM、文字及响应生命周期事件。
+2. Gateway 通过现有 `audio.delta` 产生助手 PCM，并发送文字等事件。
 3. 首个真实 PCM 块到达后，客户端开始渲染轮次；后续 PCM 流式转发。
 4. 适配器通过自己的媒体协议接收画面与声音。
 5. 浏览器实际开始可听播放时报告 `playback.started`。
-6. `audio.done` 只结束渲染输入；`response.done` 只说明模型执行终态。
+6. `audio.done` 只结束渲染输入，不表示模型成功或用户已经听完。
 7. 数字人不再产生媒体、且播放器真正排空后，才报告 `playback.ended`。
 
 ## 三个独立边界
 
 | 边界 | 信号 | 含义 |
 | --- | --- | --- |
-| 模型执行 | `response.done` | completed / failed / cancelled / incomplete |
-| 生成音频 | `audio.done` | 不再追加本响应的模型音频 |
+| 源音频输入 | Gateway `audio.done` | 关闭本响应的渲染输入 |
+| 渲染输出 | 适配器的媒体结束信号 | 本轮不会再产生媒体，播放器仍可能有排队内容 |
 | 用户播放 | `playback.started / ended / cancelled` | 实际播放，不由模型或渲染完成事件代替 |
 
-Gateway 的通用补全只有：普通 WSS 客户端收到与 RTC 一致的响应终态；取消或失败时允许 `playback.clear` 指定 responseId。没有新增 digital_human.* GCP 事件、avatar Session 字段或 Gateway 数字人注入点。
+普通 Gateway WebSocket 不提供精确的模型执行终态，本例不承诺判断模型 completed / failed / cancelled。现有音频边界、全量 `playback.clear` 与客户端真实播放观测足以完成媒体交付；通用 `error` 用于提示，不通过错误字符串推断回复终态。无需新增 GCP 事件、avatar Session 字段或数字人注入点。
 
 ## 可替换的媒体输出
 
 公共 `AvatarPlaybackController` 只处理响应队列、取消、回退和播放回执。它不认识 DHAV、avatarSessionId、Canvas、RTCPeerConnection 或厂商 SDK。
 
 - DHAV 适配器：节点服务接入原 DHAV，浏览器用同一 WebAudio 时间轴播放 PCM / 绘制 I420。
-- 商业 RTC 适配器：节点服务创建商业组件并发放短期凭据，浏览器使用厂商播放器；生命周期回调接入同一控制器。
+- 商业 RTC 适配器可在此扩展：节点服务创建商业组件并发放短期凭据，浏览器使用厂商播放器；生命周期回调接入同一控制器。目前只交付 DHAV 实现，商业服务未完成接入验收。
 
 服务端和浏览器适配器由示例显式注册，配置选择 ID。不是框架插件规范，也不需要先发布 npm 包。
 
 ## 取消与故障
 
 - `responseId` 对应 Gateway 响应；客户端 `generation` 与回调 epoch 隔离迟到数据。
+- Gateway 的全量 `playback.clear` 清理当前和排队输出，不依赖定向清理扩展。
 - 取消先停止本地播放并使旧回调失效，再尽力通知渲染服务。
 - 新响应等待前一响应实际排空，不共享旧轮次的播放时钟。
 - 原音频只保留到首次播放；首次播放前失败可以安全回退一次。

@@ -4,7 +4,7 @@
 
 A normal qwen-audio-agent client with **two independent connections**: one to the Gateway for conversation, and one to a replaceable avatar renderer. The renderer consumes assistant reply audio; it does not own another ASR / LLM / TTS loop.
 
-No avatar runtime is injected into Gateway. No qwen-audio-agent-rtc installation is required. Run inside this repository or copy this directory and use the official package's public Client SDK.
+No framework runtime, SDK, GCP or framework dependency changes are required. No qwen-audio-agent-rtc installation is required. Run inside this repository or copy this directory and use the official package's public Client SDK with an ordinary Gateway.
 
 ## Demo
 
@@ -33,7 +33,7 @@ Node.js ≥ 22.22.2. First start an ordinary Gateway with your existing model co
 qwenaudio gateway --backend none
 ```
 
-Model keys and backend settings belong to Gateway, not this example. The example never starts, changes or stops your Gateway. To validate this branch, also run Gateway from this branch so the generic response completion and targeted playback-clear fixes are present.
+Model keys and backend settings belong to Gateway, not this example. The example never starts, changes or stops your Gateway; no example-specific Gateway branch is needed.
 
 Then, in a checkout:
 
@@ -78,7 +78,9 @@ DHAV uses WebAudio + canvas. The Vidu / ARTC approach from #570 can retain its n
 
 ## Delivery semantics
 
-Only real assistant audio starts a render turn. Upstream audio generation completion is **not** browser playback completion. The client reports actual audible start, drain and cancellation. Interruptions fence late output by response and generation.
+The client uses existing Gateway `audio.delta`, `audio.done` and global `playback.clear` events. Only real assistant audio starts a render turn. `audio.done` ends renderer input, **not** browser playback. Actual audible start, drain and cancellation drive playback receipts; interruptions fence late output by response and generation.
+
+Ordinary Gateway WebSocket output does not expose a precise model termination status. `audio.done` does not prove model success; generic `error` messages are displayed without guessing response failure or cancellation from their text. The example requires no response-status or targeted-clear extension.
 
 Before playback begins, renderer failure may fall back to original PCM once. After playback starts, failure cancels rather than replaying the reply. Input-only microphone mute preserves output. Both input and output queues are bounded.
 

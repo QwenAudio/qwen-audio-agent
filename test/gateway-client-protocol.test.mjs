@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { GatewayServerEvent } from '../shared/protocol/realtime-events.mjs'
-import { parseGatewayServerMessage } from '../shared/protocol/gateway-events.mjs'
 import {
   GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
   GATEWAY_CLIENT_KNOWN_CAPABILITIES,
@@ -101,29 +100,6 @@ test('transports a memory invalidation using the existing server envelope', () =
     type: 'memory.changed', event_id: 'evt_gateway_2',
   })
   assert.deepEqual(protocol.capabilities, [])
-})
-
-test('validates normalized output completion and optional targeted playback clears', () => {
-  const protocol = new GatewayClientProtocolSession({ sessionId: 'output', createEventId: ids() })
-  protocol.receive(createGatewaySessionHello({ clientInstanceId: 'output-client', capabilities: [] }))
-  for (const status of ['completed', 'failed', 'cancelled', 'incomplete', 'unknown']) {
-    const event = protocol.encode({ type: 'response.done', response: { id: 'reply', status } })
-    assert.deepEqual(parseGatewayServerProtocolMessage(event).response, { id: 'reply', status })
-    assert.deepEqual(parseGatewayServerMessage(event).response, { id: 'reply', status })
-  }
-  for (const scope of [{}, { responseId: 'reply', reason: 'provider_failure' }]) {
-    const event = protocol.encode({ type: 'playback.clear', ...scope })
-    assert.deepEqual(parseGatewayServerProtocolMessage(event), event)
-  }
-  assert.throws(() => parseGatewayServerMessage({
-    type: 'response.done', event_id: 'invalid-status', response: { id: 'reply', status: 'in_progress' },
-  }))
-  assert.throws(() => parseGatewayServerMessage({
-    type: 'response.done', event_id: 'invalid-id', response: { status: 'completed' },
-  }))
-  assert.throws(() => parseGatewayServerMessage({
-    type: 'playback.clear', event_id: 'invalid-target', responseId: '',
-  }))
 })
 
 test('publishes image input capability', () => {

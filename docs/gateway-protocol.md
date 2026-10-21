@@ -527,25 +527,6 @@ Task replay or the Session Journal.
 
 `response.done` means generation finished, not that the user heard the response. Delivery workflows that require audible confirmation use playback receipts.
 
-Both WebSocket and WebRTC output expose the same normalized terminal event:
-`{ "type": "response.done", "response": { "id": "response-id", "status": "completed" } }`.
-Status is `completed`, `failed`, `cancelled`, `incomplete`, or `unknown`. A provider
-error associated with a response may produce `failed` without a provider
-completion event; a later provider completion does not emit a second terminal
-event. `audio.done` closes the source audio stream; neither event confirms that
-queued output has played.
-
-`playback.clear` accepts an optional `responseId` and `reason`. When present,
-`responseId` identifies only the output to discard; when omitted, all queued
-output is cleared. For example, resolving a permission prompt can clear that
-prompt after its source generation has already completed, without changing its
-earlier `response.done` status. Clients discard the affected queued media and
-report `playback.cancelled`, never `playback.ended`, for discarded output. A
-cancellation receipt does not itself cause another `playback.clear`. Legacy
-clients without response-scoped queues may conservatively clear all output,
-but must report cancellations for every discarded response, not successful
-playback. Clients must also discard connection-local output when disconnected.
-
 ### 5.7 Local mute and external capture ownership
 
 Local mute stops microphone input at the Client and does not disconnect, cancel Tasks, or suppress output. It does not need a Gateway event.

@@ -117,7 +117,7 @@ export class ProcessWebRtcMedia {
   begin(responseId) { this.post({ type: 'begin', responseId }) }
   append(event) { this.post({ type: 'append', event }) }
   finish(responseId) { this.post({ type: 'finish', responseId }) }
-  clear(responseId) { this.post({ type: 'clear', ...(responseId ? { responseId } : {}) }) }
+  clear() { this.post({ type: 'clear' }) }
   connected() { return !this.closed && this.online }
   whenClosed() { return this.finished }
 

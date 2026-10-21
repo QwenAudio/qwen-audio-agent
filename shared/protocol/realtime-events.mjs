@@ -41,8 +41,6 @@ export const GatewayServerEvent = Object.freeze({
   AUDIO_DELTA: 'audio.delta',
   AUDIO_DONE: 'audio.done',
   RESPONSE_STARTED: 'response.started',
-  // Source generation settled; only client playback receipts confirm delivery.
-  RESPONSE_DONE: 'response.done',
   RESPONSE_INTERRUPTED: 'response.interrupted',
   TRANSCRIPT_DELTA: 'transcript.delta',
   TRANSCRIPT_FINAL: 'transcript.final',

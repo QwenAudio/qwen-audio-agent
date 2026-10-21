@@ -1,4 +1,7 @@
-// Renderer-neutral response delivery. A renderer can play PCM/canvas, remote
+// Renderer-neutral response delivery using the existing Gateway Client events.
+// audio.done seals source PCM; it does not expose a model completion status.
+// playback.clear is always a global clear, as in the built-in Gateway client.
+// A renderer can play PCM/canvas, remote
 // RTC, or another medium. It must callback only for *actual* playback:
 // startTurn(turn, {onStarted,onDrained,onError}), appendAudio(turn, base64),
 // endTurn(turn), cancelTurn(turn, reason). cancelTurn synchronously stops output
@@ -17,27 +20,37 @@ export class AvatarPlaybackController {
     this.retired = new Set()
     this.active = null
     this.generation = 0
+    this.currentTurnId = ''
     this.bufferedBytes = 0
     this.closed = false
   }
 
   handleGateway(event) {
     if (this.closed || !event || typeof event !== 'object') return
-    const id = event.responseId || event.response?.id || event.response_id
-    if (event.type === 'playback.clear' || event.type === 'response.interrupted') {
-      this._clear(id, event.reason || 'interrupted')
+    if (event.type === 'turn.started') {
+      this.currentTurnId = event.turnId || ''
       return
     }
+    if (event.type === 'playback.clear') {
+      this._clear(undefined, event.reason || 'gateway_clear')
+      return
+    }
+    if (event.type === 'voice.state' && event.state === 'listening'
+      // Match the existing client's stale-model-turn filter. Input/provider
+      // listening events are authoritative even when they carry a new turn.
+      && (!event.turnId || event.turnId === this.currentTurnId || event.origin !== 'model')) {
+      this._clear(undefined, 'user_interruption')
+      return
+    }
+    if (!['response.started', 'response.interrupted', 'audio.delta', 'audio.done'].includes(event.type)) return
+    const id = event.responseId
     if (typeof id !== 'string' || !id || id.length > 256 || this.retired.has(id)) return
     if (!this.known.has(id)) {
       if (this.known.size >= this.maxTrackedResponses) { this.close('response_tracking_limit'); return }
       this.known.add(id)
     }
-    if (event.type === 'response.done') {
-      if (['failed', 'cancelled', 'incomplete'].includes(event.response?.status || event.status)) {
-        this._clear(id, event.response?.status || event.status)
-      }
-      // Generation completion is not an audio-stream boundary or a receipt.
+    if (event.type === 'response.interrupted') {
+      this._clear(id, event.reason || 'user_interruption')
       return
     }
     if (event.type === 'audio.done') {

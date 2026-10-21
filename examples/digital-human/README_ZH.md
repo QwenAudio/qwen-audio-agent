@@ -4,7 +4,7 @@
 
 一个普通语音 Agent 客户端，同时连接 **qwen-audio-agent Gateway** 和**可替换的数字人服务**。Gateway 负责理解、对话和工具；数字人服务只消费助手回复音频，负责呈现人物与声音，不再运行一套 ASR / LLM / TTS。
 
-本示例无需给 Gateway 注入数字人运行时，也不依赖 qwen-audio-agent-rtc。可以在仓库中运行，也可以复制本目录后使用官方 npm 包的公开 Client SDK。
+本示例不修改框架运行时、SDK、GCP 或框架依赖，也不依赖 qwen-audio-agent-rtc。可以在仓库中运行，也可以复制本目录后使用官方 npm 包的公开 Client SDK，连接普通 Gateway。
 
 ## 演示
 
@@ -37,7 +37,7 @@ qwenaudio gateway --backend none
 
 模型密钥、Realtime 服务、后台 Agent 都在 Gateway 配置；不放入本例。后台可按需要启用。本示例不会启动、修改或关闭用户已有 Gateway。
 
-部署验证本分支时，Gateway 也使用本分支源码，以验证通用的 `response.done` 和定向 `playback.clear` 补全。不要将旧版本缺失的生命周期事件当作已具备。
+无需数字人专用 Gateway 分支或协议补丁。
 
 ### 2. 安装并启动客户端
 
@@ -97,11 +97,13 @@ DHAV 服务需提供：
 ## 播放与打断
 
 - 收到第一块真实助手音频才创建渲染轮次；纯文本和工具调用不会产生假播放。
-- 模型 `audio.done` 仅结束输入；必须等数字人媒体和浏览器播放队列排空才发 `playback.ended`。
+- 使用现有 `audio.delta`、`audio.done` 和全量 `playback.clear`；`audio.done` 仅结束渲染输入，必须等数字人媒体和浏览器播放队列排空才发 `playback.ended`。
 - 播放回执由真实可听播放驱动，不使用静音音轨或定时器模拟已播放。
 - 用户打断、新会话、连接关闭会清理队列，隔离旧 response / generation 的迟到媒体。
 - 首次播放前渲染失败可回退原音频一次；已经开始数字人播放后失败，取消本轮而不是从头重播。
 - 麦克风静音只停止收音，不停止助手输出；队列与网络缓冲均有上限。
+
+普通 Gateway WebSocket 输出不提供精确的模型执行终态，`audio.done` 不能证明模型成功。通用 `error` 只用于提示，不从错误文案猜测某条回复失败或取消。本例不要求响应终态或定向清理扩展。
 
 ## 安全与范围
 

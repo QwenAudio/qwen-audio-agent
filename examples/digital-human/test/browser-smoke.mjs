@@ -34,7 +34,7 @@ async function until(predicate, label, timeout = 15_000) {
 }
 
 const inbound = []
-const upstreamDone = new Map()
+const audioDone = new Map()
 const rendererEvents = []
 const connections = []
 let responseNumber = 0
@@ -64,8 +64,7 @@ gateway.on('connection', (socket, request) => {
           audio: pcmTone(event.text === 'interrupt this long reply' ? 3 : 0.8, 330 + responseNumber * 55) })
       }
       emit(socket, { type: 'audio.done', responseId: id })
-      upstreamDone.set(id, Date.now())
-      emit(socket, { type: 'response.done', response: { id, status: 'completed' } })
+      audioDone.set(id, Date.now())
     }
   })
 })
@@ -124,14 +123,14 @@ try {
   const finish = async id => {
     await until(() => receipts(id).some(event => event.type === 'playback.ended'), `${id} playback drain`)
     assert.deepEqual(receipts(id).map(event => event.type), ['playback.started', 'playback.ended'])
-    assert.ok(receipts(id).find(event => event.type === 'playback.ended').receivedAt - upstreamDone.get(id) > 600,
-      'Upstream completion must not stand in for actual media drain')
+    assert.ok(receipts(id).find(event => event.type === 'playback.ended').receivedAt - audioDone.get(id) > 600,
+      'Gateway audio.done must not stand in for actual media drain')
   }
 
   for (const [index, text] of ['first reply', 'second reply'].entries()) {
     await send(text)
     const id = `response-${index + 1}`
-    await until(() => upstreamDone.has(id), 'upstream response.done')
+    await until(() => audioDone.has(id), 'Gateway audio.done')
     assert.equal(receipts(id).some(event => event.type === 'playback.ended'), false)
     await finish(id)
   }
@@ -161,21 +160,70 @@ try {
   // Late old response chunks cannot resurrect interrupted media or receipts.
   emit(connections[0].socket, { type: 'audio.delta', responseId: 'response-3', sampleRate: 24000, audio: pcmTone(0.2) })
   emit(connections[0].socket, { type: 'audio.done', responseId: 'response-3' })
-  emit(connections[0].socket, { type: 'response.done', response: { id: 'response-3', status: 'completed' } })
   await delay(300)
   assert.deepEqual(receipts('response-3').map(event => event.type), ['playback.started', 'playback.cancelled'])
 
   await send('empty response')
-  await until(() => upstreamDone.has('response-5'), 'empty response.done')
+  await until(() => audioDone.has('response-5'), 'empty audio.done')
   await delay(350)
   assert.equal(receipts('response-5').some(event => ['playback.started', 'playback.ended'].includes(event.type)), false,
     'No audio or empty/silent placeholders can counterfeit delivery receipts')
+
+  // These are the existing Gateway failure/interruption events. A generic
+  // error has no response identity and is display-only; only an explicit
+  // interruption, global clear, or disconnect fences presentation output.
+  const cancelledBy = async event => {
+    const id = `response-${responseNumber + 1}`
+    await send('interrupt this long reply')
+    await until(() => receipts(id).some(receipt => receipt.type === 'playback.started'), `${id} start`)
+    if (event.type === 'playback.clear') {
+      emit(connections[0].socket, { type: 'error', message: 'Provider temporarily unavailable' })
+      await page.locator('[data-testid="avatar-error"]').filter({ hasText: 'Provider temporarily unavailable' }).waitFor()
+      await delay(75)
+      assert.deepEqual(receipts(id).map(receipt => receipt.type), ['playback.started'],
+        'Unscoped Gateway error must not invent response cancellation')
+    }
+    emit(connections[0].socket, event.type === 'response.interrupted' ? { ...event, responseId: id } : event)
+    await until(() => receipts(id).some(receipt => receipt.type === 'playback.cancelled'), `${event.type} cancellation`)
+    await delay(50)
+    const frames = await page.locator(STAGE).getAttribute('data-frame-count')
+    const sources = await page.evaluate(() => window.__audioEvidence.length)
+    await delay(180)
+    assert.deepEqual(receipts(id).map(receipt => receipt.type), ['playback.started', 'playback.cancelled'])
+    assert.equal(await page.locator(STAGE).getAttribute('data-frame-count'), frames, 'Clear fences canvas updates')
+    assert.equal(await page.evaluate(() => window.__audioEvidence.length), sources, 'Clear fences audio scheduling')
+  }
+  await cancelledBy({ type: 'playback.clear', reason: 'provider_error' })
+  await cancelledBy({ type: 'voice.state', state: 'listening', turnId: 'user-speech' })
+  await cancelledBy({ type: 'response.interrupted' })
+
+  const disconnectedId = `response-${responseNumber + 1}`
+  await send('interrupt this long reply')
+  await until(() => receipts(disconnectedId).some(event => event.type === 'playback.started'), 'playback before Gateway loss')
+  connections[0].socket.close(1011, 'upstream unavailable')
+  await page.waitForFunction(selector => document.querySelector(selector)?.dataset.connection === 'error', STAGE)
+  const stoppedFrames = await page.locator(STAGE).getAttribute('data-frame-count')
+  const stoppedSources = await page.evaluate(() => window.__audioEvidence.length)
+  await delay(250)
+  assert.equal(await page.locator(STAGE).getAttribute('data-frame-count'), stoppedFrames)
+  assert.equal(await page.evaluate(() => window.__audioEvidence.length), stoppedSources)
+  assert.equal(receipts(disconnectedId).some(event => event.type === 'playback.ended'), false,
+    'Gateway disconnect must stop output without a fabricated successful receipt')
+  await page.locator('[data-testid="avatar-connect"]').click()
+  await page.waitForFunction(selector => document.querySelector(selector)?.dataset.connection === 'connected', STAGE)
+  assert.equal(connections.length, 2)
+  assert.equal(await page.locator(STAGE).getAttribute('data-frame-count'), '0')
+  const recoveredId = `response-${responseNumber + 1}`
+  await send('reply after Gateway reconnect')
+  await finish(recoveredId)
+
   const evidence = await page.evaluate(() => window.__audioEvidence)
   assert.ok(evidence.length >= 40)
   assert.ok(evidence.every(item => item.contextState === 'running' && item.energy > 0), 'Every playback source contains actual non-silent PCM')
   const result = { ok: true, completed: ['response-1', 'response-2', 'response-4'],
     cancelled: 'response-3', paintedFrames: Number(await page.locator(STAGE).getAttribute('data-frame-count')),
-    realAudioSources: evidence.length, microphoneBytes: 640 }
+    realAudioSources: evidence.length, microphoneBytes: 640,
+    existingGatewayEvents: ['audio.done', 'error', 'playback.clear', 'voice.state', 'response.interrupted', 'disconnect'] }
   await page.close()
 
   // Exercise real bridge closure, not just the controller in isolation. A

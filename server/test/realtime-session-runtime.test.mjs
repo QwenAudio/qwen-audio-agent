@@ -25,7 +25,7 @@ function harness(t, {
   backend = true, ownerId = 'runtime-owner', sessionId = 'conversation',
   taskManager = new TaskManager(), ...overrides
 } = {}) {
-  const events = [], frontends = [], tasks = [], observations = []
+  const events = [], frontends = [], tasks = [], observations = [], done = []
   const runs = new Map(), memoryListeners = new Set()
   const manager = taskManager
   const conversationSync = new ConversationSync()
@@ -49,6 +49,7 @@ function harness(t, {
     ownerId, sessionId, logger, taskManager: manager, taskOperations: operations,
     backendRuntime, backendAvailability: { snapshot: () => ({ configured: backend, ok: backend, known: true }) },
     send: event => events.push(event), onTaskEvent: event => tasks.push(event),
+    onResponseDone: event => done.push(event),
     observers: new SessionObservers([{
       onAudio: event => observations.push(event),
       onSessionClosed: event => observations.push({ ...event, closed: true }),
@@ -111,20 +112,8 @@ function harness(t, {
     await Promise.all(manager.list({ active: true }).map(task => operations.cancel(task.id, { ownerId })))
   })
   return { runtime, send, connect, request, manager, operations, events, frontends, runs, tasks, observations,
-    memoryListeners, provider, conversationSync, ownerId, sessionId }
+    done, memoryListeners, provider, conversationSync, ownerId, sessionId }
 }
-
-test('client cancellation receipts do not echo another playback.clear', async t => {
-  const h = harness(t)
-  const f = await h.connect()
-  f.emit({ type: 'response.audio.delta', response_id: 'reply', delta: 'AAA=' })
-  h.send({ type: Input.PLAYBACK_STARTED, responseId: 'reply' })
-  const clears = () => h.events.filter(event => event.type === 'playback.clear').length
-  const before = clears()
-  h.send({ type: Input.PLAYBACK_CANCELLED, responseId: 'reply', reason: 'provider_failure' })
-  h.send({ type: Input.PLAYBACK_CANCELLED, responseId: 'reply', reason: 'provider_failure' })
-  assert.equal(clears(), before)
-})
 
 test('invalid speech releases a completed task without another user turn', async t => {
   const h = harness(t)
@@ -260,7 +249,7 @@ test('frontend runtime chats without backend, socket, handshake or provider netw
   f.emit({ type: 'response.audio_transcript.done', response_id: 'reply', transcript: 'hello back' })
   f.emit({ type: 'response.done', response: { id: 'reply', status: 'completed' } })
   assert.ok(h.events.some(event => event.type === 'transcript.final' && event.content === 'hello back'))
-  assert.deepEqual(h.events.filter(e => e.type === 'response.done').map(e => e.response), [{ id: 'reply', status: 'completed' }])
+  assert.deepEqual(h.done, [{ id: 'reply', status: 'completed' }])
   assert.equal(h.manager.list({}).length, 0)
 })
 

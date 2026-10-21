@@ -104,9 +104,7 @@ export class BrowserWebRtcConnection {
     } catch (error) { this.fail(error); return false }
   }
   command(event) { return this.send({ type: 'qwaudio.command', event: { event_id: crypto.randomUUID(), ...event } }) }
-  receipt(type, responseId, reason) {
-    return this.send({ type: `qwaudio.playback.${type}`, response_id: responseId, ...(reason ? { reason } : {}) })
-  }
+  receipt(type, responseId) { return this.send({ type: `qwaudio.playback.${type}`, response_id: responseId }) }
 
   received(event) {
     if (this.closed) return
@@ -120,7 +118,7 @@ export class BrowserWebRtcConnection {
     } else if (event.type === 'qwaudio.output.drained') {
       const output = this.outputs.get(event.response_id)
       if (output) output.drained = performance.now()
-    } else if (event.type === 'output_audio_buffer.cleared') this.clearPlayback(event.response_id, event.reason)
+    } else if (event.type === 'output_audio_buffer.cleared') this.clearPlayback()
     else if (event.type === 'qwaudio.event') {
       const item = event.event
       if (['input.suspend', 'input.resume'].includes(item.type)) {
@@ -229,17 +227,10 @@ export class BrowserWebRtcConnection {
     this.analyser.getFloatTimeDomainData(this.samples)
     return Math.sqrt(this.samples.reduce((sum, value) => sum + value * value, 0) / this.samples.length)
   }
-  clearPlayback(responseId = null, reason = 'user_interruption') {
-    const ids = responseId ? (this.outputs.has(responseId) ? [responseId] : []) : [...this.outputs.keys()]
-    for (const id of ids) {
-      this.receipt('cancelled', id, reason)
-      this.outputs.delete(id)
-    }
-    if (this.outputs.size) return
+  clearPlayback() {
+    for (const id of this.outputs.keys()) this.receipt('cancelled', id)
+    this.outputs.clear()
     this.onPlayback('idle')
-    // Only clear-all may mute the shared RTP track: another response can
-    // already be queued at the sender without an output.started receipt yet.
-    if (responseId) return
     this.audio.muted = true
     clearTimeout(this.unmuteTimer)
     this.unmuteTimer = setTimeout(() => { if (!this.closed) this.audio.muted = false }, 400)

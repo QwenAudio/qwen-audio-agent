@@ -479,19 +479,6 @@ Task SSE 路由只写传输层注释心跳。这些注释不会进入 Task 回�
 
 `response.done` 只表示生成完成，不表示用户已经听到。确实需要可听送达确认的工作流使用播放回执。
 
-WebSocket 与 WebRTC 输出使用同一规范化终态事件：
-`{ "type": "response.done", "response": { "id": "response-id", "status": "completed" } }`。
-状态为 `completed`、`failed`、`cancelled`、`incomplete` 或 `unknown`。关联到回复的
-Provider 错误可以在没有 Provider 完成事件时产生 `failed`；后到的 Provider 完成事件
-不会再次发送终态。`audio.done` 只关闭源音频流；两者均不代表排队的输出已经播放。
-
-`playback.clear` 接受可选的 `responseId` 与 `reason`。有 `responseId` 时只丢弃对应
-回复的输出；省略时清除全部排队输出。例如，权限决定可以在提示源端生成完成后清除
-该提示，不改变此前 `response.done` 的状态。客户端丢弃对应排队媒体，并为被丢弃的
-输出上报 `playback.cancelled`，不能上报 `playback.ended`。取消回执本身不会触发新的
-`playback.clear`。不支持按回复分队列的旧客户端可以保守地清除全部输出，但必须为每个
-被丢弃的回复上报取消，不能谎报播放完成。连接断开时客户端也必须丢弃该连接的本地输出。
-
 ### 5.7 本地静音与外部采集占用
 
 本地静音只在 Client 停止麦克风输入，不断开连接、不取消 Task、不抑制输出，不需要 Gateway 事件。

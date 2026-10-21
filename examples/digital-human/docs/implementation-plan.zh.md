@@ -14,17 +14,18 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-不需要模型密钥、不启动真实 Gateway、不调用 GPU / 付费 API。另有主框架通用回归验证 WSS / RTC 响应终态、定向播放取消和提醒确认。
+不需要模型密钥、不启动真实 Gateway、不调用 GPU / 付费 API。测试使用现有 Gateway 消息形状，验证音频输入结束、全量清理、渲染取消与真实播放回执；不依赖框架补丁或精确模型终态。
 
 ## 请原作者验证自部署 DHAV
 
-使用同一分支启动普通 Gateway 与本示例，连接已经部署的 FlashHead / OpenAvatarChat 服务。不要启用旧版 Gateway digitalHuman 注入或定制 WebRTC worker。
+使用已安装框架的常规配置启动普通 Gateway，再独立启动本示例，连接已经部署的 FlashHead / OpenAvatarChat 服务。无需示例专用 Gateway 分支、digitalHuman 注入或定制 WebRTC worker。单独复制示例时安装官方 SDK 包即可构建。
 
 - [ ] 创建会话成功，长期令牌不出现在浏览器配置 / 日志。
 - [ ] 连续至少五轮对话，后续轮次不瞬间播放、不卡住、不沿用旧时钟。
 - [ ] 文本和语音输入都正常；麦克风静音不影响数字人继续播放。
 - [ ] 说话中打断，旧画面 / 音频不复活，新回复正常。
-- [ ] 模型先完成、渲染仍继续时，播放不会被提前截断。
+- [ ] `audio.done` 到达而渲染仍继续时，播放不会被提前截断。
+- [ ] 全量 `playback.clear` 清除当前与排队媒体；通用 `error` 不被猜测为某条回复的模型终态。
 - [ ] 首次媒体前服务失败，可回退普通音频一次。
 - [ ] 已播放部分内容后服务失败，不从头重复整句。
 - [ ] 新会话、断线重连、关闭页面后，远端会话正确释放。

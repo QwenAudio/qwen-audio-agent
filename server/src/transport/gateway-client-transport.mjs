@@ -222,7 +222,6 @@ export function attachGatewayClientTransport(server, {
         const publicEvent = projectGatewayTaskEvent(event)
         if (publicEvent) send(ws, publicEvent)
       },
-      onResponseDone: event => ws.onResponseDone?.(event),
     })
     if (!voiceConnections.has(ownerId)) voiceConnections.set(ownerId, new Set())
     voiceConnections.get(ownerId).add(voiceClient)

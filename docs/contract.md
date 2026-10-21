@@ -263,6 +263,7 @@ conversation surface.
 | server → client | `turn.started`, `voice.state` | Foreground conversation-turn identity and state |
 | server → client | `audio.delta`, `audio.done`, `playback.clear` | Audio playback stream and cancellation |
 | server → client | `response.started`, `response.interrupted` | Response lifecycle keyed by `responseId` |
+| server → client | `response.done` | Source generation settled, with `response: { id, status }`; not a playback receipt |
 | server → client | `transcript.delta`, `transcript.final`, `transcript.discard` | User and assistant transcript lifecycle |
 | server → client | `task.*` | Optional background Task snapshots, progress, authorization, and completion |
 | server → client | `agent.activity`, `client.state`, `error` | Foreground activity hints, the temporary 5.x client-state migration alias, and errors |

@@ -231,6 +231,7 @@ await orb.load()
 | 服务端 → 客户端 | `turn.started`、`voice.state` | 前台对话轮次标识与状态 |
 | 服务端 → 客户端 | `audio.delta`、`audio.done`、`playback.clear` | 播放音频流及清除指令 |
 | 服务端 → 客户端 | `response.started`、`response.interrupted` | 以 `responseId` 标识的回复生命周期 |
+| 服务端 → 客户端 | `response.done` | 源端生成结束，携带 `response: { id, status }`；不是播放回执 |
 | 服务端 → 客户端 | `transcript.delta`、`transcript.final`、`transcript.discard` | 用户与助手转写生命周期 |
 | 服务端 → 客户端 | `task.*` | 可选的后台 Task 快照、进度、授权与完成事件 |
 | 服务端 → 客户端 | `agent.activity`、`client.state`、`error` | 前台活动提示、临时保留的 5.x Client State 迁移别名与错误 |

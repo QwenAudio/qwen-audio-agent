@@ -234,7 +234,19 @@ export class NativeWebRtcMedia {
     } catch { this.fail('audio sender failed') }
   }
 
-  clear() {
+  clear(responseId = null) {
+    if (responseId) {
+      this.blocked.add(responseId)
+      while (this.blocked.size > 128) this.blocked.delete(this.blocked.values().next().value)
+      this.known.delete(responseId)
+      this.responses.delete(responseId)
+      this.queue = this.queue.filter(entry => {
+        if (entry.responseId !== responseId) return true
+        if (!entry.end) this.queuedSamples -= entry.samples.length - entry.offset
+        return false
+      })
+      return
+    }
     for (const responseId of this.known) this.blocked.add(responseId)
     while (this.blocked.size > 128) this.blocked.delete(this.blocked.values().next().value)
     this.known.clear()

@@ -122,7 +122,8 @@ export class WebRtcConnection extends EventEmitter {
       }
       if (['qwaudio.playback.started', 'qwaudio.playback.ended', 'qwaudio.playback.cancelled'].includes(event.type)) {
         if (typeof event.response_id !== 'string' || !event.response_id || event.response_id.length > 128) throw new Error('response_id required')
-        this.input({ type: event.type.slice(8), responseId: event.response_id, reason: 'user_interruption' })
+        this.input({ type: event.type.slice(8), responseId: event.response_id,
+          reason: typeof event.reason === 'string' ? event.reason.slice(0, 160) : 'user_interruption' })
         return
       }
       if (event.type === 'qwaudio.command' && isGatewayClientRuntimeMessage(event.event?.type)) {
@@ -171,8 +172,10 @@ export class WebRtcConnection extends EventEmitter {
     } else if (event.type === 'response.started') {
       this.media.begin?.(event.responseId)
       this.output({ type: 'response.created', response: { id: event.responseId, status: 'in_progress' } })
+    } else if (event.type === 'response.done') {
+      this.output({ type: 'response.done', response: event.response })
     } else if (['playback.clear', 'response.interrupted'].includes(event.type)) {
-      this.media.clear()
+      this.media.clear(event.responseId)
       this.output({ type: 'output_audio_buffer.cleared', response_id: event.responseId, reason: event.reason })
     } else if (['transcript.delta', 'transcript.final'].includes(event.type)) {
       const final = event.type === 'transcript.final'
@@ -192,10 +195,6 @@ export class WebRtcConnection extends EventEmitter {
       if (event.type === 'input.resume') this.inputAllowed = true
       this.output({ type: 'qwaudio.event', event })
     }
-  }
-
-  onResponseDone(response) {
-    this.output({ type: 'response.done', response })
   }
 
   ping() { if (this.media.connected()) this.emit('pong') }

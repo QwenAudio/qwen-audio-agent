@@ -87,6 +87,46 @@ async function waitUntil(predicate, timeoutMs = 2000) {
   throw new Error('Gateway condition was not met')
 }
 
+test('ordinary GCP WebSocket receives normalized response completion and targeted output failure', async t => {
+  let emit
+  const { server, gateway } = gatewayHarness({
+    realtimeFrontendFactory: options => {
+      emit = options.onEvent
+      const frontend = {
+        provider: options.providerRegistry.resolve(options.providerName),
+        ready: false,
+        connect: async () => { frontend.ready = true },
+        close: () => { frontend.ready = false },
+        cancel() {}, updateAgentContext() {}, ensureResponse: async () => {},
+        appendAudio() {}, injectContext: async () => {}, whenIdle: async () => {},
+      }
+      return frontend
+    },
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => { await gateway.close(); await new Promise(resolve => server.close(resolve)) })
+  const client = await connect(server, createGatewaySessionHello({
+    capabilities: ['input.text', 'playback.receipts'],
+    connection: { input_enabled: false, output_enabled: true, text_only: false },
+  }))
+  await waitFor(client.received, event => event.type === 'voice.ready')
+  emit({ type: 'response.audio.delta', response_id: 'first', delta: 'AAA=' })
+  emit({ type: 'response.done', response: { id: 'first', status: 'completed', usage: { private: true } } })
+  const done = await waitFor(client.received, event => event.type === 'response.done')
+  assert.deepEqual(done.response, { id: 'first', status: 'completed' })
+  assert.equal(typeof done.event_id, 'string')
+  emit({ type: 'response.audio.delta', response_id: 'failed', delta: 'AAA=' })
+  emit({ type: 'error', response_id: 'failed', error: { message: 'synthetic provider failure' } })
+  const clear = await waitFor(client.received, event => event.type === 'playback.clear' && event.responseId === 'failed')
+  assert.equal(clear.reason, 'provider_failure')
+  await waitFor(client.received, event => event.type === 'response.done' && event.response.id === 'failed')
+  assert.deepEqual(client.received.filter(event => event.type === 'response.done').map(event => event.response), [
+    { id: 'first', status: 'completed' }, { id: 'failed', status: 'failed' },
+  ])
+  assert.equal(client.received.some(event => event.type === 'playback.clear' && !event.responseId), false)
+  client.socket.close()
+})
+
 test('a muted voice-capable client can claim voice after unmute', async t => {
   const { server, gateway } = gatewayHarness()
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))

@@ -56,7 +56,7 @@ export function isSleepActivityEvent(event = {}) {
 export function createRealtimeSessionRuntime({
   ownerId, sessionId, send, logger: connectionLogger, observers,
   voiceAccess, actionCapabilities, initialInputSuspension = null,
-  onTaskEvent, onResponseDone = () => {},
+  onTaskEvent,
   frontendToolSourcesReady = Promise.resolve(),
   memoryService, sessionDigests, notesStore,
   taskManager, taskOperations, backendRuntime, backendAvailability,
@@ -72,7 +72,7 @@ export function createRealtimeSessionRuntime({
   const emit = event => {
     if (closed) return
     if (event.type === GatewayServerEvent.PLAYBACK_CLEAR) {
-      presentationRuntime?.clearPlayback({ reason: event.reason })
+      presentationRuntime?.clearPlayback({ responseId: event.responseId, reason: event.reason })
     }
     send(event)
   }
@@ -612,14 +612,6 @@ export function createRealtimeSessionRuntime({
         })
         .finally(() => toolCallTimings.delete(callFields.callId))
     } else if (presentationRuntime.handle(event)) {
-      // Alternative transports distinguish generation from audio delivery.
-      // Existing client events stay unchanged.
-      if (event.type === 'response.done') {
-        onResponseDone({
-          id: realtimeResponseId(event),
-          status: event.response?.status || 'unknown',
-        })
-      }
       return
     } else if (event.type === 'error') {
       // A response refused by a busy single-slot provider is retried by the
@@ -656,7 +648,7 @@ export function createRealtimeSessionRuntime({
         const generation = ++contentRecoveryGeneration
         const canRecover = realtimeRecoveryContext.beginRecovery(failedContext, recentMessages)
         clearResponseCandidate()
-        presentationRuntime.failResponse(event)
+        presentationRuntime.failResponse(event, { reason: 'content_safety' })
         emit({
           type: GatewayServerEvent.PLAYBACK_CLEAR,
           reason: 'provider_content_safety',

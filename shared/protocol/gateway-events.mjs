@@ -267,6 +267,16 @@ const GatewayVoicePayloadSchemas = Object.freeze({
   [GatewayServerEvent.AUDIO_DONE]: z.object({
     responseId: z.string().min(1),
   }).passthrough(),
+  [GatewayServerEvent.RESPONSE_DONE]: z.object({
+    response: z.object({
+      id: z.string().min(1),
+      status: z.enum(['completed', 'failed', 'cancelled', 'incomplete', 'unknown']),
+    }),
+  }).passthrough(),
+  [GatewayServerEvent.PLAYBACK_CLEAR]: z.object({
+    responseId: z.string().min(1).optional(),
+    reason: z.string().optional(),
+  }).passthrough(),
   [GatewayServerEvent.RESPONSE_STARTED]: z.object({
     responseId: z.string().min(1),
   }).passthrough(),

@@ -47,6 +47,20 @@ export function isSleepActivityEvent(event = {}) {
   ].includes(event.type)
 }
 
+// The frontend checks shouldCreate on enqueue and again before sending: decide
+// once. A busy-refused request never ran, so retry it only while the
+// permission is still pending.
+export function permissionResponseGate({ isCandidate, hasPendingPermission, claim }) {
+  let decided = null
+  return ({ refused = false } = {}) => {
+    if (decided === null) {
+      decided = isCandidate() && hasPendingPermission()
+      if (decided) claim()
+    }
+    return refused ? decided && hasPendingPermission() : decided
+  }
+}
+
 /**
  * One frontend conversation runtime per client connection.
  * Receives decoded semantic input plus trusted identity; emits internal events.
@@ -475,14 +489,11 @@ export function createRealtimeSessionRuntime({
         turnId: context.turnId,
         turnGeneration: context.turnGeneration,
       }, {
-        shouldCreate: () => {
-          if (
-            responseTurnCandidate !== context
-            || !hasPendingPermission()
-          ) return false
-          clearResponseCandidate()
-          return true
-        },
+        shouldCreate: permissionResponseGate({
+          isCandidate: () => responseTurnCandidate === context,
+          hasPendingPermission,
+          claim: clearResponseCandidate,
+        }),
       }).catch(error => emit({
         type: 'error',
         message: `暂时无法处理权限回答：${error.message}`,

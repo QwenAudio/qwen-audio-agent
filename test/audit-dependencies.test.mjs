@@ -14,10 +14,10 @@ if (mode === 'unavailable') {
   console.log(JSON.stringify({ message: '503 Service Unavailable', error: { summary: '' } }))
   process.exit(1)
 }
-const high = mode === 'vulnerable' ? 1 : 0
+const high = mode === 'vulnerable' || (mode === 'build-vulnerable' && !process.argv.includes('--omit=dev')) ? 1 : 0
 console.log(JSON.stringify({
   auditReportVersion: 2,
-  vulnerabilities: high ? { example: { severity: 'high', via: [] } } : {},
+  vulnerabilities: high ? { vite: { severity: 'high', via: [{ source: 1116229 }] } } : {},
   metadata: { vulnerabilities: { high, critical: 0 } },
 }))
 process.exit(high ? 1 : 0)
@@ -57,4 +57,10 @@ test('non-release CI can continue when the audit service is unavailable', () => 
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /审计服务不可用；非发版检查继续/)
   assert.match(result.stderr, /正在重试/)
+})
+
+test('release audit rejects formerly exempt VitePress build vulnerabilities', () => {
+  const result = audit('build-vulnerable')
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /依赖审计发现未批准问题.*1116229/)
 })

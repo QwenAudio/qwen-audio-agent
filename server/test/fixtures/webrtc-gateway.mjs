@@ -25,6 +25,7 @@ export class FakeMedia {
   chunks = []
   closed = false
   clearCount = 0
+  dhControl = []
   async answer() { return 'v=0\r\ns=test-answer\r\n' }
   send(event) { this.events.push(event) }
   append(event) { this.chunks.push(event) }
@@ -32,6 +33,11 @@ export class FakeMedia {
   clear() { this.clearCount++ }
   connected() { return !this.closed }
   close() { this.closed = true }
+  dhOpen(binding) { this.dhControl.push({ op: 'open', binding }) }
+  dhBegin(turn, format, idle) { this.dhControl.push({ op: 'begin', turn, format, ...(idle ? { idle: true } : {}) }) }
+  dhFinish(turn) { this.dhControl.push({ op: 'finish', turn }) }
+  dhClear(generation, block) { this.dhControl.push({ op: 'clear', generation, ...(block === false ? { block: false } : {}) }) }
+  dhClose() { this.dhControl.push({ op: 'close' }) }
 }
 
 export async function waitUntil(predicate, timeout = 3000) {
@@ -42,9 +48,10 @@ export async function waitUntil(predicate, timeout = 3000) {
   }
 }
 
-export async function rtcHarness(t, { video = false, options = {}, realMedia = false } = {}) {
+export async function rtcHarness(t, { video = false, options = {}, realMedia = false, digitalHuman = null } = {}) {
   const provider = testProvider(video)
   const media = []
+  const mediaSettings = []
   const frontends = []
   const registry = { resolve: () => provider }
   const ownerId = `rtc-${randomUUID()}`
@@ -67,6 +74,7 @@ export async function rtcHarness(t, { video = false, options = {}, realMedia = f
     respondAuthorization: async () => ({}),
     permissionPolicy: { resolveDecision: () => null, rememberDecision() {} },
     logger, realtimeProviderRegistry: registry, defaultRealtimeProvider: 'dashscope',
+    digitalHuman,
     realtimeFrontendFactory: factoryOptions => {
       const frontend = {
         provider, capabilities: provider.capabilities, ready: false, audio: [], images: [], inputs: [],
@@ -91,11 +99,13 @@ export async function rtcHarness(t, { video = false, options = {}, realMedia = f
       mediaFactory: settings => {
         const instance = realMedia ? new ProcessWebRtcMedia(settings) : new FakeMedia()
         media.push(instance)
+        mediaSettings.push(settings)
         return instance
       },
       ...options,
     },
     getGateway: () => gateway, providerRegistry: registry, providerName: 'dashscope',
+    digitalHuman,
   })
   app.use((_req, res) => res.sendStatus(404))
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -110,5 +120,5 @@ export async function rtcHarness(t, { video = false, options = {}, realMedia = f
     server.closeAllConnections()
     await new Promise(resolve => server.close(resolve))
   })
-  return { gateway, ingress, provider, media, frontends, base, headers, offer, ownerId }
+  return { gateway, ingress, provider, media, mediaSettings, frontends, base, headers, offer, ownerId }
 }

@@ -143,7 +143,7 @@ export function attachGatewayClientTransport(server, {
     })
   })
 
-  const attachClient = (ws, url, identity) => {
+  const attachClient = (ws, url, identity, { avatarPersonaId = null } = {}) => {
     // ws emits protocol/size/socket failures as `error`, not just `close`.
     // Keep them connection-local, including failures before session.hello.
     ws.on('error', error => {
@@ -203,6 +203,7 @@ export function attachGatewayClientTransport(server, {
       actionCapabilities,
       ownerId,
       sessionId,
+      avatarPersonaId,
       send: event => send(ws, event),
       logger: connectionLogger,
       initialInputSuspension: inputArbitration?.status?.(),
@@ -491,14 +492,17 @@ export function attachGatewayClientTransport(server, {
 
   return {
     // Internal authenticated transport port, never a public auth bypass.
-    attachClient(connection, { identity, sessionId = 'main' }) {
+    // avatarPersonaId is set only by an in-process transport that resolved it
+    // against the server-side allowlist (WebRTC avatar downlink); it never
+    // arrives from a client message.
+    attachClient(connection, { identity, sessionId = 'main', avatarPersonaId = null }) {
       if (!identity?.ownerId) throw new TypeError('authenticated identity required')
       const url = new URL('http://localhost/api/realtime')
       url.searchParams.set('sessionId', sessionId)
       attachedClients.add(connection)
       connection.once('close', () => attachedClients.delete(connection))
       try {
-        attachClient(connection, url, identity)
+        attachClient(connection, url, identity, { avatarPersonaId })
       } catch (error) {
         connection.close(1011, 'session initialization failed')
         throw error

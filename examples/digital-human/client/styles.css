@@ -1,0 +1,177 @@
+/* Standalone shell for the digital-human example.
+  
+   The layout, colour and control rules below are copied from web/src/styles.css
+   so the example looks like the product without importing it: this page is
+   served from /skins and must not depend on the product bundle. Only the rules
+   this page actually renders are kept — task cards, permission prompts,
+   knowledge library, multimodal composer and the desktop orb shell are not part
+   of bounded avatar mode.
+
+   avatar-hero.css (alongside) supplies the stage itself and expects `.orb` and
+   the header button classes defined here. */
+
+:root {
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #f5f5f7;
+  background: #08090d;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body { margin: 0; min-width: 320px; min-height: 100%; overflow: hidden; }
+button { font: inherit; cursor: pointer; }
+
+.app {
+  height: 100dvh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% -15%, #694fd43d, transparent 35%),
+    radial-gradient(circle at 15% 70%, #12332c2c, transparent 30%),
+    #08090d;
+}
+
+header {
+  height: 68px;
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  border-bottom: 1px solid #ffffff12;
+  background: #0a0b10c9;
+  backdrop-filter: blur(18px);
+}
+
+.brand { display: flex; align-items: center; gap: 11px; font-weight: 700; }
+.brand > span {
+  width: 32px; height: 32px; display: grid; place-items: center;
+  border-radius: 10px; background: linear-gradient(145deg, #a38aff, #6343e5);
+  box-shadow: 0 0 25px #7156e768;
+}
+.brand div { display: flex; flex-direction: column; }
+.brand small { margin-top: 2px; font-size: 8px; letter-spacing: .16em; color: #777384; }
+
+/* No .backend element here, so the status cluster takes over its job of pushing
+   the right-hand controls to the edge. */
+.status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #9795a0;
+  font-size: 12px;
+}
+.status i { width: 7px; height: 7px; border-radius: 50%; background: #555; }
+.status i.idle { background: #50dfab; box-shadow: 0 0 9px #50dfab80; }
+.status i.listening { background: #50dfab; box-shadow: 0 0 12px #50dfab; }
+.status i.connecting,
+.status i.processing { background: #f1c665; box-shadow: 0 0 12px #f1c665; }
+.status i.speaking { background: #9a7dff; box-shadow: 0 0 12px #9a7dff; }
+.status i.error { background: #ff6f78; box-shadow: 0 0 12px #ff6f78; }
+
+header button { padding: 9px 13px; border-radius: 10px; color: #ddd; border: 1px solid #ffffff18; background: #ffffff08; }
+header .voice.active { color: white; border-color: #785cf4; background: #785cf4; }
+header .ghost.active { color: white; border-color: #785cf480; background: #785cf42e; }
+
+.workspace {
+  width: min(760px, calc(100% - 32px));
+  height: calc(100dvh - 68px);
+  min-height: 0;
+  margin: auto;
+  padding: 40px 0 20px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.hero { flex: 0 0 auto; text-align: center; }
+
+.orb {
+  width: 112px; height: 112px; padding: 0; display: grid; place-items: center;
+  margin: auto; border: 0; border-radius: 50%;
+  background: radial-gradient(circle at 38% 28%, #e0d8ff, #8068f1 36%, #251675 72%);
+  box-shadow: 0 0 28px #7659ef7a;
+  transition: transform .2s, box-shadow .2s;
+}
+.orb.listening { animation: pulse 1.2s infinite; }
+.orb.speaking { animation: speak .48s infinite alternate; }
+
+@keyframes pulse {
+  50% { transform: scale(1.055); box-shadow: 0 0 58px #57dbaa78; }
+}
+@keyframes speak {
+  to { transform: scale(1.04); filter: saturate(1.25) brightness(1.12); }
+}
+
+/* Persona allowlist notice: a stale ?persona= or a Gateway started without
+   --renderer must be visible rather than looking like a hung connection. */
+.notice {
+  flex: 0 0 auto;
+  width: min(560px, 86vw);
+  margin: 10px auto 0;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid #f1c66559;
+  background: #f1c66514;
+  color: #f6e3b4;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.messages {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  margin: 24px 0 14px;
+  padding: 4px 8px 12px;
+  display: flex;
+  flex-direction: column;
+}
+.messages::-webkit-scrollbar { display: none; }
+
+.empty { flex: 1; display: grid; place-content: center; text-align: center; color: #74717c; gap: 8px; }
+.empty b { color: #a49fae; font-size: 12px; }
+.empty span { font-size: 14px; }
+
+article {
+  flex: 0 0 auto;
+  width: fit-content;
+  max-width: 82%;
+  margin: 9px 0;
+  display: flex;
+  flex-direction: column;
+  align-self: flex-start;
+}
+article.user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+article label { color: #777483; font-size: 10px; }
+article .message-body {
+  margin: 5px 0 0;
+  padding: 12px 15px;
+  line-height: 1.65;
+  text-align: left;
+  overflow-wrap: anywhere;
+  border-radius: 15px;
+  background: #15151d;
+  /* Transcripts are plain text here — the product renders Markdown, this
+     example deliberately does not pull in react-markdown for it. */
+  white-space: pre-wrap;
+}
+article.user .message-body { background: #7358e8; }
+article .interrupted {
+  margin-top: 4px;
+  color: #777483;
+  font-size: 10px;
+}
+
+@media (max-width: 720px) {
+  header { padding: 0 14px; gap: 8px; }
+  .brand small { display: none; }
+  article { max-width: 90%; }
+}

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Digital human example: DHAV renderer protocol, Mock renderer, provider adapter and WebUI composition for qwen-audio-agent.",
+  "description": "Digital human example with DHAV Mock/FlashHead and Vidu ARTC presentations.",
   "engines": {
     "node": ">=22.22.2"
   },
@@ -12,7 +12,14 @@
     "start": "node bootstrap/start.mjs",
     "renderer:mock": "node providers/mock/mock-renderer-server.mjs",
     "build:client": "vite build",
-    "dev:client": "vite"
+    "dev:client": "vite",
+    "vidu:install": "npm ci --prefix vidu",
+    "start:vidu": "npm run desktop:vidu --prefix vidu",
+    "dev:vidu": "npm run dev --prefix vidu",
+    "start:orb": "npm run desktop:orb --prefix vidu",
+    "test:vidu": "npm test --prefix vidu",
+    "build:vidu": "npm run build --prefix vidu",
+    "test:all": "npm test && npm run test:vidu"
   },
   "dependencies": {
     "ws": "^8.21.3"

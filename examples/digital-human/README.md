@@ -1,270 +1,168 @@
 # Digital Human Example
 
-[English](README.md) | [中文](README_ZH.md)
+English | [中文](README_ZH.md)
 
-A runnable voice + avatar demo on top of the qwen-audio-agent Gateway. The
-Realtime model still does the understanding and the talking; a replaceable DHAV
-renderer consumes the reply audio and produces a talking avatar, which reaches
-the browser over a WebRTC `recvonly` video track. The product `web/` app is not
-involved: this example ships its own SPA, served by the Gateway from `/skins`.
+Digital human presentations for Qwen Audio Agent: DHAV Mock/FlashHead and Vidu S2
+Avatar Component Edition. The Realtime provider handles speech and conversation;
+the avatar service renders the character. Code, configuration templates and demo
+videos for both paths live here. Choose one path to run.
 
-## Demo
+## Core capabilities
 
-**Natural conversation, brought to life.** Realtime voice conversation with
-audio-driven lip movements and facial expressions.
+| Path | Implemented capabilities | Guide |
+| --- | --- | --- |
+| DHAV Mock | GPU-free audio spectrum video with real speech, WebRTC and A/V scheduling | [Run guide](docs/dhav.md) |
+| DHAV FlashHead | Self-hosted GPU renderer, browser audio/video, interruption and audio fallback | [Deployment](docs/dhav.md) |
+| Vidu / ARTC | Cloud rendering, default/custom image, browser and draggable desktop overlay, switch to stock orb | [Vidu guide](vidu/README.md) |
+
+### Demo videos
+
+Existing digital human demo, retained alongside the DHAV/FlashHead guide:
 
 https://github.com/user-attachments/assets/5301ef5e-b674-4561-93bb-e0c7544cf696
 
-Two ways to run the demo:
+[Watch or download the digital human demo](assets/digital-human-demo.mp4)
 
-1. **Mock renderer** — any machine, no GPU. An audio-reactive spectrum stands in
-   for the avatar, but every other layer (Realtime voice, WebRTC negotiation,
-   DHAV protocol, A/V pairing, playback receipts) is real.
-2. **Self-deployed FlashHead renderer** — a real talking head on a GPU host.
-   §3.3 covers the deployment; afterwards you have a FlashHead API endpoint to
-   point this example at.
+Vidu desktop avatar:
 
-Voice always uses the real Realtime upstream (DashScope), so an API key is
-required in both modes.
+<video src="assets/digital_human_demo_vidu.mp4" controls width="100%"></video>
 
-```
-browser SPA (/skins/digital-human)
-   │  WebRTC: mic up, audio + avatar video down
-   ▼
-Gateway (this repo)  ──WSS──►  DashScope Realtime (ASR/LLM/TTS)
-   │  DHAV over HTTP/WS
-   ▼
-renderer: local Mock  |  your FlashHead service (GPU)
-```
+[Watch or download the Vidu demo](assets/digital_human_demo_vidu.mp4)
 
-## 1. Prerequisites
+Demo footage illustrates interaction; automated checks validate code separately.
+Neither proves live-service acceptance on the current machine.
 
-- Node.js >= 22.22.2.
-- The repository installed at the root (`npm install`). The example's SPA has no
-  manifest of its own: `react` and `vite` resolve upward from the root
-  `node_modules`, so a root install is enough to build it.
-- The native WebRTC extension plus this example's own dependency (`ws`):
+## Architecture and boundaries
 
-  ```bash
-  npm run example:digital-human:install     # from the repo root
-  ```
+| Boundary | DHAV Mock / FlashHead | Vidu / ARTC |
+| --- | --- | --- |
+| Audio to renderer | Gateway presentation layer → DHAV provider | Browser Gateway SDK → local Vidu proxy |
+| Media return | Timestamped paired PCM/I420 → Gateway media worker → WebRTC | Vidu → ARTC → browser SDK |
+| UI | `client/` SPA served at Gateway `/skins/digital-human` | `vidu/client/` browser and Electron overlay |
+| Gateway lifecycle | `bootstrap/` starts an isolated example Gateway | `vidu/gateway-host.mjs` borrows or starts the desktop Gateway; stops only its own process |
+| Configuration/state | `.env.local`, `.runtime/` here | `vidu/.env.local`, `vidu/.desktop/`; Gateway state shared with the orb |
 
-- A DashScope key. Copy the example env file and fill it in (`.env.local` is
-  gitignored and must never be committed):
+DHAV uses the framework's existing `digitalHuman` injection, WebRTC video output
+and media scheduler. Vidu uses the Gateway Client SDK and an independent ARTC
+downlink. The transports remain separate; adding Vidu requires no further core
+changes. See the [architecture analysis (Chinese)](docs/integration-architecture.zh.md)
+for the reasoning, synchronization boundaries and future integration requirements.
 
-  ```bash
-  cd examples/digital-human
-  cp .env.example .env.local                # then set DASHSCOPE_API_KEY
-  ```
+## Quick start
 
-- The built avatar SPA. `start.mjs` refuses to boot without it:
+Run from a source checkout with Node.js >= 22.22.2. First run `npm ci` at the
+repository root.
 
-  ```bash
-  npm run build:client                      # -> examples/digital-human/skins/digital-human/
-  ```
+### DHAV Mock / FlashHead
 
-Configuration reference (see `.env.example`). Everything except
-`DASHSCOPE_API_KEY` is optional in Mock mode; `DH_RENDERER_TOKEN` becomes
-required as soon as `DH_RENDERER_URL` points at a remote renderer.
+Start these commands at the repository root:
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `DASHSCOPE_API_KEY` | — | Realtime upstream credential. Required. |
-| `DH_GATEWAY_HOST` / `DH_GATEWAY_PORT` | `127.0.0.1` / `18895` | Where the demo Gateway listens. |
-| `DH_RENDERER_URL` | empty | Renderer base URL. Empty means `start.mjs` launches the local Mock. |
-| `DH_RENDERER_TOKEN` | empty | Bearer token for a remote renderer control plane. **Required whenever `DH_RENDERER_URL` is set**: session creation otherwise fails with 401 and the turn silently degrades to audio only. Ignored by the local Mock. Never logged. |
-| `DH_PERSONA` | `mock-default` | Startup persona; must be in the server allowlist. The local Mock only knows `mock-default`; a remote FlashHead renderer uses `flashhead-default`. A persona the renderer does not know is rejected with 400 at session creation. |
-| `DH_MOCK_FAULT` | empty | Mock fault injection (see §2). |
-| `DH_MOCK_RENDERER_HOST` / `DH_MOCK_RENDERER_PORT` | `127.0.0.1` / `0` | Mock listener (local Mock mode only). |
-| `QWEN_AUDIO_REALTIME_VOICE` | provider default | Avatar timbre. Read by the framework's Realtime provider resolution rather than by `bootstrap/env.mjs`, so it reaches the process through `.env.local`. Audio-model voices: `longanqian`, `longanlingxin`, `longanlingxi`, `longanxiaoxin`, `longanlufeng`. Leave the line out entirely to keep the default — an empty value means "explicitly cleared" to the framework. |
-| `QWEN_AUDIO_REALTIME_MODEL` | `qwen-audio-3.0-realtime-plus` | Realtime model. `compose-gateway.mjs` assigns it with `\|\|=`, so a value in `.env.local` wins. |
-
-## 2. Run with the Mock renderer
-
-From the example directory:
-
-```bash
+```sh
+npm run example:digital-human:install
+cd examples/digital-human
+cp .env.example .env.local
+# Set DASHSCOPE_API_KEY. FlashHead also needs renderer URL, token and persona.
+npm run build:client
 npm start
 ```
 
-or from the repo root:
+Open the printed `http://127.0.0.1:18895/skins/digital-human/index.html?...` URL,
+click the microphone, allow recording and speak. Verify replies, video and text;
+text input also triggers replies. Mock needs no GPU but still uses a real voice
+provider key. FlashHead requires a separately deployed GPU service; follow the
+[full guide](docs/dhav.md). Ctrl-C stops the Gateway and owned local Mock.
 
-```bash
-npm run example:digital-human
+### Vidu / ARTC
+
+Run in `examples/digital-human`:
+
+```sh
+npm run vidu:install
+cp vidu/.env.example vidu/.env.local
+# Set VIDU_API_KEY, ARTC_APP_ID and ARTC_APP_KEY; configure Gateway voice/tools.
+npm run start:vidu
 ```
 
-Because `DH_RENDERER_URL` is empty, `start.mjs` starts the local Mock renderer
-on a random port, runs preflight, then boots the Gateway with the avatar video
-downlink enabled. Expected output:
+Choose an image in overlay settings, click **开始对话**, allow the microphone and
+speak. Verify moving video and audible replies. Click **结束对话** before quitting.
+The overlay has been checked on macOS; other desktop platforms need local
+acceptance. Vidu API access, ARTC and the online SDK are prerequisites; starting a
+conversation can incur charges. See [API access and configuration](vidu/README.md#api-access-and-configuration).
+Edit existing environment files instead of copying the template again.
 
-```
-[start] Mock renderer listening on http://127.0.0.1:5xxxx
-[preflight] webrtc_extension: ok
-[preflight] gateway_port: ok
-[preflight] renderer_ready: ok
-[start] Gateway ready at http://127.0.0.1:18895
-[start] Open http://127.0.0.1:18895/skins/digital-human/index.html?persona=mock-default in a browser, allow the microphone, and speak.
-```
+| Command in this directory | Purpose |
+| --- | --- |
+| `npm start` | DHAV Mock, or remote FlashHead when `DH_RENDERER_URL` is configured |
+| `npm run start:vidu` | Vidu desktop overlay |
+| `npm run dev:vidu` | Vidu browser at `http://127.0.0.1:5181` |
+| `npm run start:orb` | Stock orb; also available through Vidu overlay settings |
 
-Open the printed URL, allow the microphone, and speak — or type a sentence into
-the composer under the avatar and press Enter. You should see:
+Use one microphone UI at a time. These are separate presentation paths, without
+seamless renderer switching inside an active conversation.
 
-- the avatar stage paint video frames (the Mock renders an audio-reactive
-  spectrum), with the status dot walking
-  `待命 → 正在听 → 正在处理 → 正在说话 → 待命`;
-- the assistant transcript appear in the panel below while the avatar speaks;
-- a barge-in works: interrupt the avatar mid-sentence and it stops instead of
-  finishing the old reply.
+## Configuration and data
 
-The Mock renderer is also a fault-injection harness for the degradation paths:
+- DHAV defaults to local port `18895`; see [.env.example](.env.example). Shell
+  variables override this directory's `.env.local`. Only a missing voice key is
+  read from the repository-root `.env.local`. Isolated state lives in `.runtime/`.
+  The renderer receives assistant audio; microphone audio goes to the Gateway
+  and the voice upstream.
+- Vidu defaults to ports `5181/5182`; see [vidu/.env.example](vidu/.env.example).
+  Shell variables override `vidu/.env.local`. Assistant audio/text and the image
+  go to Vidu; ARTC returns media. The microphone goes only to the Gateway. Vidu
+  keys, ARTC AppKey and control secrets stay in the local server.
+- Vidu shares the orb's voice/tool configuration and persistent Gateway state,
+  with separate window state. Restart the relevant runtime after environment
+  changes. Removing `vidu/.desktop/` resets overlay state, not Gateway history.
+- Environment files, `.runtime/` and `vidu/.desktop/` are ignored. After exiting
+  the relevant processes, manually remove that mode's environment/state files to
+  reset it. Remote retention follows the services' policies; local deletion does
+  not delete remote data.
 
-```bash
-npm start -- --fault=first_media_timeout
-```
+See the [DHAV guide](docs/dhav.md) and [Vidu guide](vidu/README.md) for parameters,
+authentication and troubleshooting.
 
-| `--fault=` | What you should observe |
-|---|---|
-| `first_media_timeout` | Renderer admits audio but never publishes media; after the first-media timeout the session degrades to audio-only: you hear the reply, the stage shows `仅音频（头像降级）`, and no video frames are painted. |
-| `media_stall` | Media stops mid-turn; the stall watchdog degrades or cancels the turn. |
-| `protocol_error` | Renderer speaks a broken DHAV frame; the turn is cancelled, the connection survives. |
-| `mid_turn_failure` | Renderer dies mid-turn; the turn degrades, later turns recover. |
-| `channel_drop` | The media channel drops; the session rebuilds with a new generation. |
+## Validation and limitations
 
-In every case an avatar failure must degrade to audio-only and must never tear
-down the voice connection.
+After installing both paths' dependencies, run here:
 
-## 3. Run with a self-deployed FlashHead renderer
-
-This section assumes you already have a DHAV-compatible FlashHead service
-reachable over HTTP/WS (for example the OpenAvatarChat FlashHead Avatar
-processor running SoulX-FlashHead Lite on a GPU host). Deploying that service
-is covered in §3.3.
-
-### 3.1 What the renderer must provide
-
-The provider (`providers/dhav-provider.mjs`) speaks DHAV against:
-
-| Endpoint | Purpose |
-|---|---|
-| `GET /health/ready` | Startup preflight probe. Must return 2xx before the Gateway boots. |
-| `POST /v1/avatar/sessions` | Create an avatar session; accepts `Authorization: Bearer <DH_RENDERER_TOKEN>` when configured. Returns the session id plus a scoped, short-lived media channel URL and token. |
-| `WS <session.input.url>` | The private media channel: PCM audio in, DHAV A/V units out. Authenticated with the scoped token from session creation, not the outer bearer token. |
-| `DELETE /v1/avatar/sessions/<id>` | Teardown. |
-
-### 3.2 Configure and start
-
-Put the renderer address and token in `examples/digital-human/.env.local`:
-
-```bash
-DH_RENDERER_URL=http://<gpu-host>:<port>
-DH_RENDERER_TOKEN=<bearer token>
-DH_PERSONA=flashhead-default
+```sh
+npm run test:all
+npm run build:client
+npm run build:vidu
 ```
 
-then:
+`npm test` covers DHAV only; `npm run test:vidu` covers Vidu only. Mock/protocol
+checks need neither a GPU nor live Vidu calls. The DHAV browser smoke command
+`npm run test:digital-human-browser` (repository root) requires a real voice key
+and the native WebRTC extension; see the run guide.
 
-```bash
-npm start
-```
+DHAV schedules media against the worker's audio clock and can fall back to audio;
+camera input and avatar output cannot currently be enabled together. Vidu
+estimates Gateway playback receipts with a silent PCM clock, does not measure
+actual ARTC playback and does not use DHAV's audio fallback. Tokens are not
+renewed automatically; active sessions last at most two hours. Use the standard
+Gateway WebUI for tool approvals and additional input. Live FlashHead/Vidu video,
+speech, interruption, tools and shutdown still need manual acceptance with the
+external services configured.
 
-or pass them per-run without touching the env file:
+## Replacement and extension
 
-```bash
-npm start -- --renderer=http://<gpu-host>:<port> --persona=flashhead-default
-```
+- Replace the DHAV renderer through `DH_RENDERER_URL`, `DH_RENDERER_TOKEN` and
+  `DH_PERSONA`; the service must satisfy the [provider contract (Chinese)](docs/provider-contract.zh.md).
+  Clear the remote URL to restore local Mock.
+- Select Vidu China/international service using matching `VIDU_HOST` and API key
+  in `vidu/.env.local`. Change the image in settings; voice/tools use Gateway configuration.
+- Vidu cannot directly implement the existing DHAV media contract. Sharing the
+  media worker would first require server-side RTC reception and paired PCM/I420
+  with turn/generation metadata, followed by synchronization/fallback validation.
 
-`flashhead-default` is the real-renderer persona in the server allowlist
-(`mock-default` stays available for the Mock). The Gateway prints the same demo
-URL as in §2; open it with `?persona=flashhead-default`. The SPA resolves the
-persona from the server allowlist: an unlisted `?persona=` is not used, and the
-page shows a notice explaining the substitution instead of failing silently.
+## Authors and acknowledgements
 
-Preflight fails fast with `renderer_unreachable` / `renderer_not_ready` if the
-service is down, so a bad address never turns into a hung browser session.
-
-### 3.3 Deploying the FlashHead renderer
-
-The renderer side lives in its own repository, which also carries the full
-deployment tutorial and is the source of truth for everything renderer-side:
-
-> <https://github.com/juhayna-zh/OpenAvatarChat> — an adapted OpenAvatarChat
-> that exposes a self-deployable, DHAV-compatible digital-human API for this
-> example (FlashHead rendering, DHAV v1, Bearer-token auth, port 18910).
-
-In short, on the GPU host:
-
-```bash
-git clone https://github.com/juhayna-zh/OpenAvatarChat && cd OpenAvatarChat
-uv run install.py                                   # dependencies and CUDA environment
-.venv/bin/python scripts/download_models.py         # SoulX-FlashHead Lite weights
-openssl rand -hex 32 > ~/.config/dhav-bridge/token  # the bearer token, generated once
-DHAV_AUTH_TOKEN=$(cat ~/.config/dhav-bridge/token) \
-  .venv/bin/python src/demo.py --config config/chat_with_flashhead_passthrough.yaml --host 127.0.0.1
-```
-
-The service then listens on `:18910`; point this example at it with
-`DH_RENDERER_URL=http://<gpu-host>:18910` and `DH_RENDERER_TOKEN` set to the same
-token you generated. Follow that repository's README for GPU/driver
-prerequisites, weight licensing and anything beyond a single-host setup.
-
-Two contract details must stay in sync between the two repositories:
-
-- **Readiness path.** This example's preflight probes `GET /health/ready`
-  (`bootstrap/preflight.mjs`), while the renderer README documents
-  `GET /readiness`. Expose both on the bridge, or align `checkRendererReady`
-  with the renderer, before the first run — otherwise preflight stops the demo
-  with `renderer_not_ready`.
-- **Token names.** The renderer reads `DHAV_AUTH_TOKEN`; this example sends
-  `DH_RENDERER_TOKEN`. Same secret, two names: generate it once and put it in
-  both places. Never commit either copy.
-
-### 3.4 Network and security notes
-
-- The FlashHead transport is plaintext HTTP/WS. If the GPU host sits in a cloud
-  security group, restrict the source to your fixed egress IP; never open it to
-  `0.0.0.0/0`.
-- Renderer address and persona come only from server-side startup
-  configuration. A browser cannot point the Gateway at an arbitrary renderer or
-  persona; unknown personas are rejected with `avatar_persona`, not silently
-  downgraded.
-- `DH_RENDERER_TOKEN` is read from `.env.local` only, is sent solely as the
-  `Authorization` header to the renderer, and is never written to logs, docs or
-  commits.
-
-## 4. Tests
-
-```bash
-npm test                                # in the example: unit + contract tests, no GPU, no network
-npm run test:digital-human              # same suite, from the repo root
-npm run test:digital-human-browser      # headless-Chromium end-to-end smoke
-```
-
-The browser smoke drives the real Realtime upstream through the built SPA with
-only the renderer mocked, so it needs `DASHSCOPE_API_KEY` and a built
-`skins/digital-human/`. Deterministic coverage (codec, scheduler, output
-selector, orchestrator, presentation hooks) lives in the non-browser suites.
-
-## 5. Troubleshooting
-
-| Symptom | Cause and fix |
-|---|---|
-| `skins/digital-human not found; run \`npm run build:client\` first` | The SPA was never built. Run `npm run build:client`. |
-| `DASHSCOPE_API_KEY is required` | Missing key. Set it in `examples/digital-human/.env.local` or the repo-root `.env.local`. |
-| preflight `webrtc_extension_missing` | The native WebRTC package is not installed. Run `npm run example:digital-human:install`. |
-| preflight `port_in_use` | Another Gateway on `:18895`. Stop it, or use `--port=` / `DH_GATEWAY_PORT`. |
-| preflight `renderer_unreachable` | Renderer down, wrong address, or a cloud security group blocking your egress IP. Check §3.4. |
-| Browser notice `Gateway 未启用数字人…` | The Gateway started without a renderer or with an empty persona allowlist. |
-| `400 avatar_persona` on the offer | The requested persona is not in the server allowlist. Use `mock-default` or `flashhead-default`. |
-| `400 avatar_conflict` | Camera input and avatar output cannot be combined in this preview; the dual-video m-line association is unverified. |
-| Avatar video stays black until you click | Browser autoplay policy. Click the page once; the SPA surfaces this as an error hint. |
-| Voice works but no avatar, status shows `仅音频（头像降级）` | The renderer failed to publish first media in time. Expected under `--fault=first_media_timeout`; otherwise check the renderer logs. |
-
-## 6. Design documents
-
-The runnable demo implements the proposals in this directory:
-
-1. [Architecture and scope](docs/design.zh.md)
-2. [Provider contract and concrete mappings](docs/provider-contract.zh.md)
-3. [OpenAvatarChat implementation plan and acceptance](docs/implementation-plan.zh.md)
-
-Other design files here are historical context and are superseded by that set.
+- [Haina Zhu / juhayna-zh](https://github.com/juhayna-zh): DHAV, Mock/FlashHead,
+  WebRTC presentation and client in [PR #562](https://github.com/QwenAudio/qwen-audio-agent/pull/562).
+- [zzasdf](https://github.com/zzasdf): Vidu/ARTC browser, desktop overlay and demo
+  footage in [PR #548](https://github.com/QwenAudio/qwen-audio-agent/pull/548).
+- Services/dependencies: [Vidu](https://platform.vidu.cn/), [Alibaba Cloud ARTC](https://help.aliyun.com/zh/live/activate-application),
+  [OpenAvatarChat FlashHead service](https://github.com/juhayna-zh/OpenAvatarChat).
+  Their service, model and asset licenses apply; this example does not imply official endorsement.

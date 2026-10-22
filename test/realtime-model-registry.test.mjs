@@ -49,7 +49,7 @@ test('preserves every built-in ID, label, family, voice, capability and order', 
       [DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL, 'Qwen3.8 Omni Flash Realtime', 'omni-v2', 'omni', 'Tina', 'semantic_vad', true],
       [DASHSCOPE_OMNI_FLASH_REALTIME_MODEL, 'Qwen3.5 Omni Flash Realtime', 'omni', 'omni', 'Ethan', 'semantic_vad', true],
       [DASHSCOPE_OMNI_PLUS_REALTIME_MODEL, 'Qwen3.5 Omni Plus Realtime', 'omni', 'omni', 'Ethan', 'semantic_vad', true],
-      [DASHSCOPE_AUDIO_31_REALTIME_MODEL, 'Qwen Audio 3.1 Realtime Plus', 'audio', 'audio', 'longanqian_v3.1', 'smart_turn', false],
+      [DASHSCOPE_AUDIO_31_REALTIME_MODEL, 'Qwen Audio 3.1 Realtime Plus', 'audio', 'audio', 'longanqian_v3.1', 'smart_turn_v2', false],
       [DASHSCOPE_AUDIO_30_REALTIME_MODEL, 'Qwen Audio 3.0 Realtime Plus', 'audio', 'audio', 'longanqian', 'smart_turn', false],
       [DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL, 'Qwen Audio 3.0 Realtime Flash', 'audio', 'audio', 'longanqian', 'smart_turn', false],
     ]],
@@ -91,6 +91,18 @@ test('preserves every built-in ID, label, family, voice, capability and order', 
   assert.equal(resolveDashScopeRealtimeModelProfile('   ').id, DEFAULT_DASHSCOPE_REALTIME_MODEL)
   assert.equal(resolveRealtimeModelProfile('   ').family, 'unknown')
   assert.deepEqual(createRealtimeModelCatalogs(), BUILTIN_REALTIME_MODEL_CATALOGS)
+})
+
+test('Audio 3.1 turn detection does not mutate the shared API preset or other models', () => {
+  const profile = resolveDashScopeRealtimeModelProfile(DASHSCOPE_AUDIO_31_REALTIME_MODEL)
+  assert.equal(profile.api, 'audio')
+  assert.deepEqual(profile.sessionDefaults.turnDetection, { type: 'smart_turn_v2' })
+  assert.notEqual(profile.sessionDefaults.turnDetection, REALTIME_API_PROFILES.dashscope.audio.turnDetection)
+  assert.equal(Object.isFrozen(profile.sessionDefaults.turnDetection), true)
+  assert.deepEqual(REALTIME_API_PROFILES.dashscope.audio.turnDetection, { type: 'smart_turn' })
+  for (const id of [DASHSCOPE_AUDIO_30_REALTIME_MODEL, DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL]) {
+    assert.deepEqual(resolveDashScopeRealtimeModelProfile(id).sessionDefaults.turnDetection, { type: 'smart_turn' })
+  }
 })
 
 test('registered models select reusable API presets and optional model-owned voices', () => {

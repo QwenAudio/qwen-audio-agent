@@ -4,6 +4,34 @@ import { WebRtcConnection } from '../src/transport/webrtc/protocol.mjs'
 import { webRtcOptions } from '../src/transport/webrtc/config.mjs'
 import { PcmResampler, encodePcm, decodePcm } from '../src/transport/webrtc/pcm.mjs'
 import { rtcHarness, FakeMedia, testProvider, waitUntil, OFFER, JPEG } from './fixtures/webrtc-gateway.mjs'
+import {
+  DASHSCOPE_AUDIO_30_REALTIME_MODEL,
+  DASHSCOPE_AUDIO_31_REALTIME_MODEL,
+  DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
+  resolveDashScopeRealtimeModelProfile,
+} from '../../shared/realtime-model-catalog.mjs'
+
+test('WebRTC describes and validates each Audio model turn detection default', () => {
+  for (const [model, type] of [
+    [DASHSCOPE_AUDIO_31_REALTIME_MODEL, 'smart_turn_v2'],
+    [DASHSCOPE_AUDIO_30_REALTIME_MODEL, 'smart_turn'],
+    [DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL, 'smart_turn'],
+  ]) {
+    const media = new FakeMedia()
+    const provider = { ...testProvider(), model: () => model,
+      modelProfile: () => resolveDashScopeRealtimeModelProfile(model) }
+    const connection = new WebRtcConnection({ media, provider, sessionId: 'test' })
+    assert.deepEqual(connection.description().turn_detection, { type })
+    connection.ready = true
+    connection.receive(JSON.stringify({ type: 'session.update', session: { turn_detection: { type } } }))
+    assert.equal(media.events.at(-1).type, 'session.updated')
+    assert.deepEqual(media.events.at(-1).session.turn_detection, { type })
+    const wrongType = type === 'smart_turn_v2' ? 'smart_turn' : 'smart_turn_v2'
+    connection.receive(JSON.stringify({ type: 'session.update', session: { turn_detection: { type: wrongType } } }))
+    assert.equal(media.events.at(-1).error.code, 'invalid_event')
+    connection.close()
+  }
+})
 
 test('WebRTC defaults to disabled and validates opt-in ICE configuration', () => {
   assert.equal(webRtcOptions({}), null)

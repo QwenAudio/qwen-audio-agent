@@ -157,7 +157,7 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
       family: 'audio',
       sessionDefaults: {
         voice: 'longanqian_v3.1',
-        turnDetection: { type: 'smart_turn' },
+        turnDetection: { type: 'smart_turn_v2' },
       },
       modelCapabilities: {
         textInput: true,
@@ -259,13 +259,13 @@ test('defaults to Audio 3.1 while preserving explicitly selected Audio 3.0 profi
   }
 })
 
-test('Audio 3.1 has its own default voice and retains Audio capabilities', () => {
+test('Audio 3.1 has its own session defaults and retains Audio capabilities', () => {
   assert.equal(DASHSCOPE_AUDIO_31_REALTIME_MODEL, AUDIO_31_PLUS_ID)
   const profile = resolveRealtimeModelProfile(AUDIO_31_PLUS_ID, 'dashscope')
   const legacy = resolveDashScopeRealtimeModelProfile(AUDIO_PLUS_ID)
   assert.equal(profile.family, 'audio')
   assert.equal(profile.sessionDefaults.voice, 'longanqian_v3.1')
-  assert.deepEqual(profile.sessionDefaults.turnDetection, { type: 'smart_turn' })
+  assert.deepEqual(profile.sessionDefaults.turnDetection, { type: 'smart_turn_v2' })
   assert.deepEqual(profile.modelCapabilities, legacy.modelCapabilities)
   assert.deepEqual(profile.transportCapabilities, legacy.transportCapabilities)
 })

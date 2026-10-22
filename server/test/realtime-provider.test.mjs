@@ -502,7 +502,7 @@ test('fails closed instead of ambiguously correlating two pending starts', async
   assert.match(errors[0].message, /响应关联冲突/)
 })
 
-test('configures Qwen Audio Realtime with Smart Turn only', () => {
+test('configures default Audio 3.1 with Smart Turn v2 and no acoustic VAD tuning', () => {
   const session = REALTIME_PROVIDERS.qwen.buildSession({ configured: false })
   const permissionSession = REALTIME_PROVIDERS.qwen.buildSession({
     configured: false,
@@ -514,7 +514,7 @@ test('configures Qwen Audio Realtime with Smart Turn only', () => {
     tool.function.name === 'respond_permission'
   ))
 
-  assert.deepEqual(session.turn_detection, { type: 'smart_turn' })
+  assert.deepEqual(session.turn_detection, { type: 'smart_turn_v2' })
   assert.equal(session.turn_detection.threshold, undefined)
   assert.equal(session.turn_detection.silence_duration_ms, undefined)
   assert.equal(REALTIME_PROVIDERS.qwen.inputSampleRate, 16000)
@@ -568,7 +568,7 @@ test('resolves exact DashScope model profiles for sessions and responses', t => 
       'Qwen Audio 3.1 Realtime Plus',
       'audio',
       'longanqian_v3.1',
-      { type: 'smart_turn' },
+      { type: 'smart_turn_v2' },
     ],
     [
       DASHSCOPE_AUDIO_30_REALTIME_MODEL,
@@ -817,7 +817,7 @@ test('client text-only hints do not change the Qwen Realtime session', () => {
   })
 
   assert.deepEqual(session.modalities, ['text', 'audio'])
-  assert.deepEqual(session.turn_detection, { type: 'smart_turn' })
+  assert.deepEqual(session.turn_detection, { type: 'smart_turn_v2' })
   assert.deepEqual(
     REALTIME_PROVIDERS.qwen
       .buildSpeakResponse('完成', { textOnly: true })

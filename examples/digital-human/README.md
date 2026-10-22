@@ -1,44 +1,106 @@
-# Digital Human Example
+# Digital-human client example
 
 [English](README.md) | [中文](README_ZH.md)
 
-Status: a recorded demo is available below. The integration design remains a
-proposal; this directory does not yet provide runnable code or installation
-scripts. Design baseline: Gateway WebRTC PR #465, main commit `9ad6348f`.
+A normal qwen-audio-agent client with **two independent connections**: one to the Gateway for conversation, and one to a replaceable avatar renderer. The renderer consumes assistant reply audio; it does not own another ASR / LLM / TTS loop.
+
+No framework runtime, SDK, GCP or framework dependency changes are required. No qwen-audio-agent-rtc installation is required. Run inside this repository or copy this directory and use the official package's public Client SDK with an ordinary Gateway.
 
 ## Demo
 
-**Natural conversation, brought to life.** Realtime voice conversation with
-audio-driven lip movements and facial expressions.
+Original DHAV / FlashHead demonstration; the refactored browser client still requires real GPU deployment validation:
 
 https://github.com/user-attachments/assets/5301ef5e-b674-4561-93bb-e0c7544cf696
 
-## Goal
+## Boundaries
 
-The Gateway remains the client's only integration endpoint. A replaceable
-`DigitalHumanProvider` consumes assistant reply audio, with optional text, and
-produces avatar media. ASR, LLM, TTS/S2S, tools, and history stay outside it.
+| Connection | Content | Responsibility |
+| --- | --- | --- |
+| Browser ↔ Gateway | Unmodified GCP: microphone/text, assistant PCM, lifecycle events, playback receipts | Conversation and tasks |
+| Browser ↔ renderer adapter | Assistant PCM, render controls, media or short-lived RTC credentials | Avatar presentation |
 
-The proposed first integration reuses OpenAvatarChat's FlashHead Avatar processor with
-SoulX-FlashHead Lite in an independent Python GPU service. LiveAvatar Avatar Only
-(LITE) is a second contract reference, not a required demo integration.
+The example-local Node host proxies GCP unchanged and protects renderer credentials. It is not a custom Gateway.
 
-## Design and implementation handoff
+- Implemented: DHAV adapter, GPU-free synthetic Mock renderer, remote DHAV configuration.
+- Extension seam: commercial adapters can play their native RTC media without converting to DHAV. A Vidu adapter and paid-service validation are **not included** in this revision.
+- Supported reply format: PCM16 little-endian, 24 kHz, mono. Other sample rates are rejected rather than misplayed.
 
-1. [Architecture and scope](docs/design.zh.md)
-2. [Provider contract and concrete mappings](docs/provider-contract.zh.md)
-3. [OpenAvatarChat implementation plan and acceptance](docs/implementation-plan.zh.md)
+## Run
 
-All three documents are proposals, not implemented framework APIs. Other design
-files in this directory are historical context and are superseded by this set.
+Node.js ≥ 22.22.2. First start an ordinary Gateway with your existing model configuration, for example:
 
-## Dependency boundary
+```bash
+qwenaudio gateway --backend none
+```
 
-- Framework: small provider-neutral extension points, no new third-party dependency.
-- Example: provider adapters, its own Node/Python manifests and locks, tests, assets,
-  and optional WebRTC extension installation.
-- GPU host: pinned OpenAvatarChat/FlashHead sources, CUDA environment, and weights.
-- Mac: the planned mock validates actual WebRTC audio/video without CUDA.
+Model keys and backend settings belong to Gateway, not this example. The example never starts, changes or stops your Gateway; no example-specific Gateway branch is needed.
 
-Default WSS and ordinary WebRTC audio behavior must remain unchanged. Installing
-the framework must not install, download, or start this example or its models.
+Then, in a checkout:
+
+```bash
+cd examples/digital-human
+npm ci
+cp .env.example .env.local
+npm run build:client
+npm start
+```
+
+For a standalone source copy, install the public SDK package before building:
+
+```bash
+npm install qwen-audio-agent
+```
+
+Open the printed address (default `http://127.0.0.1:5273`), click Connect to authorize audio, then enable the microphone or submit text. An empty `DH_RENDERER_URL` starts a synthetic audio-reactive renderer: no GPU/model download. Normal conversation still calls your configured model; automated tests do not.
+
+## Self-hosted renderer
+
+```dotenv
+DH_GATEWAY_URL=ws://127.0.0.1:18888/api/realtime
+DH_GATEWAY_TOKEN=
+DH_RENDERER_ADAPTER=dhav
+DH_RENDERER_URL=http://your-renderer-host:port
+DH_RENDERER_TOKEN=your-renderer-token
+DH_PERSONA=flashhead-default
+```
+
+The renderer exposes DHAV v1 session creation/deletion, authenticated PCM input and paired PCM/I420 media WebSockets. See the original author's [OpenAvatarChat / FlashHead service](https://github.com/juhayna-zh/OpenAvatarChat) for GPU deployment. This refactor preserves its wire protocol; real deployment remains an explicit acceptance step.
+
+## Replace the service
+
+Adapters live entirely in this example:
+
+- `server/renderers/`: long-lived credentials, service sessions, audio forwarding and short-lived media credentials.
+- `client/renderers/`: vendor media transport/player and actual playback lifecycle.
+- Register the same adapter ID on both sides; select it with `DH_RENDERER_ADAPTER`.
+
+DHAV uses WebAudio + canvas. The Vidu / ARTC approach from #570 can retain its native RTC playback; it does not need a DHAV conversion or Gateway modifications. See the [adapter contract](docs/provider-contract.zh.md) and [architecture](docs/design.zh.md).
+
+## Delivery semantics
+
+The client uses existing Gateway `audio.delta`, `audio.done` and global `playback.clear` events. Only real assistant audio starts a render turn. `audio.done` ends renderer input, **not** browser playback. Actual audible start, drain and cancellation drive playback receipts; interruptions fence late output by response and generation.
+
+Ordinary Gateway WebSocket output does not expose a precise model termination status. `audio.done` does not prove model success; generic `error` messages are displayed without guessing response failure or cancellation from their text. The example requires no response-status or targeted-clear extension.
+
+Before playback begins, renderer failure may fall back to original PCM once. After playback starts, failure cancels rather than replaying the reply. Input-only microphone mute preserves output. Both input and output queues are bounded.
+
+## Security and scope
+
+This single-client demo binds to loopback and validates Host / WebSocket Origin. Long-lived Gateway and vendor secrets stay in Node; commercial adapters may deliver short-lived RTC join credentials to the browser. Never put long-lived secrets in frontend bundles.
+
+Remote deployment requires HTTPS, authentication, quotas and an explicit origin policy. Do not expose the local credential relay directly to the Internet.
+
+## Test
+
+```bash
+npm test
+npm run build:client
+npx playwright install chromium
+npm run test:browser
+```
+
+Tests use a fake Gateway and real local Mock renderer connections, without model calls or paid APIs. See the [deployment checklist](docs/implementation-plan.zh.md) for real-service acceptance.
+
+## Credits
+
+Thanks to [Haina Zhu (@juhayna-zh)](https://github.com/juhayna-zh) for the original example, DHAV protocol, Mock renderer, FlashHead integration and avatar UI, reused here with a client-owned presentation boundary. The commercial renderer seam also draws on @zzasdf's Vidu example design.

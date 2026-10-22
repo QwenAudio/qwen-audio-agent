@@ -4,6 +4,8 @@
 
 ### 修复与改进
 
+- 修复 Google Live 前台在默认配置下无法连接：setup 携带的前台工具参数含 `additionalProperties`，Gemini API 以 1007 拒绝；工具参数改用 `parametersJsonSchema` 发送（#560）。
+
 - 统一语音前台的供应商、模型、API Key、地址和音色配置，兼容读取旧变量；桌面设置按供应商选择模型，前台凭据与后台及其他模块隔离。
 - 新增 `frontend-models.json` 模型登记：与现有接入协议兼容的新模型可通过配置添加，无需修改 Provider 代码。
 - 默认前台升级为 Qwen Audio 3.1 Realtime Plus，音色随模型选择；生成的 `config.env` 直接展示常用默认值与待填写的 API Key。

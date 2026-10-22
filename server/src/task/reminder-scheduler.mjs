@@ -2,6 +2,8 @@ import { TaskDomainEvent } from './task-events.mjs'
 import { TaskStatus, transitionTask } from './task-state.mjs'
 import { nextOccurrenceAt, normalizeRecurrence } from './recurrence.mjs'
 
+const MAX_TIMEOUT_MS = 2_147_483_647
+
 function finiteTimestamp(value) {
   if (value === null || value === undefined || value === '') return null
   const timestamp = Number(value)
@@ -161,7 +163,9 @@ export class ReminderScheduler {
       .map(t => t.schedule.at)
       .sort((a, b) => a - b)[0]
     if (!next) return
-    const delay = next - now
+    // Longer delays overflow Node's timer range and become 1 ms. Wake at the
+    // supported limit, then fire() rechecks the due time and arms the remainder.
+    const delay = Math.min(next - now, MAX_TIMEOUT_MS)
     this.timer = setTimeout(() => this.fire(), delay)
     this.timer.unref?.()
   }

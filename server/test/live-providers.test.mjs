@@ -163,6 +163,58 @@ test('connects to a Google Live mock service with setup and text input', async t
   assert.ok(events.some(event => event.type === 'response.audio.delta'))
 })
 
+function containsKey(value, key) {
+  if (!value || typeof value !== 'object') return false
+  return Object.hasOwn(value, key)
+    || Object.values(value).some(child => containsKey(child, key))
+}
+
+test('Google Live setup passes Gemini tool schema validation', async t => {
+  withConfig(t, {
+    audioProvider: 'google-live',
+    realtimeCredential: 'google-test',
+    realtimeModel: 'gemini-3.8-live',
+    realtimeVoice: '',
+  })
+  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+  await new Promise(resolve => server.once('listening', resolve))
+  let setup = null
+
+  // Mirrors the live service: `parameters` only accepts Gemini's OpenAPI
+  // subset, and an unknown keyword closes the socket before setupComplete.
+  server.once('connection', socket => {
+    socket.once('message', raw => {
+      setup = JSON.parse(raw.toString()).setup
+      const declarations = (setup.tools || []).flatMap(tool => tool.functionDeclarations || [])
+      if (declarations.some(declaration => containsKey(declaration.parameters, 'additionalProperties'))) {
+        socket.close(1007, 'Invalid JSON payload received. Unknown name "additionalProperties"')
+        return
+      }
+      socket.send(JSON.stringify({ setupComplete: {} }))
+    })
+  })
+  withConfig(t, {
+    realtimeEndpoint: `ws://127.0.0.1:${server.address().port}/ws`,
+  })
+  const frontend = new RealtimeFrontend({
+    provider: googleLiveProvider,
+    agentContext: {},
+    onEvent: () => {},
+    responseStartTimeoutMs: 500,
+  })
+  t.after(async () => {
+    frontend.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+
+  await frontend.connect()
+  assert.equal(frontend.ready, true)
+  const declarations = setup.tools.flatMap(tool => tool.functionDeclarations || [])
+  assert.ok(declarations.length > 0)
+  assert.ok(declarations.some(declaration => containsKey(declaration.parametersJsonSchema, 'additionalProperties')))
+  assert.ok(declarations.every(declaration => declaration.parameters === undefined))
+})
+
 test('Google Live waits for turnComplete and preserves interruption status', () => {
   const protocol = createGoogleLiveProtocol()
   const started = protocol.normalizeIncoming({ serverContent: { modelTurn: { parts: [{ text: 'hello' }] } } })

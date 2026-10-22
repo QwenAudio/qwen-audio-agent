@@ -57,7 +57,7 @@ function nonemptyString(value, path) {
   return value.trim()
 }
 
-function parseModel(id, source, provider, path) {
+function parseModel(id, source, provider, path, turnDetectionType) {
   modelId(id, path)
   const fields = record(source, path, ['api', 'label', 'voice'])
   if (!Object.hasOwn(fields, 'api')) invalid(path + '.api', 'required field')
@@ -68,12 +68,14 @@ function parseModel(id, source, provider, path) {
   const label = Object.hasOwn(fields, 'label') ? nonemptyString(fields.label, path + '.label') : id
   const voice = !Object.hasOwn(fields, 'voice') || fields.voice === null
     ? null : nonemptyString(fields.voice, path + '.voice')
+  const turnDetection = turnDetectionType === undefined ? preset.turnDetection
+    : Object.freeze({ type: nonemptyString(turnDetectionType, path + '.turnDetection') })
   return Object.freeze({
     id,
     label,
     api,
     family: preset.family,
-    sessionDefaults: Object.freeze({ voice, turnDetection: preset.turnDetection }),
+    sessionDefaults: Object.freeze({ voice, turnDetection }),
     modelCapabilities: preset.defaultModelCapabilities,
     transportCapabilities: preset.transportCapabilities,
     sessionConstraints: preset.sessionConstraints,
@@ -108,7 +110,10 @@ export function createRealtimeModelCatalogs(raw = {}) {
       environment: builtin.environment,
       defaultModel: builtin.defaultModel,
       profiles: Object.freeze([
-        ...Object.entries(builtin.models).map(([id, model]) => parseModel(id, model, provider, 'builtins.' + provider + '.' + id)),
+        // Built-in models may refine session defaults without extending the user JSON schema.
+        ...Object.entries(builtin.models).map(([id, { turnDetection, ...model }]) => (
+          parseModel(id, model, provider, 'builtins.' + provider + '.' + id, turnDetection)
+        )),
         ...(extended.get(provider) || []),
       ]),
     }),

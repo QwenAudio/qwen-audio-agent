@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
-import { bindWindowDrag } from '../window-drag.mjs'
+import { bindWindowDrag } from '../desktop/window-drag.mjs'
 
 test('drag moves the owned window by screen displacement and stops on release/blur', () => {
   const ipc = new EventEmitter()

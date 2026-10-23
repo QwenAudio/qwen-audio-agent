@@ -26,8 +26,10 @@ function stopCapture(runtime) {
   runtime.capture = null
 }
 
-export function useDualConnection({ sessionId, config }) {
+export function useDualConnection({ sessionId, config, image }) {
   const runtimeRef = useRef(null)
+  const imageRef = useRef(image)
+  imageRef.current = image
   const canvasRef = useRef(null)
   const videoRef = useRef(null)
   const messagesRef = useRef([])
@@ -92,6 +94,12 @@ export function useDualConnection({ sessionId, config }) {
     clearTimeout(runtime.connectTimeout)
     void runtime.context.close().catch(() => {})
     runtimeRef.current = null
+    setState('idle')
+    setPlayback('idle')
+    setMicEnabled(false)
+    setRendererAvailable(false)
+    setAvatarState(null)
+    setFrameCount(0)
   }, [])
 
   useEffect(() => {
@@ -108,7 +116,7 @@ export function useDualConnection({ sessionId, config }) {
   }, [sessionId, disconnect])
 
   const start = useCallback(async () => {
-    if (!config || runtimeRef.current?.connecting
+    if (!config || config.renderer?.enabled === false || runtimeRef.current?.connecting
       || (runtimeRef.current?.gateway?.ready && !runtimeRef.current?.rendererLost)) return
     disconnect('reconnect')
     setError(null)
@@ -159,8 +167,9 @@ export function useDualConnection({ sessionId, config }) {
       runtime.renderer = renderer
       const controller = adapter.createController({
         player,
+        image: () => imageRef.current,
         sendRenderer: event => {
-          if (renderer.readyState !== WebSocket.OPEN || renderer.bufferedAmount > 4 * 1024 * 1024) return false
+          if (renderer.readyState !== WebSocket.OPEN || renderer.bufferedAmount > (adapter.maxBufferedBytes || 4 * 1024 * 1024)) return false
           renderer.send(JSON.stringify(event))
           return true
         },
@@ -231,7 +240,7 @@ export function useDualConnection({ sessionId, config }) {
         controller.rendererDisconnected('renderer_disconnected')
         setRendererAvailable(false)
         if (!runtime.gateway?.ready) fail('数字人服务连接失败，请重试。')
-        else setError('数字人服务已断开；未开始播放的回复可降级为纯音频，或点击重新连接。')
+        else setError('数字人服务已断开，请点击重新连接。')
       }
       renderer.onclose = rendererLost
       renderer.onerror = rendererLost
@@ -316,7 +325,13 @@ export function useDualConnection({ sessionId, config }) {
 
   return {
     state, playback, avatarState, frameCount, messages, micEnabled, rendererAvailable, error,
-    canvasRef, videoRef, start, toggleMic, send,
+    canvasRef, videoRef, start, toggleMic, send, disconnect,
+    interrupt: () => {
+      const runtime = runtimeRef.current
+      runtime?.controller?.handleGateway({ type: 'playback.clear', reason: 'user_interruption' })
+      runtime?.gateway?.send({ type: 'interrupt' })
+      interruptMessages()
+    },
     clearError: () => setError(null),
   }
 }

@@ -183,3 +183,21 @@ article .interrupted {
   header button { padding: 7px 10px; font-size: 12px; }
   .workspace { height: calc(100dvh - 108px); padding-top: 24px; }
 }
+
+.renderer-settings { padding: 12px; border: 1px solid #ffffff24; border-radius: 12px; font-size: 13px; }
+.renderer-settings label { display: block; margin: 8px 0; }
+.renderer-settings input { display: block; width: 100%; }
+.desktop-toolbar { display: flex; gap: 6px; align-items: center; }
+.desktop-drag { flex: 1; min-height: 30px; cursor: grab; touch-action: none; user-select: none; }
+.desktop-drag.dragging { cursor: grabbing; }
+.app-vidu, .app-desktop { display: flex; flex-direction: column; }
+.app-vidu > header, .app-desktop > header, .desktop-toolbar { flex: 0 0 auto; }
+.app-vidu > .workspace, .app-desktop > .workspace { flex: 1; height: auto; overflow-y: auto; }
+.app-vidu .renderer-settings { flex: 0 0 auto; }
+@media (max-width: 480px) {
+  .app { padding: 10px; }
+  .app > header { flex-wrap: wrap; gap: 8px; height: auto; padding: 8px; }
+  .workspace { padding: 4px; }
+  .avatar-viewport { width: min(300px, 80vw); }
+  .messages { max-height: 160px; }
+}

@@ -22,7 +22,7 @@ https://github.com/user-attachments/assets/5301ef5e-b674-4561-93bb-e0c7544cf696
 The example-local Node host proxies GCP unchanged and protects renderer credentials. It is not a custom Gateway.
 
 - Implemented: DHAV adapter, GPU-free synthetic Mock renderer, remote DHAV configuration.
-- Extension seam: commercial adapters can play their native RTC media without converting to DHAV. A Vidu adapter and paid-service validation are **not included** in this revision.
+- Vidu preview: an opt-in native ARTC adapter uses the same connection and playback controller. It is disabled by default and **never emits `playback.ended`** because a reliable per-reply media-end marker is unavailable. Paid-service validation remains pending; this is not a completed commercial integration. See [Vidu setup and limits](docs/vidu.md).
 - Supported reply format: PCM16 little-endian, 24 kHz, mono. Other sample rates are rejected rather than misplayed.
 
 ## Run
@@ -74,7 +74,24 @@ Adapters live entirely in this example:
 - `client/renderers/`: vendor media transport/player and actual playback lifecycle.
 - Register the same adapter ID on both sides; select it with `DH_RENDERER_ADAPTER`.
 
-DHAV uses WebAudio + canvas. The Vidu / ARTC approach from #570 can retain its native RTC playback; it does not need a DHAV conversion or Gateway modifications. See the [adapter contract](docs/provider-contract.zh.md) and [architecture](docs/design.zh.md).
+DHAV uses WebAudio + canvas. Vidu is registered in the same server/browser adapter locations and retains native ARTC media, using `useDualConnection` and `AvatarPlaybackController`. No DHAV conversion or Gateway change is required. See the [adapter contract](docs/provider-contract.zh.md) and [remaining Vidu blockers](docs/integration-architecture.zh.md).
+
+## Vidu preview and optional overlay
+
+Set `DH_RENDERER_ADAPTER=vidu` and the server credentials in the same `.env.local`; see [Vidu setup](docs/vidu.md). The preview is disabled unless `VIDU_EXPERIMENTAL=1`. It creates a separate live/RTC channel per response on first audio, not on page connection. Calls can incur Vidu/ARTC charges.
+
+The public component protocol has no verified per-response final-media marker. This adapter never emits `playback.ended`, including on silence, `audio.done`, elapsed duration, disconnect or expiry. Actual start is observed on the audible remote-track WebAudio graph. Cancellation gates that graph synchronously before remote cancellation. Retired sessions/callbacks are isolated; no original-PCM fallback is enabled. Explicit interruption or new input retires preview responses. This is unsuitable for tasks requiring accurate completion receipts and remains a merge blocker.
+
+The optional Electron shell opens the same running example page. In another terminal here:
+
+```sh
+npm install --no-save --package-lock=false electron@43.7.9
+npm run desktop
+```
+
+Drag the top bar. Closing the window stops neither the example server nor the Gateway. Shell variable `DH_DESKTOP_URL` selects another loopback HTTP origin. The stock orb remains an independent UI option; use one microphone UI at a time. A switch button is enabled only by a trusted operator's `DH_ORB_LAUNCH` JSON argv array in the shell, e.g. `["npm","run","desktop","--prefix","/path/to/source-checkout"]`; it runs without a shell after local playback stops. The page cannot supply a command.
+
+The [Vidu prototype video](assets/digital_human_demo_vidu.mp4) and [original digital-human footage](assets/digital-human-demo.mp4) remain available. They do not prove acceptance of the migrated integration.
 
 ## Delivery semantics
 
@@ -97,6 +114,7 @@ npm test
 npm run build:client
 npx playwright install chromium
 npm run test:browser
+npm run test:browser:vidu
 ```
 
 Tests use a fake Gateway and real local Mock renderer connections, without model calls or paid APIs. See the [deployment checklist](docs/implementation-plan.zh.md) for real-service acceptance.

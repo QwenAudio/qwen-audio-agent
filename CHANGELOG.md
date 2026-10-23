@@ -4,9 +4,9 @@
 
 ### 新增功能
 
-- 数字人示例统一放在 `examples/digital-human`：保留 DHAV Mock/FlashHead 链路，新增 Vidu
-  S2 Avatar 组件版的 ARTC 浏览器与可拖动桌面浮窗，保留原悬浮球作为可选 UI；集中提供
-  两种接入方式的演示视频、启动入口、API 配置和架构说明，Vidu 无需额外修改 Gateway 核心。
+- 数字人示例接入 Vidu S2 Avatar / ARTC 实验适配器，复用标准 Gateway 双连接客户端和
+  公共播放控制，提供同页桌面浮窗、角色图片和演示视频；移除专用 GCP 客户端及静音回执。
+  Vidu 默认关闭，逐回复播完边界与真实商业验收仍待解决，不发送估算的播完回执。
 
 ### 修复与改进
 

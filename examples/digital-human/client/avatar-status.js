@@ -16,6 +16,7 @@ const RENDER_MAP = {
 }
 
 export function avatarVisualState(avatar) {
+  if (avatar?.avatarState?.output === 'audio_only') return 'audio_only'
   const state = avatar?.avatarState?.state
   if (state && AVATAR_KEYS.has(state)) return RENDER_MAP[state]
   const connection = avatar?.state

@@ -11,15 +11,17 @@ Edit the user configuration file shown by `qwenaudio config`:
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=google-live
-GOOGLE_API_KEY=your-google-api-key
+QWEN_AUDIO_REALTIME_API_KEY=your-google-api-key
+QWEN_AUDIO_REALTIME_MODEL=gemini-3.8-live
+QWEN_AUDIO_REALTIME_URL=
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
 | Optional setting | Default | Description |
 | --- | --- | --- |
-| `GOOGLE_LIVE_REALTIME_URL` / `GEMINI_LIVE_REALTIME_URL` | `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent` | WebSocket endpoint |
-| `GOOGLE_LIVE_REALTIME_MODEL` / `GEMINI_LIVE_REALTIME_MODEL` | `gemini-3.8-live` | Current built-in model profile |
-| `GOOGLE_LIVE_REALTIME_VOICE` / `GEMINI_LIVE_REALTIME_VOICE` | Empty | Service default, or a prebuilt Gemini Live voice name |
-| `GEMINI_API_KEY` / `GOOGLE_LIVE_API_KEY` | Empty | Aliases for `GOOGLE_API_KEY` |
+| `QWEN_AUDIO_REALTIME_URL` | `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent` | WebSocket endpoint |
+| `QWEN_AUDIO_REALTIME_MODEL` | `gemini-3.8-live` | Current built-in model profile |
+| `QWEN_AUDIO_REALTIME_VOICE` | Empty | Service default, or a prebuilt Gemini Live voice name |
 
 Desktop exposes the same fields under **Voice frontend -> Google Live**.
 Restart a terminal Gateway after editing the file; for an installed service,

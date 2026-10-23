@@ -1,7 +1,7 @@
 // DigitalHumanProvider SPI over the DHAV private renderer protocol.
 // Vendor-neutral: the same adapter drives the local Mock renderer and the
 // M2 Python OpenAvatarChat renderer. Control plane only — paired media bytes
-// flow renderer -> media worker directly and never touch this module.
+// flow renderer -> example media adapter and never touch this control module.
 
 import { createRequire } from 'node:module'
 import {
@@ -104,7 +104,8 @@ function createSession({ created, persona, format, Socket, signal, connectTimeou
   let heartbeatTimer = null
   let connectTimer = setTimeout(() => failLocal(new DhavProviderError('unavailable', 'renderer input channel connect timed out', { rebuild: true })), connectTimeoutMs)
 
-  // Internal descriptor handed to the media worker (via the orchestrator).
+  // Internal descriptor for the example bridge's media connection. Credentials
+  // stay server-side; only media records are forwarded to the browser.
   // Media-channel credential only; it cannot create sessions or send input.
   const mediaBinding = Object.freeze({
     adapterId: created.mediaAdapterId || 'dhav-framed-av',

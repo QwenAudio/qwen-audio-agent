@@ -285,6 +285,9 @@ export async function startMockRendererServer({
         if (!turn.finishing) return null
         return null
       }
+      // Leave partial input in the queue until it forms a frame. Consuming it
+      // before this check silently lost short Realtime audio chunks.
+      if (available < max && !turn.finishing) return null
       const count = Math.min(max, available)
       const buffer = Buffer.alloc(max * 2)
       let filled = 0
@@ -297,14 +300,13 @@ export async function startMockRendererServer({
         else turn.chunks[0] = chunk.subarray(take)
       }
       const paddingSamples = max - filled
-      if (paddingSamples > 0 && !turn.finishing) return null // wait for a full frame unless flushing
       turn.consumedSamples += filled
       return { samples: max, buffer, paddingSamples }
     }
 
     function publishUnit(samples, audioBuffer, paddingSamples) {
       const frameSequence = turn.publishedUnits
-      const ptsUs = Math.round(turn.consumedSamples * 1_000_000 / INPUT_AUDIO_FORMAT.sampleRate)
+      const ptsUs = Math.round((turn.consumedSamples - (samples - paddingSamples)) * 1_000_000 / INPUT_AUDIO_FORMAT.sampleRate)
       // Feed this unit's PCM (s16le) into the visualizer before drawing the
       // frame it is paired with, so the spectrum reflects exactly this audio.
       const pcm = new Int16Array(audioBuffer.length >> 1)

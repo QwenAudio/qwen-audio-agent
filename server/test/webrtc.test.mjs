@@ -2,102 +2,35 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { WebRtcConnection } from '../src/transport/webrtc/protocol.mjs'
 import { webRtcOptions } from '../src/transport/webrtc/config.mjs'
-import { validateOffer } from '../src/transport/webrtc/routes.mjs'
 import { PcmResampler, encodePcm, decodePcm } from '../src/transport/webrtc/pcm.mjs'
 import { rtcHarness, FakeMedia, testProvider, waitUntil, OFFER, JPEG } from './fixtures/webrtc-gateway.mjs'
+import {
+  DASHSCOPE_AUDIO_30_REALTIME_MODEL,
+  DASHSCOPE_AUDIO_31_REALTIME_MODEL,
+  DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
+  resolveDashScopeRealtimeModelProfile,
+} from '../../shared/realtime-model-catalog.mjs'
 
-const AVATAR_OFFER = `${OFFER}m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=recvonly\r\n`
-const CAMERA_OFFER = `${OFFER}m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\n`
-
-test('validateOffer distinguishes camera input from avatar output by direction', () => {
-  // Plain audio + DataChannel always passes.
-  validateOffer(OFFER, { video: false, videoOutput: false })
-  // sendonly video requires the camera-input capability.
-  validateOffer(CAMERA_OFFER, { video: true, videoOutput: false })
-  assert.throws(() => validateOffer(CAMERA_OFFER, { video: false }), /video input/)
-  // recvonly video requires avatar output to be enabled.
-  validateOffer(AVATAR_OFFER, { video: false, videoOutput: true })
-  assert.throws(() => validateOffer(AVATAR_OFFER, { video: false, videoOutput: false }), /avatar/i)
-  // A bidirectional (sendrecv) video section is rejected outright.
-  assert.throws(() => validateOffer(`${OFFER}m=video 9 UDP/TLS/RTP/SAVPF 96\r\n`, { video: true, videoOutput: true }), /sendonly|recvonly/)
-  // Two avatar tracks are rejected.
-  assert.throws(() => validateOffer(`${AVATAR_OFFER}m=video 9 UDP/TLS/RTP/SAVPF 97\r\na=recvonly\r\n`, { video: false, videoOutput: true }), /at most one/)
-})
-
-test('WebRtcConnection intercepts digital-human control and never forwards bindings', () => {
-  const media = new FakeMedia()
-  const connection = new WebRtcConnection({ media, sessionId: 's1', provider: testProvider(false), avatarPersonaId: 'host' })
-  const browser = []
-  media.send = event => browser.push(event)
-  const binding = { protocol: 'dhav', protocolVersion: 1, media: { url: 'wss://renderer/media', token: 'secret-token' } }
-  connection.send(JSON.stringify({ type: 'digital_human.media_open', avatarSessionId: 'av1', binding }))
-  connection.send(JSON.stringify({ type: 'digital_human.media_control', op: 'begin', turn: { responseId: 'r1', generation: 0 }, format: { sampleRate: 24000 } }))
-  connection.send(JSON.stringify({ type: 'digital_human.media_control', op: 'finish', turn: { responseId: 'r1', generation: 0 } }))
-  connection.send(JSON.stringify({ type: 'digital_human.media_control', op: 'clear', generation: 1 }))
-  connection.send(JSON.stringify({ type: 'digital_human.media_control', op: 'close' }))
-  assert.deepEqual(media.dhControl, [
-    { op: 'open', binding },
-    { op: 'begin', turn: { responseId: 'r1', generation: 0 }, format: { sampleRate: 24000 } },
-    { op: 'finish', turn: { responseId: 'r1', generation: 0 } },
-    { op: 'clear', generation: 1 },
-    { op: 'close' },
-  ])
-  // The private binding (URL + token) must never reach the browser channel.
-  assert.equal(browser.some(event => JSON.stringify(event).includes('secret-token')), false)
-  assert.equal(connection.avatarSessionId, 'av1')
-  // Public state events still fall through to the browser as qwaudio.event.
-  connection.send(JSON.stringify({ type: 'digital_human.state', state: 'speaking', responseId: 'r1' }))
-  const forwarded = browser.find(event => event.type === 'qwaudio.event' && event.event?.type === 'digital_human.state')
-  assert.equal(forwarded.event.state, 'speaking')
-})
-
-test('avatar ingress advertises digital_human config, validates the persona and negotiates recvonly video', async t => {
-  const runtimeRequests = []
-  const digitalHuman = {
-    provider: { capabilities: async () => ({}), openSession: async () => ({}) },
-    personas: { host: { avatarAssetId: 'asset-host' } },
-    rendererAllowlist: ['http://127.0.0.1:9999'],
-    mediaAdapter: { modulePath: '/abs/framed-av-source.mjs' },
-    // The embedder supplies this factory; null keeps the plain audio path.
-    createRuntime: async args => { runtimeRequests.push(args); return null },
+test('WebRTC describes and validates each Audio model turn detection default', () => {
+  for (const [model, type] of [
+    [DASHSCOPE_AUDIO_31_REALTIME_MODEL, 'smart_turn_v2'],
+    [DASHSCOPE_AUDIO_30_REALTIME_MODEL, 'smart_turn'],
+    [DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL, 'smart_turn'],
+  ]) {
+    const media = new FakeMedia()
+    const provider = { ...testProvider(), model: () => model,
+      modelProfile: () => resolveDashScopeRealtimeModelProfile(model) }
+    const connection = new WebRtcConnection({ media, provider, sessionId: 'test' })
+    assert.deepEqual(connection.description().turn_detection, { type })
+    connection.ready = true
+    connection.receive(JSON.stringify({ type: 'session.update', session: { turn_detection: { type } } }))
+    assert.equal(media.events.at(-1).type, 'session.updated')
+    assert.deepEqual(media.events.at(-1).session.turn_detection, { type })
+    const wrongType = type === 'smart_turn_v2' ? 'smart_turn' : 'smart_turn_v2'
+    connection.receive(JSON.stringify({ type: 'session.update', session: { turn_detection: { type: wrongType } } }))
+    assert.equal(media.events.at(-1).error.code, 'invalid_event')
+    connection.close()
   }
-  const h = await rtcHarness(t, { digitalHuman })
-  const config = await (await fetch(`${h.base}/api/v1/webrtc/config`, { headers: { Authorization: 'Bearer test-only-credential' } })).json()
-  assert.equal(config.video_output, true)
-  assert.deepEqual(config.digital_human, { available: true, personas: ['host'] })
-  // An unknown persona is rejected, not silently downgraded to audio.
-  assert.equal((await h.offer(AVATAR_OFFER, '?avatarPersonaId=ghost')).status, 400)
-  // recvonly video without a persona is rejected (avatar output not requested).
-  assert.equal((await h.offer(AVATAR_OFFER)).status, 400)
-  // A known persona negotiates and configures the media engine for avatar output.
-  const response = await h.offer(AVATAR_OFFER, '?avatarPersonaId=host&sessionId=avatar-1')
-  assert.equal(response.status, 200)
-  assert.equal(h.mediaSettings[0].videoOutput, true)
-  assert.deepEqual(h.mediaSettings[0].digitalHuman, { modulePath: '/abs/framed-av-source.mjs', adapterOptions: undefined })
-  // The allowlisted persona reaches the session runtime through the internal
-  // attach port; no client-visible hello field carries it.
-  h.media[0].onOpen()
-  await waitUntil(() => runtimeRequests.length === 1)
-  assert.equal(runtimeRequests[0].personaId, 'host')
-  assert.equal(typeof runtimeRequests[0].publish, 'function')
-})
-
-test('a plain WebRTC connection never starts the avatar runtime', async t => {
-  const runtimeRequests = []
-  const h = await rtcHarness(t, {
-    digitalHuman: {
-      provider: { capabilities: async () => ({}), openSession: async () => ({}) },
-      personas: { host: { avatarAssetId: 'asset-host' } },
-      rendererAllowlist: ['http://127.0.0.1:9999'],
-      createRuntime: async args => { runtimeRequests.push(args); return null },
-    },
-  })
-  assert.equal((await h.offer(OFFER)).status, 200)
-  h.media[0].onOpen()
-  // The session runtime reaches the connect branch (a frontend is created)
-  // without an injected persona, so no avatar runtime is requested.
-  await waitUntil(() => h.frontends.length === 1)
-  assert.equal(runtimeRequests.length, 0)
 })
 
 test('WebRTC defaults to disabled and validates opt-in ICE configuration', () => {
@@ -192,7 +125,7 @@ test('auth, content-type, SDP, model and video are checked before allocation', a
   assert.equal((await h.offer('not sdp')).status, 400)
   assert.equal((await h.offer(OFFER, '?model=wrong')).status, 400)
   assert.equal((await h.offer(OFFER, '?sessionId=../other')).status, 400)
-  assert.equal((await h.offer(`${OFFER}m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\n`)).status, 400)
+  assert.equal((await h.offer(`${OFFER}m=video 9 UDP/TLS/RTP/SAVPF 96\r\n`)).status, 400)
   assert.equal((await h.offer('v=0' + 'x'.repeat(65536))).status, 413)
   assert.equal(h.media.length, 0)
 })
@@ -200,7 +133,7 @@ test('auth, content-type, SDP, model and video are checked before allocation', a
 for (const video of [false, true]) {
   test(`${video ? 'Omni' : 'Audio'} ingress reuses voice, text, output and playback session paths`, async t => {
     const h = await rtcHarness(t, { video })
-    const response = await h.offer(video ? `${OFFER}m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\n` : OFFER, '?sessionId=conversation-1')
+    const response = await h.offer(video ? `${OFFER}m=video 9 UDP/TLS/RTP/SAVPF 96\r\n` : OFFER, '?sessionId=conversation-1')
     assert.equal(response.status, 200)
     assert.match(response.headers.get('content-type'), /application\/sdp/)
     const media = h.media[0]

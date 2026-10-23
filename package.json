@@ -311,10 +311,6 @@
     "example:webrtc:install": "npm ci --prefix packages/webrtc --no-audit --no-fund",
     "example:webrtc": "node examples/webrtc/start.mjs",
     "example:webrtc:omni": "node examples/webrtc/start.mjs --omni",
-    "example:digital-human:install": "npm ci --prefix packages/webrtc --no-audit --no-fund && npm install --prefix examples/digital-human --no-audit --no-fund",
-    "example:digital-human": "node examples/digital-human/bootstrap/start.mjs",
-    "test:digital-human": "node --test examples/digital-human/test/*.test.mjs",
-    "test:digital-human-browser": "node examples/digital-human/test/browser-smoke.mjs",
     "lint": "eslint .",
     "docs:dev": "concurrently -n sync,site -c yellow,magenta \"node scripts/sync-docs-site.mjs --watch\" \"vitepress dev docs\"",
     "predocs:dev": "node scripts/sync-docs-site.mjs",
@@ -377,6 +373,9 @@
     "qs": "6.16.0",
     "uuid": "11.1.1",
     "global-agent": "4.1.3",
-    "shell-quote": "1.12.0"
+    "shell-quote": "1.12.0",
+    "vitepress": {
+      "vite": "6.4.4"
+    }
   }
 }

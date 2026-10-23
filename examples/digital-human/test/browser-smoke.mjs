@@ -1,219 +1,285 @@
-// End-to-end browser smoke test for the digital-human demo, driven through this
-// example's own avatar SPA (/skins/digital-human/index.html?persona=mock-default).
-//
-// Only the digital-human renderer is mocked. Voice uses the REAL Realtime
-// upstream (DashScope), so this test needs network access and a valid
-// DASHSCOPE_API_KEY in examples/digital-human/.env.local. It is intentionally
-// NOT hermetic; deterministic coverage lives in the unit/contract tests
-// (dhav-codec, renderer-server, provider-contract, media-adapter, spectrum).
-//
-// A text turn is injected through the avatar composer so the model produces
-// speech without relying on a live microphone. The local Mock renderer turns
-// that audio into paired DHAV A/V (an audio-reactive spectrum), and headless
-// Chromium must actually paint avatar video frames while the state machine
-// walks buffering -> committed_avatar -> draining -> terminal.
-//
-// Run: DASHSCOPE_API_KEY=... node examples/digital-human/test/browser-smoke.mjs [--fault=<name>] [--headed]
-
+// Hermetic browser smoke: normal GCP mock + REAL example bridge + REAL DHAV
+// mock renderer + Chromium Web Audio/canvas. No provider key, no autoplay flag,
+// no private Gateway internals and no fake successful playback callbacks.
+// Run after build:client: node test/browser-smoke.mjs [--headed]
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { setTimeout as delay } from 'node:timers/promises'
+import { WebSocketServer, WebSocket } from 'ws'
 import { chromium } from 'playwright'
-
-import { EXAMPLE_ROOT, loadDemoEnv } from '../bootstrap/env.mjs'
 import { startMockRendererServer } from '../providers/mock/mock-renderer-server.mjs'
-import { startDigitalHumanGateway } from '../bootstrap/compose-gateway.mjs'
+import { startExampleServer } from '../server/server.mjs'
 
-const argv = process.argv.slice(2)
-const fault = argv.find(a => a.startsWith('--fault='))?.slice(8) || null
-const headed = argv.includes('--headed')
-const PROMPT = argv.find(a => a.startsWith('--prompt='))?.slice(9) || '请用一句话介绍你自己。'
-const PROMPT_2 = argv.find(a => a.startsWith('--prompt2='))?.slice(10) || '再用一句话说明你能帮我做什么。'
-const PERSONA = 'mock-default'
+const STAGE = '[data-testid="avatar-stage"]'
+const built = fileURLToPath(new URL('../dist/index.html', import.meta.url))
+assert.ok(existsSync(built), 'Run npm run build:client before the browser smoke')
 
-const stage = '[data-testid="avatar-stage"]'
-const video = '[data-testid="avatar-video"]'
-
-async function run() {
-  // The real upstream needs a key; load the example's local env (falling back to
-  // the repo-root .env.local for the key only) and fail fast with an actionable
-  // message rather than silently degrading to a mock.
-  if (!loadDemoEnv()) {
-    throw new Error('DASHSCOPE_API_KEY is required for the browser smoke; set it in the environment, examples/digital-human/.env.local, or the repo-root .env.local')
+function pcmTone(seconds, frequency = 440) {
+  const samples = Math.round(seconds * 24000)
+  const data = Buffer.alloc(samples * 2)
+  for (let index = 0; index < samples; index += 1) {
+    data.writeInt16LE(Math.round(Math.sin(index * Math.PI * 2 * frequency / 24000) * 6000), index * 2)
   }
-  if (!existsSync(`${EXAMPLE_ROOT}skins/digital-human/index.html`)) {
-    throw new Error('skins/digital-human not found; run `npm run build:client` first so the Gateway can serve the avatar UI')
+  return data.toString('base64')
+}
+
+async function until(predicate, label, timeout = 15_000) {
+  const deadline = Date.now() + timeout
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error(`Timed out: ${label}`)
+    await delay(25)
   }
+}
 
-  const directory = mkdtempSync(join(tmpdir(), 'dh-browser-'))
-  Object.assign(process.env, {
-    QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope',
-    QWAUDIO_CONFIG_DIR: directory,
-    QWAUDIO_DATA_DIR: join(directory, 'data'),
-    QWAUDIO_STATE_DIR: join(directory, 'state'),
-    QWAUDIO_CACHE_DIR: join(directory, 'cache'),
-    AGENT_PROTOCOL: 'none',
-    QWEN_AUDIO_GATEWAY_ACCESS_TOKEN: '',
-    QWEN_AUDIO_GATEWAY_ACCESS_KEYS: '',
-    QWEN_AUDIO_GATEWAY_TAILNET: '0',
-  })
-  // Never point the realtime upstream at a mock: this smoke exercises the real one.
-  delete process.env.QWEN_AUDIO_REALTIME_BASE_URL
-
-  const renderer = await startMockRendererServer({
-    host: '127.0.0.1', port: 0, fault,
-    log: (name, fields) => console.error(`[renderer] ${name}`, fields ? JSON.stringify(fields) : ''),
-  })
-  const application = await startDigitalHumanGateway({
-    host: '127.0.0.1', port: 0, rendererUrl: renderer.url, persona: PERSONA,
-    mediaAdapterPath: fileURLToPath(new URL('../media/framed-av-source.mjs', import.meta.url)),
-    envFile: null,
-  })
-  const origin = `http://127.0.0.1:${application.server.address().port}`
-
-  let browser
-  try {
-    browser = await chromium.launch({
-      headless: !headed,
-      args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required'],
-    })
-    const page = await browser.newPage({ viewport: { width: 1100, height: 900 }, locale: 'zh-CN' })
-    const errors = []
-    page.on('pageerror', error => errors.push(error.message))
-    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
-
-    // Sample the avatar state history and painted-frame count off the stage's
-    // data attributes so assertions are locale-independent.
-    await page.addInitScript(() => {
-      window.__avatarStates = []
-      const sample = () => {
-        const stage = document.querySelector('[data-testid="avatar-stage"]')
-        if (!stage) return
-        const state = stage.dataset.avatarState
-        if (state && window.__avatarStates[window.__avatarStates.length - 1] !== state) {
-          window.__avatarStates.push(state)
-        }
+const inbound = []
+const audioDone = new Map()
+const rendererEvents = []
+const connections = []
+let responseNumber = 0
+const gateway = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+await new Promise(resolve => gateway.once('listening', resolve))
+const emit = (socket, event) => {
+  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ event_id: randomUUID(), ...event }))
+}
+gateway.on('connection', (socket, request) => {
+  connections.push({ socket, url: request.url })
+  socket.on('message', data => {
+    const event = JSON.parse(data.toString())
+    inbound.push({ ...event, receivedAt: Date.now() })
+    if (event.type === 'session.hello') {
+      emit(socket, { type: 'session.ready', request_event_id: event.event_id,
+        protocol_version: event.protocol.max, session_id: 'browser-smoke', capabilities: event.capabilities })
+      emit(socket, { type: 'voice.ready', inputSampleRate: 16000 })
+    }
+    if (event.type === 'text.message') {
+      const id = `response-${++responseNumber}`
+      emit(socket, { type: 'playback.clear', reason: 'new_text_input' })
+      emit(socket, { type: 'transcript.final', role: 'user', content: event.text, turnId: id })
+      emit(socket, { type: 'response.started', responseId: id })
+      emit(socket, { type: 'transcript.final', role: 'assistant', content: `Reply ${responseNumber}`, responseId: id })
+      if (event.text !== 'empty response') {
+        emit(socket, { type: 'audio.delta', responseId: id, sampleRate: 24000,
+          audio: pcmTone(event.text === 'interrupt this long reply' ? 3 : 0.8, 330 + responseNumber * 55) })
       }
-      setInterval(sample, 80)
-    })
-
-    const dump = async label => {
-      const states = await page.evaluate(() => window.__avatarStates).catch(() => [])
-      const stageNow = await page.evaluate(sel => {
-        const element = document.querySelector(sel)
-        if (!element) return null
-        const { avatarState, connection, playback, visual, frameCount } = element.dataset
-        return { avatarState, connection, playback, visual, frameCount, videoWidth: document.querySelector('[data-testid="avatar-video"]')?.videoWidth }
-      }, stage).catch(() => null)
-      const body = await page.locator('body').innerText().catch(() => '')
-      throw new Error(`${label}\nstates=${JSON.stringify(states)}\nstage=${JSON.stringify(stageNow)}\nerrors=${errors.join('\n')}\nbody=${body.slice(0, 1200)}`)
+      emit(socket, { type: 'audio.done', responseId: id })
+      audioDone.set(id, Date.now())
     }
+  })
+})
 
-    await page.goto(`${origin}/skins/digital-human/index.html?persona=${PERSONA}`)
-    await page.waitForSelector(stage, { timeout: 20000 }).catch(() => dump('avatar stage never rendered'))
-
-    // The avatar session connection is persistent: it establishes on page load
-    // without a microphone gesture (the autoplay/fake-media flags are set above),
-    // so just wait for it to reach connected before injecting a text turn.
-    await page.waitForFunction(
-      sel => document.querySelector(sel)?.dataset.connection === 'connected',
-      stage, { timeout: 30000 },
-    ).catch(() => dump('session never became connected'))
-
-    const frameCount = () => page.evaluate(sel => Number(document.querySelector(sel)?.dataset.frameCount || 0), stage)
-    const videoWidth = () => page.evaluate(sel => document.querySelector(sel)?.videoWidth || 0, video)
-    const assistantCount = () => page.evaluate(() => document.querySelectorAll('.messages article.assistant').length)
-    const injectTurn = async text => {
-      await page.getByTestId('avatar-input').fill(text)
-      await page.getByTestId('avatar-send').click()
+let renderer, application, browser
+const errors = []
+try {
+  renderer = await startMockRendererServer({
+    host: '127.0.0.1', port: 0,
+    log: (name, fields) => rendererEvents.push({ name, ...fields }),
+  })
+  application = await startExampleServer({
+    host: '127.0.0.1', port: 0,
+    gatewayUrl: `ws://127.0.0.1:${gateway.address().port}/api/realtime`,
+    rendererUrl: renderer.url,
+  })
+  browser = await chromium.launch({
+    channel: process.env.DH_BROWSER_CHANNEL || undefined,
+    headless: !process.argv.includes('--headed'),
+    args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+  })
+  const page = await browser.newPage({ viewport: { width: 1100, height: 900 }, locale: 'zh-CN' })
+  page.on('pageerror', error => errors.push(error.message))
+  // Observe actual browser buffer scheduling, never replace playback itself.
+  await page.addInitScript(() => {
+    window.__audioEvidence = []
+    const original = AudioBufferSourceNode.prototype.start
+    AudioBufferSourceNode.prototype.start = function (at, ...rest) {
+      const samples = this.buffer?.getChannelData(0)
+      const energy = samples?.reduce((sum, value) => sum + value * value, 0) || 0
+      window.__audioEvidence.push({ energy, duration: this.buffer?.duration,
+        contextState: this.context.state, currentTime: this.context.currentTime, scheduledAt: at })
+      return original.call(this, at, ...rest)
     }
+  })
+  await page.goto(application.origin)
+  await page.locator('[data-testid="avatar-connect"]').waitFor()
+  await delay(250)
+  assert.equal(connections.length, 0, 'No audio session is created before the user gesture')
+  assert.equal(inbound.filter(event => event.type.startsWith('playback.')).length, 0)
+  assert.deepEqual(await page.evaluate(() => window.__audioEvidence), [])
+  await page.locator('[data-testid="avatar-connect"]').click()
+  await page.waitForFunction(selector => document.querySelector(selector)?.dataset.connection === 'connected', STAGE)
+  assert.equal(connections.length, 1)
+  assert.match(connections[0].url, /^\/api\/realtime\?sessionId=/)
+  const hello = inbound.find(event => event.type === 'session.hello')
+  assert.equal(hello.connection.input_enabled, false)
+  assert.equal(hello.connection.output_enabled, true)
+  assert.equal('avatarPersonaId' in hello.connection, false, 'No avatar-specific Gateway mode')
 
-    // --- Turn 1 ---
-    await injectTurn(PROMPT)
-
-    const degrade = fault === 'first_media_timeout'
-    if (degrade) {
-      // The renderer admits audio but never publishes media, so the selector must
-      // fall back to audio-only and the <video> element must stay empty.
-      await page.waitForFunction(
-        sel => document.querySelector(sel)?.dataset.avatarState === 'audio_only',
-        stage, { timeout: 45000 },
-      ).catch(() => dump('never degraded to audio_only'))
-      assert.equal(await frameCount(), 0, 'audio-only fallback must not paint avatar frames')
-      assert.equal(await videoWidth(), 0, 'audio-only fallback must not size the video element')
-      console.log(`[smoke] fault=${fault}: degraded to audio_only with no avatar video (correct)`)
-      console.log('[smoke] PASS')
-      return
-    }
-
-    // The avatar video element must report a real size and paint frames. The idle
-    // animation paints from the moment the session opens, so frames alone do not
-    // prove this turn ran. Wait on the sampler's own record rather than on the
-    // live data attribute: reading the array the instant the state changes beats
-    // the 80ms sampler to it and reports a stale history.
-    await page.waitForFunction(sel => (document.querySelector(sel)?.videoWidth || 0) > 0, video, { timeout: 45000 })
-      .catch(() => dump('no avatar video size'))
-    await page.waitForFunction(
-      () => window.__avatarStates.some(state => ['rendering', 'speaking'].includes(state)),
-      null, { timeout: 45000 },
-    ).catch(() => dump('turn1 never reached rendering/speaking'))
-    await page.waitForFunction(
-      sel => Number(document.querySelector(sel)?.dataset.frameCount || 0) > 2,
-      stage, { timeout: 20000 },
-    ).catch(() => dump('avatar frames not advancing'))
-
-    const states = await page.evaluate(() => window.__avatarStates)
-    assert.ok(!states.includes('audio_only'), `avatar should not degrade without a fault: ${JSON.stringify(states)}`)
-    assert.ok(states.includes('speaking') || states.includes('rendering'),
-      `expected the avatar to reach rendering/speaking, saw ${JSON.stringify(states)}`)
-    console.log(`[smoke] turn1 frames: ${await frameCount()}; video ${await videoWidth()}px; states: ${JSON.stringify(states)}`)
-
-    // The product transcript panel must show the assistant's words in avatar mode.
-    await page.waitForFunction(
-      () => document.querySelectorAll('.messages article.assistant').length > 0
-        && document.querySelector('.messages article.assistant:last-of-type')?.innerText.trim().length > 0,
-      null, { timeout: 20000 },
-    ).catch(() => dump('assistant transcript never rendered in .messages'))
-    console.log(`[smoke] turn1 transcript: ${(await page.locator('.messages article.assistant').last().innerText()).replace(/\s+/g, ' ').slice(0, 80)}`)
-
-    // Let turn 1 finish on its own: response.done -> turn.completed + drained ->
-    // client playback receipt -> idle. Turn 2 may only start once the provider has
-    // released the previous turn, so wait for the stage to settle back to idle.
-    await page.waitForFunction(
-      sel => document.querySelector(sel)?.dataset.avatarState === 'idle',
-      stage, { timeout: 30000 },
-    ).catch(() => dump('turn1 never returned to idle'))
-    const framesAfterTurn1 = await frameCount()
-
-    // --- Turn 2: regression for "previous turn still active". turn.completed used
-    // to leave the provider's currentTurn set, so the second reply produced audio
-    // but no avatar video. The frame count must climb again on the same session. ---
-    await injectTurn(PROMPT_2)
-    await page.waitForFunction(
-      ({ sel, base }) => Number(document.querySelector(sel)?.dataset.frameCount || 0) > base + 2,
-      { sel: stage, base: framesAfterTurn1 }, { timeout: 45000 },
-    ).catch(() => dump('turn2 avatar frames never advanced (second-turn regression)'))
-    const framesTurn2 = await frameCount()
-    assert.ok(framesTurn2 > framesAfterTurn1 + 2, `turn2 painted no new avatar frames (${framesAfterTurn1} -> ${framesTurn2})`)
-    await page.waitForFunction(
-      () => document.querySelectorAll('.messages article.assistant').length >= 2,
-      null, { timeout: 20000 },
-    ).catch(() => dump('turn2 assistant transcript never rendered'))
-    console.log(`[smoke] turn2 frames advanced: ${framesAfterTurn1} -> ${framesTurn2}; assistant messages: ${await assistantCount()}`)
-
-    console.log('[smoke] PASS')
-  } finally {
-    await browser?.close().catch(() => {})
-    await application?.close().catch(() => {})
-    await renderer?.close().catch(() => {})
-    rmSync(directory, { recursive: true, force: true })
+  const receipts = id => inbound.filter(event => event.responseId === id && event.type.startsWith('playback.'))
+  const send = async text => {
+    await page.locator('[data-testid="avatar-input"]').fill(text)
+    await page.locator('[data-testid="avatar-send"]').click()
   }
-}
+  const finish = async id => {
+    await until(() => receipts(id).some(event => event.type === 'playback.ended'), `${id} playback drain`)
+    assert.deepEqual(receipts(id).map(event => event.type), ['playback.started', 'playback.ended'])
+    assert.ok(receipts(id).find(event => event.type === 'playback.ended').receivedAt - audioDone.get(id) > 600,
+      'Gateway audio.done must not stand in for actual media drain')
+  }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  run().then(() => process.exit(0)).catch(error => { console.error(`[smoke] FAIL: ${error.message}`); process.exit(1) })
-}
+  for (const [index, text] of ['first reply', 'second reply'].entries()) {
+    await send(text)
+    const id = `response-${index + 1}`
+    await until(() => audioDone.has(id), 'Gateway audio.done')
+    assert.equal(receipts(id).some(event => event.type === 'playback.ended'), false)
+    await finish(id)
+  }
+  assert.ok(Number(await page.locator(STAGE).getAttribute('data-frame-count')) >= 10, 'Real paired frames painted')
+  assert.deepEqual(await page.locator('[data-testid="avatar-canvas"]').evaluate(canvas => [canvas.width, canvas.height]), [256, 256])
+  assert.ok(await page.locator('[data-testid="avatar-canvas"]').evaluate(canvas => {
+    const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data
+    return pixels.some((value, index) => index % 4 !== 3 && value > 40)
+  }), 'Canvas contains decoded I420 content, not a CSS placeholder')
 
-export { run }
+  await page.locator('[data-testid="avatar-mic"]').click()
+  await until(() => inbound.some(event => event.type === 'input_audio_buffer.append'), 'microphone worklet PCM')
+  const microphone = inbound.find(event => event.type === 'input_audio_buffer.append')
+  assert.equal(Buffer.from(microphone.audio, 'base64').length, 640, '20 ms mono PCM16 at 16 kHz')
+  await page.locator('[data-testid="avatar-mic"]').click()
+  await until(() => inbound.some(event => event.type === 'input.mute'), 'input-only mute')
+  assert.equal(inbound.some(event => event.type === 'mute'), false, 'Mic mute must never mute output')
+
+  await send('interrupt this long reply')
+  await until(() => receipts('response-3').some(event => event.type === 'playback.started'), 'third response started')
+  await send('replacement after interruption')
+  await until(() => receipts('response-3').some(event => event.type === 'playback.cancelled'), 'interrupted playback cancelled')
+  await finish('response-4')
+  assert.deepEqual(receipts('response-3').map(event => event.type), ['playback.started', 'playback.cancelled'])
+  assert.ok(rendererEvents.some(event => event.name === 'turn.cancelled'), 'Cancellation reaches real renderer')
+
+  // Late old response chunks cannot resurrect interrupted media or receipts.
+  emit(connections[0].socket, { type: 'audio.delta', responseId: 'response-3', sampleRate: 24000, audio: pcmTone(0.2) })
+  emit(connections[0].socket, { type: 'audio.done', responseId: 'response-3' })
+  await delay(300)
+  assert.deepEqual(receipts('response-3').map(event => event.type), ['playback.started', 'playback.cancelled'])
+
+  await send('empty response')
+  await until(() => audioDone.has('response-5'), 'empty audio.done')
+  await delay(350)
+  assert.equal(receipts('response-5').some(event => ['playback.started', 'playback.ended'].includes(event.type)), false,
+    'No audio or empty/silent placeholders can counterfeit delivery receipts')
+
+  // These are the existing Gateway failure/interruption events. A generic
+  // error has no response identity and is display-only; only an explicit
+  // interruption, global clear, or disconnect fences presentation output.
+  const cancelledBy = async event => {
+    const id = `response-${responseNumber + 1}`
+    await send('interrupt this long reply')
+    await until(() => receipts(id).some(receipt => receipt.type === 'playback.started'), `${id} start`)
+    if (event.type === 'playback.clear') {
+      emit(connections[0].socket, { type: 'error', message: 'Provider temporarily unavailable' })
+      await page.locator('[data-testid="avatar-error"]').filter({ hasText: 'Provider temporarily unavailable' }).waitFor()
+      await delay(75)
+      assert.deepEqual(receipts(id).map(receipt => receipt.type), ['playback.started'],
+        'Unscoped Gateway error must not invent response cancellation')
+    }
+    emit(connections[0].socket, event.type === 'response.interrupted' ? { ...event, responseId: id } : event)
+    await until(() => receipts(id).some(receipt => receipt.type === 'playback.cancelled'), `${event.type} cancellation`)
+    await delay(50)
+    const frames = await page.locator(STAGE).getAttribute('data-frame-count')
+    const sources = await page.evaluate(() => window.__audioEvidence.length)
+    await delay(180)
+    assert.deepEqual(receipts(id).map(receipt => receipt.type), ['playback.started', 'playback.cancelled'])
+    assert.equal(await page.locator(STAGE).getAttribute('data-frame-count'), frames, 'Clear fences canvas updates')
+    assert.equal(await page.evaluate(() => window.__audioEvidence.length), sources, 'Clear fences audio scheduling')
+  }
+  await cancelledBy({ type: 'playback.clear', reason: 'provider_error' })
+  await cancelledBy({ type: 'voice.state', state: 'listening', turnId: 'user-speech' })
+  await cancelledBy({ type: 'response.interrupted' })
+
+  const disconnectedId = `response-${responseNumber + 1}`
+  await send('interrupt this long reply')
+  await until(() => receipts(disconnectedId).some(event => event.type === 'playback.started'), 'playback before Gateway loss')
+  connections[0].socket.close(1011, 'upstream unavailable')
+  await page.waitForFunction(selector => document.querySelector(selector)?.dataset.connection === 'error', STAGE)
+  const stoppedFrames = await page.locator(STAGE).getAttribute('data-frame-count')
+  const stoppedSources = await page.evaluate(() => window.__audioEvidence.length)
+  await delay(250)
+  assert.equal(await page.locator(STAGE).getAttribute('data-frame-count'), stoppedFrames)
+  assert.equal(await page.evaluate(() => window.__audioEvidence.length), stoppedSources)
+  assert.equal(receipts(disconnectedId).some(event => event.type === 'playback.ended'), false,
+    'Gateway disconnect must stop output without a fabricated successful receipt')
+  await page.locator('[data-testid="avatar-connect"]').click()
+  await page.waitForFunction(selector => document.querySelector(selector)?.dataset.connection === 'connected', STAGE)
+  assert.equal(connections.length, 2)
+  assert.equal(await page.locator(STAGE).getAttribute('data-frame-count'), '0')
+  const recoveredId = `response-${responseNumber + 1}`
+  await send('reply after Gateway reconnect')
+  await finish(recoveredId)
+
+  const evidence = await page.evaluate(() => window.__audioEvidence)
+  assert.ok(evidence.length >= 40)
+  assert.ok(evidence.every(item => item.contextState === 'running' && item.energy > 0), 'Every playback source contains actual non-silent PCM')
+  const result = { ok: true, completed: ['response-1', 'response-2', 'response-4'],
+    cancelled: 'response-3', paintedFrames: Number(await page.locator(STAGE).getAttribute('data-frame-count')),
+    realAudioSources: evidence.length, microphoneBytes: 640,
+    existingGatewayEvents: ['audio.done', 'error', 'playback.clear', 'voice.state', 'response.interrupted', 'disconnect'] }
+  await page.close()
+
+  // Exercise real bridge closure, not just the controller in isolation. A
+  // renderer loss may fall back only before playback commits; it must not tear
+  // down the healthy Gateway connection or replay a partially heard response.
+  for (const fault of ['first_media_timeout', 'channel_drop']) {
+    await application.close()
+    await renderer.close()
+    renderer = await startMockRendererServer({ host: '127.0.0.1', port: 0, fault })
+    application = await startExampleServer({
+      host: '127.0.0.1', port: 0,
+      gatewayUrl: `ws://127.0.0.1:${gateway.address().port}/api/realtime`, rendererUrl: renderer.url,
+      providerOptions: { firstMediaTimeoutMs: 250 },
+    })
+    const faultPage = await browser.newPage()
+    faultPage.on('pageerror', error => errors.push(error.message))
+    await faultPage.goto(application.origin)
+    await faultPage.locator('[data-testid="avatar-connect"]').click()
+    await faultPage.waitForFunction(selector => document.querySelector(selector)?.dataset.connection === 'connected', STAGE)
+    const id = `response-${responseNumber + 1}`
+    await faultPage.locator('[data-testid="avatar-input"]').fill(`fault ${fault}`)
+    await faultPage.locator('[data-testid="avatar-send"]').click()
+    if (fault === 'first_media_timeout') {
+      await finish(id)
+      assert.equal(Number(await faultPage.locator(STAGE).getAttribute('data-frame-count')), 0, 'Precommit fallback is original audio only')
+    } else {
+      await until(() => receipts(id).some(event => event.type === 'playback.cancelled'), 'postcommit renderer disconnect cancellation')
+      await delay(900)
+      assert.deepEqual(receipts(id).map(event => event.type), ['playback.started', 'playback.cancelled'],
+        'A partially heard renderer response must not restart as original audio')
+    }
+    assert.equal(await faultPage.locator(STAGE).getAttribute('data-connection'), 'connected', 'Renderer loss must preserve Gateway')
+    assert.equal(await faultPage.locator('[data-testid="avatar-connect"]').isEnabled(), true, 'Explicit renderer reconnect remains available')
+    // Future responses can still finish through original audio on the same GCP.
+    const nextId = `response-${responseNumber + 1}`
+    await faultPage.locator('[data-testid="avatar-input"]').fill('audio after renderer loss')
+    await faultPage.locator('[data-testid="avatar-send"]').click()
+    await finish(nextId)
+    const connectionCount = connections.length
+    await faultPage.locator('[data-testid="avatar-connect"]').click()
+    await until(() => connections.length > connectionCount, 'explicit dual connection reconnect')
+    await faultPage.waitForFunction(selector => document.querySelector(selector)?.dataset.connection === 'connected', STAGE)
+    assert.equal(await faultPage.locator(STAGE).getAttribute('data-frame-count'), '0', 'Reconnect resets stale presentation')
+    await faultPage.close()
+  }
+  assert.deepEqual(errors, [])
+  console.log(JSON.stringify({ ...result, faults: ['first_media_timeout', 'channel_drop'], reconnect: true }))
+} catch (error) {
+  console.error('Browser errors:', errors)
+  console.error('Gateway events:', inbound.map(event => ({ type: event.type, responseId: event.responseId })))
+  console.error('Renderer events:', rendererEvents)
+  throw error
+} finally {
+  await browser?.close()
+  await application?.close()
+  await renderer?.close()
+  for (const client of gateway.clients) client.terminate()
+  await new Promise(resolve => gateway.close(resolve))
+}

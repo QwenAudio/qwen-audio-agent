@@ -16,20 +16,21 @@ export function realtimeStatusLabel(provider) {
   return definition?.displayLabel || definition?.label || provider
 }
 
-export function realtimeModelStatusLabel(model, provider = 'dashscope') {
+export function realtimeModelStatusLabel(model, provider = 'dashscope', runtimeProfile) {
   const value = String(model || '').trim()
   if (!value) return ''
-  const profile = resolveRealtimeModelProfile(value, provider)
+  const profile = runtimeProfile?.id === value && typeof runtimeProfile.label === 'string' && runtimeProfile.label.trim()
+    ? runtimeProfile : resolveRealtimeModelProfile(value, provider)
   return profile.family === 'unknown'
     ? profile.label
     : profile.label.replace(/\s+Realtime\b/i, '')
 }
 
-export function realtimeRuntimeLabel(provider, model) {
+export function realtimeRuntimeLabel(provider, model, runtimeProfile) {
   const definition = REALTIME_PROVIDERS.find(item => item.key === provider)
   if (definition?.modelLabel) return definition.modelLabel
   if (!realtimeModelCatalog(provider)) return realtimeStatusLabel(provider)
-  return realtimeModelStatusLabel(model, provider) || realtimeStatusLabel(provider)
+  return realtimeModelStatusLabel(model, provider, runtimeProfile) || realtimeStatusLabel(provider)
 }
 
 export function realtimeModelRuntimeStatus(health, expectedModel = '') {
@@ -41,7 +42,7 @@ export function realtimeModelRuntimeStatus(health, expectedModel = '') {
   ).trim()
   const expected = String(expectedModel || '').trim()
   return {
-    label: realtimeModelStatusLabel(actualModel, health?.realtimeProvider),
+    label: realtimeModelStatusLabel(actualModel, health?.realtimeProvider, health?.realtimeModelProfile),
     mismatch: Boolean(expected && actualModel && expected !== actualModel),
   }
 }

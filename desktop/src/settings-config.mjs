@@ -14,10 +14,11 @@ import {
   resolveRealtimeFrontendConfiguration,
 } from '../../shared/realtime-provider-catalog.mjs'
 import {
-  REALTIME_PROVIDERS, REALTIME_SETTING_FIELDS,
-  migrateRealtimeFileEnvironment, realtimeRuntimeEnvironment, realtimeSettingsValues, realtimeSettingsFromEnvironment, mergeRealtimeEnvironment,
+  REALTIME_SETTING_FIELDS,
+  realtimeRuntimeEnvironment, realtimeSettingsValues, realtimeSettingsFromEnvironment, mergeRealtimeEnvironment,
 } from '../../shared/realtime-provider-definitions.mjs'
 import { normalizeDesktopLanguage } from './i18n.mjs'
+import { BUILTIN_REALTIME_MODEL_CATALOGS } from '../../shared/realtime-model-catalog.mjs'
 
 const DEFAULTS = {
   gatewayUrl: 'http://127.0.0.1:3101',
@@ -162,11 +163,11 @@ function encoded(value) {
   throw new TypeError('设置值包含无法保存的换行、控制字符或引号组合')
 }
 
-function parseRealtimeSettings(values, fallback, realtimeProvider, drafts) {
+function parseRealtimeSettings(values, fallback, realtimeProvider) {
   return realtimeSettingsFromEnvironment({
     ...mergeRealtimeEnvironment(fallback, values),
     QWEN_AUDIO_REALTIME_PROVIDER: realtimeProvider,
-  }, drafts)
+  })
 }
 
 export function hasRealtimeSettingsPatch(settings) {
@@ -174,22 +175,24 @@ export function hasRealtimeSettingsPatch(settings) {
 }
 
 function normalizeRealtimeSettings(settings, realtimeProvider) {
-  const values = realtimeSettingsValues(settings)
-  for (const provider of REALTIME_PROVIDERS) {
-    for (const field of provider.settings) {
-      const active = provider.key === realtimeProvider
-      const value = values[field.key].trim() || field.default || (active ? field.activeDefault : '') || ''
-      // Inactive providers retain their drafts but cannot block applying the
-      // selected provider. The active endpoint is validated at the IPC boundary.
-      values[field.key] = active && field.type === 'url'
-        ? cleanRealtimeUrl(value, '') : value
-    }
-  }
-  return { ...values, realtimeProvider }
+  const values = realtimeSettingsValues({ ...settings, realtimeProvider })
+  return { ...values, realtimeUrl: cleanRealtimeUrl(values.realtimeUrl, '') }
 }
 
-export function parseSettings(content = '', fallback = {}, realtimeDrafts = {}) {
-  const values = migrateRealtimeFileEnvironment(parseEnv(content))
+// A connection belongs to one provider. Partial edits preserve its values;
+// changing provider starts from that provider's defaults, never old secrets.
+export function mergeSettingsPatch(current = {}, patch = {}) {
+  const providerChanged = patch.realtimeProvider !== undefined
+    && normalizeRealtimeProvider(patch.realtimeProvider) !== normalizeRealtimeProvider(current.realtimeProvider)
+  return {
+    ...current,
+    ...(providerChanged ? realtimeSettingsValues({ realtimeProvider: patch.realtimeProvider }) : {}),
+    ...patch,
+  }
+}
+
+export function parseSettings(content = '', fallback = {}) {
+  const values = parseEnv(content)
   const agentProtocol = cleanAgentProtocol(configured(
     values,
     'AGENT_PROTOCOL',
@@ -224,7 +227,7 @@ export function parseSettings(content = '', fallback = {}, realtimeDrafts = {}) 
   const realtimeProvider = normalizeRealtimeProvider(configured(
     values,
     'QWEN_AUDIO_REALTIME_PROVIDER',
-    fallback.QWEN_AUDIO_REALTIME_PROVIDER || realtimeDrafts.realtimeProvider || DEFAULTS.realtimeProvider,
+    fallback.QWEN_AUDIO_REALTIME_PROVIDER || DEFAULTS.realtimeProvider,
   ))
   const configuredOrbStyle = configured(
     values,
@@ -273,7 +276,7 @@ export function parseSettings(content = '', fallback = {}, realtimeDrafts = {}) 
         fallback.QWEN_AUDIO_WAKE_WORD_ENABLED || '',
       ),
     ).toLowerCase() === 'true',
-    ...parseRealtimeSettings(values, fallback, realtimeProvider, realtimeDrafts),
+    ...parseRealtimeSettings(values, fallback, realtimeProvider),
     agentProtocol,
     backendModel: String(configured(
       values,
@@ -353,18 +356,23 @@ export function normalizeSettings(settings = {}) {
   }
 }
 
-export function realtimeSettingsConfiguration(settings = {}) {
-  return resolveRealtimeFrontendConfiguration(realtimeRuntimeEnvironment(settings))
+export function realtimeSettingsConfiguration(settings = {}, modelCatalogs = BUILTIN_REALTIME_MODEL_CATALOGS) {
+  return resolveRealtimeFrontendConfiguration(realtimeRuntimeEnvironment(settings), { modelCatalogs })
 }
 
-export function realtimeSettingsConfigured(settings = {}) {
+export function realtimeSettingsConfigured(settings = {}, modelCatalogs) {
   try {
-    const frontend = realtimeSettingsConfiguration(settings)
+    const frontend = realtimeSettingsConfiguration(settings, modelCatalogs)
     assertRealtimeFrontendModel(frontend.active)
     return frontend.active.configured && Boolean(cleanRealtimeUrl(frontend.active.endpoint, ''))
   } catch {
     return false
   }
+}
+
+export function realtimeSettingsChanged(previous, next, modelCatalogs, runningSignature = '') {
+  const before = runningSignature || realtimeSettingsConfiguration(previous, modelCatalogs).active.signature
+  return before !== realtimeSettingsConfiguration(next, modelCatalogs).active.signature
 }
 
 // Applies a just-saved settings patch to a live environment, mirroring the
@@ -374,7 +382,7 @@ export function realtimeSettingsConfigured(settings = {}) {
 // would look ignored until the app itself restarts.
 export function applySettingsEnvironment(settings = {}, env = process.env) {
   const realtimeChanged = hasRealtimeSettingsPatch(settings)
-  const normalized = normalizeSettings(realtimeChanged ? { ...parseSettings('', env), ...settings } : settings)
+  const normalized = normalizeSettings(realtimeChanged ? mergeSettingsPatch(parseSettings('', env), settings) : settings)
   const backend = backendDefinition(normalized.agentProtocol)
   const entries = Object.entries(SETTING_KEYS)
     .filter(([field]) => settings[field] !== undefined)
@@ -394,7 +402,6 @@ export function applySettingsEnvironment(settings = {}, env = process.env) {
     else env[key] = text
   }
   if (realtimeChanged) {
-    delete env.QWEN_AUDIO_REALTIME_API_KEY
     delete env.QWEN_AUDIO_REALTIME_ENDPOINT
     Object.assign(env, realtimeRuntimeEnvironment(normalized))
   }
@@ -403,13 +410,13 @@ export function applySettingsEnvironment(settings = {}, env = process.env) {
 
 // The form is unified; persistence is not. Gateway settings and client
 // preferences use separate files without duplicating validation or schemas.
-export function updateSettingsContent(content = '', settings = {}, { scope = 'all', realtimeDrafts = {} } = {}) {
+export function updateSettingsContent(content = '', settings = {}, { scope = 'all', effectiveSettings = {} } = {}) {
   if (!['all', 'gateway', 'client'].includes(scope)) throw new TypeError('invalid settings scope')
   const accepts = key => scope === 'all'
     || (scope === 'client') === CLIENT_ENVIRONMENT_KEYS.has(key)
   const realtimeChanged = scope !== 'client' && hasRealtimeSettingsPatch(settings)
   const normalized = normalizeSettings(realtimeChanged
-    ? { ...parseSettings(content, {}, realtimeDrafts), ...realtimeDrafts, ...settings }
+    ? mergeSettingsPatch({ ...parseSettings(content), ...effectiveSettings }, settings)
     : settings)
   const values = Object.fromEntries(
     Object.entries(SETTING_KEYS)
@@ -443,7 +450,6 @@ export function updateSettingsContent(content = '', settings = {}, { scope = 'al
     'QWEN_AUDIO_DESKTOP_AUTO_SLEEP_SECONDS',
   ])
   if (realtimeChanged) {
-    removed.add('QWEN_AUDIO_REALTIME_API_KEY')
     removed.add('QWEN_AUDIO_REALTIME_ENDPOINT')
   }
   const seen = new Set()

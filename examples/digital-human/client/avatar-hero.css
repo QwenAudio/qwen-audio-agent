@@ -1,6 +1,6 @@
 /* Bounded avatar mode, embedded in the product `.hero`. Inherits the product
    theme (dark surface, #785cf4 accent, header-button styling) and only adds
-   what the centred <video> downlink and minimal controls need. */
+   what the centred renderer surface and minimal controls need. */
 
 .hero.avatar-hero {
   flex: 0 0 auto;
@@ -12,7 +12,7 @@
   text-align: center;
 }
 
-.avatar-audio { display: none; }
+.avatar-rtc-video { display: none; }
 
 .avatar-viewport {
   position: relative;
@@ -37,6 +37,14 @@
   transition: opacity .2s;
 }
 .avatar-video[data-active="true"] { opacity: 1; }
+.avatar-rtc-video[data-active="true"] {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
 
 .avatar-placeholder {
   position: absolute;

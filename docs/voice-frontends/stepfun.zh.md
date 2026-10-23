@@ -9,14 +9,17 @@
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=stepfun
-STEPFUN_API_KEY=your-stepfun-key
+QWEN_AUDIO_REALTIME_API_KEY=your-stepfun-key
+QWEN_AUDIO_REALTIME_MODEL=stepaudio-3-realtime-preview
+QWEN_AUDIO_REALTIME_URL=
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
 | 可选设置 | 默认值 | 说明 |
 | --- | --- | --- |
-| `STEPFUN_REALTIME_URL` | `wss://api.stepfun.com/v1/realtime` | WebSocket 地址 |
-| `STEPFUN_REALTIME_MODEL` | `stepaudio-3-realtime-preview` | 当前支持的模型档案 |
-| `STEPFUN_REALTIME_VOICE` | 空 | 服务默认音色，或该模型支持的音色 ID |
+| `QWEN_AUDIO_REALTIME_URL` | `wss://api.stepfun.com/v1/realtime` | WebSocket 地址 |
+| `QWEN_AUDIO_REALTIME_MODEL` | `stepaudio-3-realtime-preview` | 当前支持的模型档案 |
+| `QWEN_AUDIO_REALTIME_VOICE` | 空 | 服务默认音色，或该模型支持的音色 ID |
 
 使用独立凭据和音色，不继承 DashScope 配置。未知模型 ID 在建连前报错；支持
 新模型需要添加能力档案。预览模型的可用性和后续替换以

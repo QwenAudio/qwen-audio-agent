@@ -14,9 +14,9 @@ export const DHAV_VERSION = 1
 export const PREFIX_LENGTH = 16
 
 export const RecordKind = Object.freeze({
-  INPUT_PCM: 1,   // gateway adapter -> renderer: assistant reply audio
-  PAIRED_AV: 2,   // renderer -> media worker: PCM audio + I420 video
-  MEDIA_END: 3,   // renderer -> media worker: metadata-only turn end
+  INPUT_PCM: 1,   // example adapter -> renderer: assistant reply audio
+  PAIRED_AV: 2,   // renderer -> client media adapter: PCM audio + I420 video
+  MEDIA_END: 3,   // renderer -> client media adapter: metadata-only turn end
 })
 
 export const ControlOp = Object.freeze({

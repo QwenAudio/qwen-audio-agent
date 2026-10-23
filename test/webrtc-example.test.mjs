@@ -15,7 +15,7 @@ test('demo enables WebRTC only in its own environment and selects matched Audio/
   const audio = demoEnvironment(original)
   assert.equal(audio.QWAUDIO_WEBRTC_ENABLED, '1')
   assert.equal(audio.QWEN_AUDIO_REALTIME_PROVIDER, 'dashscope')
-  assert.equal(audio.QWEN_AUDIO_REALTIME_MODEL, 'qwen-audio-3.0-realtime-plus')
+  assert.equal(audio.QWEN_AUDIO_REALTIME_MODEL, 'qwen-audio-3.1-realtime-plus')
   assert.equal(audio.DASHSCOPE_API_KEY, 'synthetic-key')
   assert.equal(original.QWAUDIO_WEBRTC_ENABLED, '0')
   assert.equal(original.QWEN_AUDIO_REALTIME_PROVIDER, 'stepfun')
@@ -61,6 +61,10 @@ test('npm pack keeps the usable example but excludes installed media, SDKs and p
     'shared/gateway/webrtc.mjs',
     'shared/gateway/webrtc-browser.mjs',
     'shared/gateway/webrtc-message.mjs',
+    'shared/realtime-model-catalog.mjs',
+    'shared/realtime-models/api-profiles.mjs',
+    'shared/realtime-models/builtins.mjs',
+    'shared/realtime-models/registry.mjs',
   ]
   for (const path of [...required, '.npmignore', 'examples/webrtc/.npmignore', `${nativePath}/package.json`, `${nativePath}/index.cjs`]) {
     const target = join(fixture, path)

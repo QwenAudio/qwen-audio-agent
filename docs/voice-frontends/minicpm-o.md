@@ -15,14 +15,18 @@ Set the provider and endpoint after the service is ready:
 
 ```bash
 QWEN_AUDIO_REALTIME_PROVIDER=minicpm-o
-MINICPM_O_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=audio
+QWEN_AUDIO_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=audio
+QWEN_AUDIO_REALTIME_API_KEY=
+QWEN_AUDIO_REALTIME_MODEL=
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
 The default assumes the upstream Gateway was started with `--http` on the loopback interface.
 For ModelBest cloud or another TLS deployment, set its corresponding `wss://` endpoint instead.
-`MINICPM_O_AUTH_TOKEN` is sent as a Bearer token when the endpoint requires one. The same fields
+`QWEN_AUDIO_REALTIME_API_KEY` is sent as a Bearer token when the endpoint requires one. The same fields
 are available in Desktop Settings under **Voice frontend → ModelBest**, where the model is shown
-as the fixed `MiniCPM-o 4.5`.
+as the fixed `MiniCPM-o 4.5`. Model and voice selection belong to the upstream service;
+leave those Gateway fields empty.
 
 The adapter converts the clients' 16-bit PCM stream to the protocol's 16 kHz mono float32 input,
 converts its 24 kHz mono float32 output back to 16-bit PCM, and maps MiniCPM-o session and response
@@ -34,7 +38,7 @@ Use MiniCPM-o's video full-duplex endpoint to enable the negotiated WebUI
 visual-frame stream:
 
 ```bash
-MINICPM_O_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=video
+QWEN_AUDIO_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=video
 ```
 
 The public GCP shape remains `input_image_buffer.append`. The MiniCPM-o adapter

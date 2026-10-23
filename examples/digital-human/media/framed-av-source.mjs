@@ -1,7 +1,5 @@
-// DHAV media source adapter — loaded inside the disposable WebRTC media
-// worker via a trusted absolute module path. It connects the renderer's
-// private media channel directly, so raw paired A/V bytes never traverse
-// the gateway main process or its JSON IPC.
+// DHAV media source used by the example-local renderer bridge. Neither this
+// module nor its media bytes are loaded by the Gateway or its WebRTC worker.
 //
 // Dependencies resolve from the example's own node_modules (createRequire on
 // this file's URL), never from accidental framework hoisting.
@@ -89,6 +87,9 @@ export function createFramedAvSource({ binding, onUnit, onEvent = () => {}, onEr
       // Quarantine everything up to this generation; late frames from
       // cancelled turns must never be republished under a new generation.
       quarantinedGeneration = Math.max(quarantinedGeneration, generation)
+      for (const key of expectedSequence.keys()) {
+        if (Number(key.slice(key.lastIndexOf(':') + 1)) <= quarantinedGeneration) expectedSequence.delete(key)
+      }
     },
     close() {
       if (closed) return

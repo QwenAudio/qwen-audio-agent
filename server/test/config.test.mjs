@@ -300,8 +300,8 @@ test('uses standard ACP model configuration for DeepSeek with its legacy alias a
 
 test('changes the realtime configuration signature when only the model changes', () => {
   const shared = {
-    DASHSCOPE_API_KEY: 'same-key',
-    QWEN_AUDIO_REALTIME_BASE_URL: 'wss://gateway.example/realtime',
+    QWEN_AUDIO_REALTIME_API_KEY: 'same-key',
+    QWEN_AUDIO_REALTIME_URL: 'wss://gateway.example/realtime',
     QWEN_AUDIO_REALTIME_VOICE: 'same-voice',
   }
   const first = resolveRealtimeFrontendConfiguration({
@@ -316,19 +316,19 @@ test('changes the realtime configuration signature when only the model changes',
   assert.notEqual(first.active.signature, second.active.signature)
 })
 
-test('selects only the explicit voice override for the active model family', () => {
+test('uses one voice override for whichever frontend model is active', () => {
   const legacy = resolveRealtimeFrontendConfiguration({
-    DASHSCOPE_API_KEY: 'same-key',
+    QWEN_AUDIO_REALTIME_API_KEY: 'same-key',
     QWEN_AUDIO_REALTIME_MODEL: 'qwen-audio-3.0-realtime-plus',
     QWEN_AUDIO_REALTIME_VOICE: 'Cherry',
   })
   const omni = resolveRealtimeFrontendConfiguration({
-    DASHSCOPE_API_KEY: 'same-key',
+    QWEN_AUDIO_REALTIME_API_KEY: 'same-key',
     QWEN_AUDIO_REALTIME_MODEL: 'qwen3.5-omni-plus-realtime',
-    QWEN_OMNI_REALTIME_VOICE: 'Ethan-custom',
+    QWEN_AUDIO_REALTIME_VOICE: 'Ethan-custom',
   })
   const defaults = resolveRealtimeFrontendConfiguration({
-    DASHSCOPE_API_KEY: 'same-key',
+    QWEN_AUDIO_REALTIME_API_KEY: 'same-key',
     QWEN_AUDIO_REALTIME_MODEL: 'qwen3.5-omni-plus-realtime',
   })
 

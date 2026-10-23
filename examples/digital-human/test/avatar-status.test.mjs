@@ -5,6 +5,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { avatarVisualState, avatarStatusDot } from '../client/avatar-status.js'
 
+test('audio-only fallback remains visible after real playback starts', () => {
+  assert.equal(avatarVisualState({
+    state: 'connected', playback: 'speaking', avatarState: { state: 'speaking', output: 'audio_only' },
+  }), 'audio_only')
+})
+
 test('renderer state wins over the connection state', () => {
   assert.equal(avatarVisualState({ avatarState: { state: 'rendering' }, state: 'connected' }), 'processing')
   assert.equal(avatarVisualState({ avatarState: { state: 'speaking' }, state: 'connected' }), 'speaking')

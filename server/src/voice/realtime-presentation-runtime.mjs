@@ -31,8 +31,16 @@ export function confirmsTaskNotificationOnPlaybackStart(context) {
     context
     && (
       context.origin === 'announcement'
-      || context.consumesTaskNotification
+      || isTaskNotification(context)
     ),
+  )
+}
+
+// A due reminder reaches the model as a Gateway system event for its task.
+function isTaskNotification(context) {
+  return Boolean(
+    context?.consumesTaskNotification
+    || (context?.origin === 'gateway-system-event' && contextTaskIds(context).length),
   )
 }
 
@@ -52,26 +60,6 @@ function contextTaskIds(context) {
 
 function awaitsToolFollowUp(context) {
   return Boolean(context?.awaitsToolFollowUp ?? context?.hasFunctionCall)
-}
-
-// Map a presentation cancel reason onto the digital-human cancel vocabulary.
-// The distinction is contractual: user_interruption may confirm a task
-// notification the user chose to skip, provider_failure never does. An
-// unattributed playback cancel is treated as a user interruption; a resolved
-// permission revokes the turn.
-const DIGITAL_HUMAN_CANCEL_REASON_MAP = Object.freeze({
-  user_interruption: 'user_interruption',
-  content_safety: 'content_safety',
-  permission_resolved: 'permission_revoked',
-  permission_revoked: 'permission_revoked',
-  owner_replaced: 'owner_replaced',
-  provider_failure: 'provider_failure',
-  transport_lost: 'transport_lost',
-  session_closed: 'session_closed',
-})
-
-function digitalHumanCancelReason(reason) {
-  return DIGITAL_HUMAN_CANCEL_REASON_MAP[reason] || 'user_interruption'
 }
 
 /**
@@ -97,7 +85,6 @@ export class RealtimePresentationRuntime {
     announcementQuietMs,
     responseContextCleanupMs,
     turnCitations = null,
-    digitalHuman = null,
   }) {
     this.ownerId = ownerId
     this.sessionId = sessionId
@@ -115,11 +102,6 @@ export class RealtimePresentationRuntime {
     this.announcementQuietMs = announcementQuietMs
     this.responseContextCleanupMs = responseContextCleanupMs
     this.turnCitations = turnCitations
-    // Optional per-connection digital-human orchestrator. When null every hook
-    // below short-circuits and reply audio follows the plain egress unchanged.
-    // The session runtime binds it lazily once the provider session is ready,
-    // so it stays a mutable public field rather than a constructor capture.
-    this.digitalHuman = digitalHuman
     this.contexts = new Map()
     this.playbackTurns = new Map()
     this.lastCorrectionTurn = null
@@ -274,66 +256,22 @@ export class RealtimePresentationRuntime {
     const context = this.#contextFor(event)
     if (context?.suppressed) return
     const responseTurnId = context.turnId || this.turns.turnId
-    const sampleRate = Number(event.sampleRate)
-      || this.getFrontend().provider.outputSampleRate
     if (id) {
       context.hasAudio = true
-      context.outputSampleRate = sampleRate
       this.playbackTurns.set(id, responseTurnId)
       this.announcementWindow.queueAudio(id, {
         turnId: responseTurnId,
         origin: context.origin || 'model',
       })
     }
-    if (this.digitalHuman && id) {
-      // Bind the avatar turn lazily on the first audio delta so a text-only or
-      // tool-only response never interrupts an in-flight avatar turn.
-      this.digitalHuman.responseStart({
-        responseId: id,
-        turnId: responseTurnId,
-        origin: context.origin || 'model',
-      })
-      // Diverted audio is buffered and appended to the provider; the paired
-      // A/V reaches the client through the media track, so the delta is
-      // deliberately not sent on the plain audio egress. A fallback flush is
-      // published by the orchestrator's onFlushAudio callback, never here, so
-      // buffered audio replays exactly once and in order.
-      if (this.digitalHuman.routeAudio({
-        responseId: id,
-        delta: event.delta,
-        sampleRate,
-      }).route === 'divert') return
-    }
     this.send({
       type: GatewayServerEvent.AUDIO_DELTA,
       audio: event.delta,
-      sampleRate,
+      sampleRate: Number(event.sampleRate)
+        || this.getFrontend().provider.outputSampleRate,
       responseId: id,
       turnId: responseTurnId,
     })
-  }
-
-  // Replay buffered reply audio on the plain egress after the avatar path falls
-  // back mid-response. Deltas are published verbatim and in order so the client
-  // hears one continuous stream despite the switch.
-  publishAudioDelta(responseId, deltas, turnId = null) {
-    if (!responseId || !deltas?.length) return
-    const context = this.contexts.get(responseId)
-    const responseTurnId = turnId
-      || context?.turnId
-      || this.playbackTurns.get(responseId)
-      || this.turns.turnId
-    const sampleRate = context?.outputSampleRate
-      || this.getFrontend().provider.outputSampleRate
-    for (const delta of deltas) {
-      this.send({
-        type: GatewayServerEvent.AUDIO_DELTA,
-        audio: delta,
-        sampleRate,
-        responseId,
-        turnId: responseTurnId,
-      })
-    }
   }
 
   #audioTranscriptDelta(event) {
@@ -410,15 +348,6 @@ export class RealtimePresentationRuntime {
     const responseTurnId = context?.turnId || this.turns.turnId
     const responseStatus = event.response?.status
     const failed = ['failed', 'cancelled', 'incomplete'].includes(responseStatus)
-    // Tell the avatar turn the model is done. hadAudio is authoritative from
-    // the presentation context: a response that produced no reply audio will
-    // never receive a client playback receipt, so the orchestrator retires it
-    // now rather than waiting for a terminal signal that cannot arrive.
-    this.digitalHuman?.responseFinish({
-      responseId: id,
-      failed,
-      hadAudio: Boolean(context?.hasAudio),
-    })
     const sourceHasSpeech = Boolean(context?.hasAudio || context?.assistantTranscript?.trim())
     const suppressResponse = Boolean(failed || context?.suppressed)
     // A spoken task-acceptance receipt needs no second acknowledgement, but
@@ -467,7 +396,7 @@ export class RealtimePresentationRuntime {
         && !failed
       )
       const completedNonVoiceTaskNotification = (
-        context?.consumesTaskNotification
+        isTaskNotification(context)
         && nonVoiceClient
         && !failed
       )
@@ -683,9 +612,6 @@ export class RealtimePresentationRuntime {
       turnId: this.turns.userSpeaking ? this.turns.turnId : playbackTurnId,
       origin: context?.origin || 'model',
     })
-    // Layer 3 of avatar completion: only this client receipt may drive the
-    // selector to terminal. Provider completion never impersonates it.
-    this.digitalHuman?.playbackEnded({ responseId: id })
     this.#flushAnnouncementsSoon()
   }
 
@@ -721,12 +647,6 @@ export class RealtimePresentationRuntime {
   cancelPlayback(id, { reason = '' } = {}) {
     const context = this.contexts.get(id)
     if (context?.suppressed && context.playbackEnded) return
-    // Cancel the avatar turn first so a diverted, never-committed buffer is
-    // discarded instead of flushing to the client after an interruption.
-    this.digitalHuman?.responseCancel({
-      responseId: id,
-      reason: digitalHumanCancelReason(reason),
-    })
     this.announcementWindow.finishPlayback(id, {
       awaitsToolFollowUp: false,
     })
@@ -773,15 +693,8 @@ export class RealtimePresentationRuntime {
     }
   }
 
-  failResponse(event, { reason = 'provider_failure' } = {}) {
+  failResponse(event) {
     const id = realtimeResponseId(event)
-    // A failed response discards its avatar turn instead of draining it. The
-    // reason keeps a content-safety discard distinguishable from a provider
-    // fault for downstream task-notification semantics.
-    this.digitalHuman?.responseCancel({
-      responseId: id,
-      reason: digitalHumanCancelReason(reason),
-    })
     const context = this.contexts.get(id)
     if (context?.origin === 'announcement') {
       this.send({ type: GatewayServerEvent.PLAYBACK_CLEAR })

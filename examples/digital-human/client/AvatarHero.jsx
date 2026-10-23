@@ -1,53 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { avatarVisualState, avatarStatusDot } from './avatar-status.js'
 import './avatar-hero.css'
 
-// The avatar stage of this example's standalone SPA: the centred <video>
-// downlink plus a minimal text turn injector. The spoken transcript lives in the
-// sibling `.messages` panel (App.jsx), not as an overlay here. Task, permission
-// and history panels deliberately do not exist in this example.
-//
-// `avatar` is the useWebRtcVoice transport owned by App so the header status
-// light and this stage share one WebRTC connection.
+// DHAV paints paired I420 frames into the canvas. The video surface is reserved
+// for renderer adapters that own an RTC media track; neither changes Gateway.
 export default function AvatarHero({ avatar, personaId }) {
   const {
     state, playback, avatarState, error,
-    videoRef, audioRef, send, clearError,
+    canvasRef, videoRef, frameCount, send, clearError,
   } = avatar
 
   const [draft, setDraft] = useState('')
-  const [frameCount, setFrameCount] = useState(0)
-  const [videoReady, setVideoReady] = useState(false)
-
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video) return undefined
-    let handle = 0
-    let frames = 0
-    const supportsCallback = typeof video.requestVideoFrameCallback === 'function'
-    const onFrame = () => {
-      frames += 1
-      setFrameCount(frames)
-      setVideoReady(true)
-      if (supportsCallback) handle = video.requestVideoFrameCallback(onFrame)
-    }
-    if (supportsCallback) handle = video.requestVideoFrameCallback(onFrame)
-    const onPlaying = () => setVideoReady(true)
-    const onEmptied = () => { setVideoReady(false); setFrameCount(0) }
-    video.addEventListener('playing', onPlaying)
-    video.addEventListener('emptied', onEmptied)
-    return () => {
-      if (supportsCallback && handle) video.cancelVideoFrameCallback(handle)
-      video.removeEventListener('playing', onPlaying)
-      video.removeEventListener('emptied', onEmptied)
-    }
-  }, [videoRef])
-
-  const visual = avatarVisualState({ state, playback, avatarState })
+  const visual = avatarVisualState(avatar)
   const dot = avatarStatusDot(visual)
 
   const ready = state === 'connected'
-  const showVideo = videoReady && visual !== 'audio_only'
+  const showVideo = frameCount > 0 && visual !== 'audio_only'
 
   const submit = event => {
     event.preventDefault()
@@ -66,17 +34,19 @@ export default function AvatarHero({ avatar, personaId }) {
       data-visual={visual}
       data-frame-count={frameCount}
     >
-      <audio ref={audioRef} className="avatar-audio" />
-
       <div className="avatar-viewport" data-visual={visual}>
+        <canvas
+          ref={canvasRef}
+          className="avatar-video"
+          data-testid="avatar-canvas"
+          data-active={showVideo ? 'true' : 'false'}
+          aria-label="数字人画面"
+        />
         <video
           ref={videoRef}
-          className="avatar-video"
+          className="avatar-rtc-video"
           data-testid="avatar-video"
-          data-active={showVideo ? 'true' : 'false'}
           playsInline
-          muted
-          autoPlay
         />
         {!showVideo && (
           <div className="avatar-placeholder">
@@ -86,7 +56,7 @@ export default function AvatarHero({ avatar, personaId }) {
                 ? '头像不可用，已降级为纯音频'
                 : ready
                   ? '说话或输入文字开始'
-                  : '正在连接数字人…'}
+                  : state === 'connecting' ? '正在连接数字人…' : '点击「连接数字人」开始'}
             </p>
           </div>
         )}

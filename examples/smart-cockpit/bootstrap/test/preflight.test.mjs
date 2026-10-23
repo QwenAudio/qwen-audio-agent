@@ -38,16 +38,23 @@ test('uses the selected provider credential and model without borrowing the back
     ['google-live', 'GOOGLE_API_KEY'],
   ]) {
     const env = { QWEN_AUDIO_REALTIME_PROVIDER: provider, DASHSCOPE_API_KEY: 'backend-only' }
-    assert.throws(() => assertRealtimeConfigured(env), error => error.message.includes(key))
+    assert.throws(() => assertRealtimeConfigured(env), /QWEN_AUDIO_REALTIME_API_KEY/)
+    assert.doesNotThrow(() => assertRealtimeConfigured({ ...env, QWEN_AUDIO_REALTIME_API_KEY: 'frontend-key' }))
     assert.doesNotThrow(() => assertRealtimeConfigured({ ...env, [key]: 'frontend-key' }))
+    assert.throws(() => assertRealtimeConfigured({
+      ...env, [key]: 'legacy-key', QWEN_AUDIO_REALTIME_API_KEY: '',
+    }), /QWEN_AUDIO_REALTIME_API_KEY/)
   }
   assert.throws(() => assertRealtimeConfigured({
     QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun',
     STEPFUN_API_KEY: 'frontend-key',
     STEPFUN_REALTIME_MODEL: 'qwen-audio-3.0-realtime-plus',
-  }), /STEPFUN_REALTIME_MODEL/)
-  assert.throws(() => assertRealtimeConfigured({
-    QWEN_AUDIO_REALTIME_API_KEY: 'removed-global-key',
+  }), /QWEN_AUDIO_REALTIME_MODEL/)
+  assert.doesNotThrow(() => assertRealtimeConfigured({
+    QWEN_AUDIO_REALTIME_API_KEY: 'frontend-key',
+  }))
+  assert.throws(() => assertAgentConfigured({
+    QWEN_AUDIO_REALTIME_API_KEY: 'frontend-only',
   }), /DASHSCOPE_API_KEY/)
 })
 

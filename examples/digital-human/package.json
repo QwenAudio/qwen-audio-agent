@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Digital human example with DHAV Mock/FlashHead and Vidu ARTC presentations.",
+  "description": "Dual-connection digital-human client with example-local replaceable renderer adapters.",
   "engines": {
     "node": ">=22.22.2"
   },
@@ -12,16 +12,18 @@
     "start": "node bootstrap/start.mjs",
     "renderer:mock": "node providers/mock/mock-renderer-server.mjs",
     "build:client": "vite build",
-    "dev:client": "vite",
-    "vidu:install": "npm ci --prefix vidu",
-    "start:vidu": "npm run desktop:vidu --prefix vidu",
-    "dev:vidu": "npm run dev --prefix vidu",
-    "start:orb": "npm run desktop:orb --prefix vidu",
-    "test:vidu": "npm test --prefix vidu",
-    "build:vidu": "npm run build --prefix vidu",
-    "test:all": "npm test && npm run test:vidu"
+    "test:browser": "node test/browser-smoke.mjs"
   },
   "dependencies": {
-    "ws": "^8.21.3"
-  }
+    "ws": "^8.21.3",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "vite": "^7.3.7",
+    "playwright": "^1.63.0"
+  },
+  "peerDependencies": { "qwen-audio-agent": "^2.0.1" },
+  "peerDependenciesMeta": { "qwen-audio-agent": { "optional": true } }
 }

@@ -50,11 +50,14 @@ replace the frontend configuration in `.env.local` with:
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=minicpm-o
-MINICPM_O_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=video
+QWEN_AUDIO_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=video
+QWEN_AUDIO_REALTIME_API_KEY=
+QWEN_AUDIO_REALTIME_MODEL=
+QWEN_AUDIO_REALTIME_VOICE=
 AGENT_PROTOCOL=none
 ```
 
-Use the endpoint of your deployment and set `MINICPM_O_AUTH_TOKEN` if needed.
+Use the endpoint of your deployment and set `QWEN_AUDIO_REALTIME_API_KEY` if it requires a Bearer token.
 No DashScope key is required. The client uses continuous frames with voice
 input; typed input, on-demand inspection, observation, and backend tool calls
 are unavailable through the current MiniCPM-o interface. Unsupported controls

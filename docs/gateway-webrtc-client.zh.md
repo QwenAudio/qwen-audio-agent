@@ -40,12 +40,12 @@ CLI 可用 `qwenaudio gateway --webrtc` 开启同一个入口；先安装依赖�
 ```sh
 QWAUDIO_WEBRTC_ENABLED=1 \
 QWEN_AUDIO_REALTIME_PROVIDER=dashscope \
-QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus \
+QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.1-realtime-plus \
 npm run start --workspace server
 ```
 
 另一次测试 Omni 时，将模型改成 `qwen3.5-omni-plus-realtime` 并重启。
-沿用服务器已有 `DASHSCOPE_API_KEY` 和地域/Workspace 配置，不需要将 Key 写入示例页。
+沿用服务器已有 `QWEN_AUDIO_REALTIME_API_KEY` 和地域/Workspace 配置，不需要将 Key 写入示例页。
 同一个 Gateway 本版使用其当前配置的模型，不支持请求级随意覆盖模型或上游地址。
 
 默认端口下打开：
@@ -78,7 +78,7 @@ ICE 配置仅对已认证客户端返回，响应禁止缓存。
 ### SDP 建连
 
 ```http
-POST /api/v1/webrtc/realtime?model=qwen-audio-3.0-realtime-plus&sessionId=my-session
+POST /api/v1/webrtc/realtime?model=qwen-audio-3.1-realtime-plus&sessionId=my-session
 Authorization: Bearer <Gateway access credential>
 Content-Type: application/sdp
 

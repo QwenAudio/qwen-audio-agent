@@ -1,168 +1,106 @@
-# Digital Human Example
+# Digital-human client example
 
-English | [中文](README_ZH.md)
+[English](README.md) | [中文](README_ZH.md)
 
-Digital human presentations for Qwen Audio Agent: DHAV Mock/FlashHead and Vidu S2
-Avatar Component Edition. The Realtime provider handles speech and conversation;
-the avatar service renders the character. Code, configuration templates and demo
-videos for both paths live here. Choose one path to run.
+A normal qwen-audio-agent client with **two independent connections**: one to the Gateway for conversation, and one to a replaceable avatar renderer. The renderer consumes assistant reply audio; it does not own another ASR / LLM / TTS loop.
 
-## Core capabilities
+No framework runtime, SDK, GCP or framework dependency changes are required. No qwen-audio-agent-rtc installation is required. Run inside this repository or copy this directory and use the official package's public Client SDK with an ordinary Gateway.
 
-| Path | Implemented capabilities | Guide |
-| --- | --- | --- |
-| DHAV Mock | GPU-free audio spectrum video with real speech, WebRTC and A/V scheduling | [Run guide](docs/dhav.md) |
-| DHAV FlashHead | Self-hosted GPU renderer, browser audio/video, interruption and audio fallback | [Deployment](docs/dhav.md) |
-| Vidu / ARTC | Cloud rendering, default/custom image, browser and draggable desktop overlay, switch to stock orb | [Vidu guide](vidu/README.md) |
+## Demo
 
-### Demo videos
-
-Existing digital human demo, retained alongside the DHAV/FlashHead guide:
+Original DHAV / FlashHead demonstration; the refactored browser client still requires real GPU deployment validation:
 
 https://github.com/user-attachments/assets/5301ef5e-b674-4561-93bb-e0c7544cf696
 
-[Watch or download the digital human demo](assets/digital-human-demo.mp4)
+## Boundaries
 
-Vidu desktop avatar:
-
-<video src="assets/digital_human_demo_vidu.mp4" controls width="100%"></video>
-
-[Watch or download the Vidu demo](assets/digital_human_demo_vidu.mp4)
-
-Demo footage illustrates interaction; automated checks validate code separately.
-Neither proves live-service acceptance on the current machine.
-
-## Architecture and boundaries
-
-| Boundary | DHAV Mock / FlashHead | Vidu / ARTC |
+| Connection | Content | Responsibility |
 | --- | --- | --- |
-| Audio to renderer | Gateway presentation layer → DHAV provider | Browser Gateway SDK → local Vidu proxy |
-| Media return | Timestamped paired PCM/I420 → Gateway media worker → WebRTC | Vidu → ARTC → browser SDK |
-| UI | `client/` SPA served at Gateway `/skins/digital-human` | `vidu/client/` browser and Electron overlay |
-| Gateway lifecycle | `bootstrap/` starts an isolated example Gateway | `vidu/gateway-host.mjs` borrows or starts the desktop Gateway; stops only its own process |
-| Configuration/state | `.env.local`, `.runtime/` here | `vidu/.env.local`, `vidu/.desktop/`; Gateway state shared with the orb |
+| Browser ↔ Gateway | Unmodified GCP: microphone/text, assistant PCM, lifecycle events, playback receipts | Conversation and tasks |
+| Browser ↔ renderer adapter | Assistant PCM, render controls, media or short-lived RTC credentials | Avatar presentation |
 
-DHAV uses the framework's existing `digitalHuman` injection, WebRTC video output
-and media scheduler. Vidu uses the Gateway Client SDK and an independent ARTC
-downlink. The transports remain separate; adding Vidu requires no further core
-changes. See the [architecture analysis (Chinese)](docs/integration-architecture.zh.md)
-for the reasoning, synchronization boundaries and future integration requirements.
+The example-local Node host proxies GCP unchanged and protects renderer credentials. It is not a custom Gateway.
 
-## Quick start
+- Implemented: DHAV adapter, GPU-free synthetic Mock renderer, remote DHAV configuration.
+- Extension seam: commercial adapters can play their native RTC media without converting to DHAV. A Vidu adapter and paid-service validation are **not included** in this revision.
+- Supported reply format: PCM16 little-endian, 24 kHz, mono. Other sample rates are rejected rather than misplayed.
 
-Run from a source checkout with Node.js >= 22.22.2. First run `npm ci` at the
-repository root.
+## Run
 
-### DHAV Mock / FlashHead
+Node.js ≥ 22.22.2. First start an ordinary Gateway with your existing model configuration, for example:
 
-Start these commands at the repository root:
+```bash
+qwenaudio gateway --backend none
+```
 
-```sh
-npm run example:digital-human:install
+Model keys and backend settings belong to Gateway, not this example. The example never starts, changes or stops your Gateway; no example-specific Gateway branch is needed.
+
+Then, in a checkout:
+
+```bash
 cd examples/digital-human
+npm ci
 cp .env.example .env.local
-# Set DASHSCOPE_API_KEY. FlashHead also needs renderer URL, token and persona.
 npm run build:client
 npm start
 ```
 
-Open the printed `http://127.0.0.1:18895/skins/digital-human/index.html?...` URL,
-click the microphone, allow recording and speak. Verify replies, video and text;
-text input also triggers replies. Mock needs no GPU but still uses a real voice
-provider key. FlashHead requires a separately deployed GPU service; follow the
-[full guide](docs/dhav.md). Ctrl-C stops the Gateway and owned local Mock.
+For a standalone source copy, install the public SDK package before building:
 
-### Vidu / ARTC
-
-Run in `examples/digital-human`:
-
-```sh
-npm run vidu:install
-cp vidu/.env.example vidu/.env.local
-# Set VIDU_API_KEY, ARTC_APP_ID and ARTC_APP_KEY; configure Gateway voice/tools.
-npm run start:vidu
+```bash
+npm install qwen-audio-agent
 ```
 
-Choose an image in overlay settings, click **开始对话**, allow the microphone and
-speak. Verify moving video and audible replies. Click **结束对话** before quitting.
-The overlay has been checked on macOS; other desktop platforms need local
-acceptance. Vidu API access, ARTC and the online SDK are prerequisites; starting a
-conversation can incur charges. See [API access and configuration](vidu/README.md#api-access-and-configuration).
-Edit existing environment files instead of copying the template again.
+Open the printed address (default `http://127.0.0.1:5273`), click Connect to authorize audio, then enable the microphone or submit text. An empty `DH_RENDERER_URL` starts a synthetic audio-reactive renderer: no GPU/model download. Normal conversation still calls your configured model; automated tests do not.
 
-| Command in this directory | Purpose |
-| --- | --- |
-| `npm start` | DHAV Mock, or remote FlashHead when `DH_RENDERER_URL` is configured |
-| `npm run start:vidu` | Vidu desktop overlay |
-| `npm run dev:vidu` | Vidu browser at `http://127.0.0.1:5181` |
-| `npm run start:orb` | Stock orb; also available through Vidu overlay settings |
+## Self-hosted renderer
 
-Use one microphone UI at a time. These are separate presentation paths, without
-seamless renderer switching inside an active conversation.
+```dotenv
+DH_GATEWAY_URL=ws://127.0.0.1:18888/api/realtime
+DH_GATEWAY_TOKEN=
+DH_RENDERER_ADAPTER=dhav
+DH_RENDERER_URL=http://your-renderer-host:port
+DH_RENDERER_TOKEN=your-renderer-token
+DH_PERSONA=flashhead-default
+```
 
-## Configuration and data
+The renderer exposes DHAV v1 session creation/deletion, authenticated PCM input and paired PCM/I420 media WebSockets. See the original author's [OpenAvatarChat / FlashHead service](https://github.com/juhayna-zh/OpenAvatarChat) for GPU deployment. This refactor preserves its wire protocol; real deployment remains an explicit acceptance step.
 
-- DHAV defaults to local port `18895`; see [.env.example](.env.example). Shell
-  variables override this directory's `.env.local`. Only a missing voice key is
-  read from the repository-root `.env.local`. Isolated state lives in `.runtime/`.
-  The renderer receives assistant audio; microphone audio goes to the Gateway
-  and the voice upstream.
-- Vidu defaults to ports `5181/5182`; see [vidu/.env.example](vidu/.env.example).
-  Shell variables override `vidu/.env.local`. Assistant audio/text and the image
-  go to Vidu; ARTC returns media. The microphone goes only to the Gateway. Vidu
-  keys, ARTC AppKey and control secrets stay in the local server.
-- Vidu shares the orb's voice/tool configuration and persistent Gateway state,
-  with separate window state. Restart the relevant runtime after environment
-  changes. Removing `vidu/.desktop/` resets overlay state, not Gateway history.
-- Environment files, `.runtime/` and `vidu/.desktop/` are ignored. After exiting
-  the relevant processes, manually remove that mode's environment/state files to
-  reset it. Remote retention follows the services' policies; local deletion does
-  not delete remote data.
+## Replace the service
 
-See the [DHAV guide](docs/dhav.md) and [Vidu guide](vidu/README.md) for parameters,
-authentication and troubleshooting.
+Adapters live entirely in this example:
 
-## Validation and limitations
+- `server/renderers/`: long-lived credentials, service sessions, audio forwarding and short-lived media credentials.
+- `client/renderers/`: vendor media transport/player and actual playback lifecycle.
+- Register the same adapter ID on both sides; select it with `DH_RENDERER_ADAPTER`.
 
-After installing both paths' dependencies, run here:
+DHAV uses WebAudio + canvas. The Vidu / ARTC approach from #570 can retain its native RTC playback; it does not need a DHAV conversion or Gateway modifications. See the [adapter contract](docs/provider-contract.zh.md) and [architecture](docs/design.zh.md).
 
-```sh
-npm run test:all
+## Delivery semantics
+
+The client uses existing Gateway `audio.delta`, `audio.done` and global `playback.clear` events. Only real assistant audio starts a render turn. `audio.done` ends renderer input, **not** browser playback. Actual audible start, drain and cancellation drive playback receipts; interruptions fence late output by response and generation.
+
+Ordinary Gateway WebSocket output does not expose a precise model termination status. `audio.done` does not prove model success; generic `error` messages are displayed without guessing response failure or cancellation from their text. The example requires no response-status or targeted-clear extension.
+
+Before playback begins, renderer failure may fall back to original PCM once. After playback starts, failure cancels rather than replaying the reply. Input-only microphone mute preserves output. Both input and output queues are bounded.
+
+## Security and scope
+
+This single-client demo binds to loopback and validates Host / WebSocket Origin. Long-lived Gateway and vendor secrets stay in Node; commercial adapters may deliver short-lived RTC join credentials to the browser. Never put long-lived secrets in frontend bundles.
+
+Remote deployment requires HTTPS, authentication, quotas and an explicit origin policy. Do not expose the local credential relay directly to the Internet.
+
+## Test
+
+```bash
+npm test
 npm run build:client
-npm run build:vidu
+npx playwright install chromium
+npm run test:browser
 ```
 
-`npm test` covers DHAV only; `npm run test:vidu` covers Vidu only. Mock/protocol
-checks need neither a GPU nor live Vidu calls. The DHAV browser smoke command
-`npm run test:digital-human-browser` (repository root) requires a real voice key
-and the native WebRTC extension; see the run guide.
+Tests use a fake Gateway and real local Mock renderer connections, without model calls or paid APIs. See the [deployment checklist](docs/implementation-plan.zh.md) for real-service acceptance.
 
-DHAV schedules media against the worker's audio clock and can fall back to audio;
-camera input and avatar output cannot currently be enabled together. Vidu
-estimates Gateway playback receipts with a silent PCM clock, does not measure
-actual ARTC playback and does not use DHAV's audio fallback. Tokens are not
-renewed automatically; active sessions last at most two hours. Use the standard
-Gateway WebUI for tool approvals and additional input. Live FlashHead/Vidu video,
-speech, interruption, tools and shutdown still need manual acceptance with the
-external services configured.
+## Credits
 
-## Replacement and extension
-
-- Replace the DHAV renderer through `DH_RENDERER_URL`, `DH_RENDERER_TOKEN` and
-  `DH_PERSONA`; the service must satisfy the [provider contract (Chinese)](docs/provider-contract.zh.md).
-  Clear the remote URL to restore local Mock.
-- Select Vidu China/international service using matching `VIDU_HOST` and API key
-  in `vidu/.env.local`. Change the image in settings; voice/tools use Gateway configuration.
-- Vidu cannot directly implement the existing DHAV media contract. Sharing the
-  media worker would first require server-side RTC reception and paired PCM/I420
-  with turn/generation metadata, followed by synchronization/fallback validation.
-
-## Authors and acknowledgements
-
-- [Haina Zhu / juhayna-zh](https://github.com/juhayna-zh): DHAV, Mock/FlashHead,
-  WebRTC presentation and client in [PR #562](https://github.com/QwenAudio/qwen-audio-agent/pull/562).
-- [zzasdf](https://github.com/zzasdf): Vidu/ARTC browser, desktop overlay and demo
-  footage in [PR #548](https://github.com/QwenAudio/qwen-audio-agent/pull/548).
-- Services/dependencies: [Vidu](https://platform.vidu.cn/), [Alibaba Cloud ARTC](https://help.aliyun.com/zh/live/activate-application),
-  [OpenAvatarChat FlashHead service](https://github.com/juhayna-zh/OpenAvatarChat).
-  Their service, model and asset licenses apply; this example does not imply official endorsement.
+Thanks to [Haina Zhu (@juhayna-zh)](https://github.com/juhayna-zh) for the original example, DHAV protocol, Mock renderer, FlashHead integration and avatar UI, reused here with a client-owned presentation boundary. The commercial renderer seam also draws on @zzasdf's Vidu example design.

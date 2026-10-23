@@ -26,31 +26,34 @@ Both generations use the `dashscope` provider; select the model with
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=dashscope
-DASHSCOPE_API_KEY=your-key
+QWEN_AUDIO_REALTIME_API_KEY=your-key
 QWEN_AUDIO_REALTIME_MODEL=qwen3.8-omni-flash-realtime
-QWEN_AUDIO_REALTIME_BASE_URL=wss://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime
+QWEN_AUDIO_REALTIME_URL=wss://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
 Replace `<WorkspaceId>` with your workspace ID. For Singapore, use
 `<WorkspaceId>.ap-southeast-1.maas.aliyuncs.com`. See the [official connection guide](https://help.aliyun.com/zh/model-studio/realtime).
 In Desktop, keep DashScope selected and use the existing endpoint, API key, and model fields; no new provider is needed.
 The default public DashScope endpoint cannot be used for this model.
-A Gateway uses one active model at a time. Apply settings or restart the Gateway after changing configuration. The default model is unchanged.
+A Gateway uses one active model at a time. Apply settings or restart the Gateway after changing configuration. Omni is opt-in; the default frontend model is `qwen-audio-3.1-realtime-plus`.
 
 ### Qwen3.5 Omni
 
 The 3.5 family uses the same credential and endpoint settings as
-[Qwen Audio 3.0 Realtime](qwen-audio-realtime.md).
+[Qwen Audio Realtime](qwen-audio-realtime.md).
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=dashscope
-DASHSCOPE_API_KEY=your-key
+QWEN_AUDIO_REALTIME_API_KEY=your-key
 QWEN_AUDIO_REALTIME_MODEL=qwen3.5-omni-flash-realtime
+QWEN_AUDIO_REALTIME_URL=
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
 ## Voice and turn detection
 
-- Project voice defaults: `Tina` for 3.8, `Ethan` for 3.5 — override with `QWEN_OMNI_REALTIME_VOICE`.
+- Project voice defaults: `Tina` for 3.8, `Ethan` for 3.5 — override with `QWEN_AUDIO_REALTIME_VOICE`.
 - On 3.5, the known-incompatible `Cherry` selection is rejected before connecting, with a
   suggestion to use this project's model default. Unknown and cloned voice IDs
   are passed to the provider; no allowlist, ID-prefix inference, or automatic
@@ -76,14 +79,14 @@ visual frames in this release.
 
 ## Which family should I pick?
 
-- **Audio** (`qwen-audio-3.0-realtime-*`) — the default; voice-first
+- **Audio** (default: `qwen-audio-3.1-realtime-plus`) — voice-first
   conversation, nothing else needed.
 - **Omni** — pick when you want the frontend to combine live visual frames with voice;
   3.8 additionally requires a workspace-specific endpoint.
 
 ## Read next
 
-- [Qwen Audio 3.0 Realtime](qwen-audio-realtime.md) — the default family
+- [Qwen Audio Realtime](qwen-audio-realtime.md) — the default family
 - [GPT-Live / OpenAI Realtime](gpt-live.md) — OpenAI cloud realtime frontend
 - [Google Gemini Live](google-live.md) — Google cloud realtime frontend
 - [Frontend configuration reference](../configuration/frontend.md)

@@ -1,16 +1,16 @@
 # Qwen Audio Realtime
 
 DashScope's Qwen Audio 3.0 and 3.1 Realtime models are purpose-built for
-speech-to-speech conversation. The default remains Qwen Audio 3.0 Realtime
+speech-to-speech conversation. The default is Qwen Audio 3.1 Realtime
 Plus when you install qwen-audio-agent and only set an API key.
 
 ## Models
 
 | Model | Notes |
 | --- | --- |
-| `qwen-audio-3.0-realtime-plus` | **Default.** Higher quality |
+| `qwen-audio-3.1-realtime-plus` | **Default.** Uses `longanqian_v3.1` by default |
+| `qwen-audio-3.0-realtime-plus` | Previous-generation Plus model, still available |
 | `qwen-audio-3.0-realtime-flash` | Lower latency, lower cost |
-| `qwen-audio-3.1-realtime-plus` | Optional 3.1 Plus model |
 
 All accept text and audio input, produce text and audio output, and
 support Function Calling (which is how the Gateway's frontend tools —
@@ -19,11 +19,14 @@ task delegation, memory, reminders — reach the model).
 ## Setup
 
 ```dotenv
-DASHSCOPE_API_KEY=your-key
-QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
+QWEN_AUDIO_REALTIME_PROVIDER=dashscope
+QWEN_AUDIO_REALTIME_API_KEY=your-key
+QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.1-realtime-plus
+QWEN_AUDIO_REALTIME_URL=
+QWEN_AUDIO_REALTIME_VOICE=
 ```
 
-`DASHSCOPE_API_KEY` is used only by DashScope; other providers have their own credentials.
+All frontends use the same [connection fields](../configuration/frontend.md#connection-fields); the selected provider determines how the credential is used.
 
 One Gateway owns one active model. Switch it from the Desktop settings
 page or from the CLI, then restart the Gateway:
@@ -35,23 +38,24 @@ qwenaudio gateway restart
 ```
 
 3.1 Plus reuses the `dashscope` provider and the existing WebSocket event
-protocol. If you have explicitly set a voice, choose one matching the model
+protocol. An explicitly configured 3.0 model remains selected until you change
+or clear its model setting. If you have explicitly set a voice, choose one matching the model
 or clear the override to use its default. See the [official migration guidance](https://help.aliyun.com/zh/model-studio/qwen-audio-realtime-user-guides).
 
 WebUI and TUI only display the active model; they never override it.
 
 ## Voice and turn detection
 
-- Default voice: `longanqian` for 3.0 Plus / Flash; `longanqian_v3.1` for
-  3.1 Plus. Override with `QWEN_AUDIO_REALTIME_VOICE` using a voice supported
+- Default voice: `longanqian_v3.1` for the default 3.1 Plus model;
+  `longanqian` for 3.0 Plus / Flash. Override with `QWEN_AUDIO_REALTIME_VOICE` using a voice supported
   by the selected model.
 - A GCP client may provide a session-scoped voice in
   `connection.output_voice` on its initial `session.hello`. It takes precedence
   over the environment default. At runtime, call
   `GatewayClient.updateOutputVoice(voice)`; the Gateway rebuilds the upstream
   Realtime Session while preserving the Client connection and Gateway session.
-- Turn detection: `smart_turn` (semantic end-of-turn), configured by the
-  runtime; no manual VAD tuning is exposed.
+- Turn detection: `smart_turn_v2` for 3.1 Plus; `smart_turn` for 3.0 Plus / Flash.
+  The runtime selects the model default; no manual VAD tuning is exposed.
 
 ## Endpoint overrides
 
@@ -59,7 +63,7 @@ For private deployments or proxies:
 
 | Setting | Effect |
 | --- | --- |
-| `QWEN_AUDIO_REALTIME_BASE_URL` / `QWEN_AUDIO_REALTIME_URL` | Replace the DashScope Realtime endpoint |
+| `QWEN_AUDIO_REALTIME_URL` | Replace the DashScope Realtime endpoint |
 | `DASHSCOPE_WORKSPACE_ID` | Switch to a Bailian dedicated-workspace endpoint (`wss://<workspace-id>.cn-beijing.maas.aliyuncs.com/...`) |
 
 For workspace-specific access, use the existing workspace setting or base URL

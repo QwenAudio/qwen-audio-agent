@@ -1,6 +1,7 @@
 node_modules/
 .runtime/
 skins/
+dist/
 .env.local
 fixtures/generated/
 test/artifacts/

@@ -1,8 +1,8 @@
 /* Standalone shell for the digital-human example.
-  
+
    The layout, colour and control rules below are copied from web/src/styles.css
    so the example looks like the product without importing it: this page is
-   served from /skins and must not depend on the product bundle. Only the rules
+   served by its own bridge and must not depend on the product bundle. Only the rules
    this page actually renders are kept — task cards, permission prompts,
    knowledge library, multimodal composer and the desktop orb shell are not part
    of bounded avatar mode.
@@ -70,6 +70,7 @@ header {
 .status i.error { background: #ff6f78; box-shadow: 0 0 12px #ff6f78; }
 
 header button { padding: 9px 13px; border-radius: 10px; color: #ddd; border: 1px solid #ffffff18; background: #ffffff08; }
+header button:disabled { opacity: .45; cursor: not-allowed; }
 header .voice.active { color: white; border-color: #785cf4; background: #785cf4; }
 header .ghost.active { color: white; border-color: #785cf480; background: #785cf42e; }
 
@@ -103,8 +104,7 @@ header .ghost.active { color: white; border-color: #785cf480; background: #785cf
   to { transform: scale(1.04); filter: saturate(1.25) brightness(1.12); }
 }
 
-/* Persona allowlist notice: a stale ?persona= or a Gateway started without
-   --renderer must be visible rather than looking like a hung connection. */
+/* Example-bridge configuration failures must be visible. */
 .notice {
   flex: 0 0 auto;
   width: min(560px, 86vw);
@@ -174,4 +174,12 @@ article .interrupted {
   header { padding: 0 14px; gap: 8px; }
   .brand small { display: none; }
   article { max-width: 90%; }
+}
+
+@media (max-width: 600px) {
+  header { min-height: 108px; height: 108px; flex-wrap: wrap; padding: 10px 14px; }
+  .brand { flex: 1; font-size: 13px; }
+  .status { margin-left: 0; }
+  header button { padding: 7px 10px; font-size: 12px; }
+  .workspace { height: calc(100dvh - 108px); padding-top: 24px; }
 }

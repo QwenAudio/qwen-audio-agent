@@ -101,7 +101,7 @@ function openClawHealth(env, overrides = {}) {
 
 test('strict compatibility validation rejects mismatched runtime settings', () => {
   const env = {
-    DASHSCOPE_API_KEY: 'desktop-key',
+    QWEN_AUDIO_REALTIME_API_KEY: 'desktop-key',
     AGENT_PROTOCOL: 'opencode',
   }
   assert.doesNotThrow(() => {
@@ -117,7 +117,7 @@ test('strict compatibility validation rejects mismatched runtime settings', () =
   assert.throws(
     () => assertDesktopGatewayCompatibility(compatibleHealth(env), {
       ...env,
-      DASHSCOPE_API_KEY: 'another-key',
+      QWEN_AUDIO_REALTIME_API_KEY: 'another-key',
     }),
     /语音前台配置.*不一致/,
   )
@@ -125,7 +125,7 @@ test('strict compatibility validation rejects mismatched runtime settings', () =
 
 test('reports a backend mismatch in Gateway compatibility details', () => {
   const env = {
-    DASHSCOPE_API_KEY: 'desktop-key',
+    QWEN_AUDIO_REALTIME_API_KEY: 'desktop-key',
     AGENT_PROTOCOL: 'qoder',
   }
   const result = desktopGatewayCompatibility(compatibleHealth(env), env)
@@ -138,7 +138,7 @@ test('reports a backend mismatch in Gateway compatibility details', () => {
 
 test('expects the effective full mode for always-full backends like Pi', () => {
   const env = {
-    DASHSCOPE_API_KEY: 'desktop-key',
+    QWEN_AUDIO_REALTIME_API_KEY: 'desktop-key',
     AGENT_PROTOCOL: 'pi',
   }
   const piHealth = mode => ({
@@ -166,7 +166,7 @@ test('expects the effective full mode for always-full backends like Pi', () => {
 
 test('rejects a model-mismatched borrowed Gateway before attachment', () => {
   const env = {
-    DASHSCOPE_API_KEY: 'desktop-key',
+    QWEN_AUDIO_REALTIME_API_KEY: 'desktop-key',
     AGENT_PROTOCOL: 'opencode',
     QWEN_AUDIO_REALTIME_MODEL: 'qwen-audio-3.0-realtime-plus',
   }
@@ -189,12 +189,12 @@ test('rejects a model-mismatched borrowed Gateway before attachment', () => {
   )
 })
 
-test('validates the StepFun model through the provider-owned model field', () => {
+test('validates the StepFun model through the uniform model field', () => {
   const env = {
     AGENT_PROTOCOL: 'opencode',
     QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun',
-    STEPFUN_API_KEY: 'step-test',
-    STEPFUN_REALTIME_MODEL: 'stepaudio-3-realtime-preview',
+    QWEN_AUDIO_REALTIME_API_KEY: 'step-test',
+    QWEN_AUDIO_REALTIME_MODEL: 'stepaudio-3-realtime-preview',
   }
   const health = {
     ...compatibleHealth(env),
@@ -208,7 +208,7 @@ test('validates the StepFun model through the provider-owned model field', () =>
 
 test('keeps non-model compatibility warnings attachable', () => {
   const healthEnv = {
-    DASHSCOPE_API_KEY: 'desktop-key',
+    QWEN_AUDIO_REALTIME_API_KEY: 'desktop-key',
     AGENT_PROTOCOL: 'opencode',
   }
   const active = {
@@ -231,7 +231,7 @@ test('keeps non-model compatibility warnings attachable', () => {
 
 test('rejects a borrowed Gateway whose advertised realtime model differs', () => {
   const env = {
-    DASHSCOPE_API_KEY: 'desktop-key',
+    QWEN_AUDIO_REALTIME_API_KEY: 'desktop-key',
     AGENT_PROTOCOL: 'opencode',
     QWEN_AUDIO_REALTIME_MODEL: 'qwen-audio-3.0-realtime-plus',
   }
@@ -249,7 +249,7 @@ test('rejects a borrowed Gateway whose advertised realtime model differs', () =>
 
 test('distinguishes an owned OpenClaw backend from an external one', () => {
   const env = {
-    DASHSCOPE_API_KEY: 'desktop-key',
+    QWEN_AUDIO_REALTIME_API_KEY: 'desktop-key',
     AGENT_PROTOCOL: 'openclaw',
     OPENCLAW_BASE_URL: 'wss://openclaw.example.test',
   }
@@ -268,7 +268,7 @@ test('distinguishes an owned OpenClaw backend from an external one', () => {
 
 test('rejects reusing an external OpenClaw backend at a different URL', () => {
   const env = {
-    DASHSCOPE_API_KEY: 'desktop-key',
+    QWEN_AUDIO_REALTIME_API_KEY: 'desktop-key',
     AGENT_PROTOCOL: 'openclaw',
     OPENCLAW_BASE_URL: 'wss://openclaw.example.test',
   }
@@ -454,7 +454,7 @@ test('rebuilds the child environment for each gateway start', async () => {
   let apiKey = 'first'
   const gateway = new EmbeddedGateway({
     entry: '/app/server/src/index.mjs',
-    envFactory: () => ({ DASHSCOPE_API_KEY: apiKey }),
+    envFactory: () => ({ QWEN_AUDIO_REALTIME_API_KEY: apiKey }),
     probeImpl: async () => false,
     forkImpl: (entry, args, options) => {
       const child = fakeChild()
@@ -467,8 +467,8 @@ test('rebuilds the child environment for each gateway start', async () => {
   await gateway.start()
   apiKey = 'second'
   await gateway.restart()
-  assert.equal(forks[0].options.env.DASHSCOPE_API_KEY, 'first')
-  assert.equal(forks[1].options.env.DASHSCOPE_API_KEY, 'second')
+  assert.equal(forks[0].options.env.QWEN_AUDIO_REALTIME_API_KEY, 'first')
+  assert.equal(forks[1].options.env.QWEN_AUDIO_REALTIME_API_KEY, 'second')
   await gateway.stop()
 })
 
@@ -476,10 +476,10 @@ test('desktop gateway environment applies saved settings and packaged roots', ()
   const environment = desktopGatewayEnvironment({
     env: {
       PATH: '/usr/bin',
-      DASHSCOPE_API_KEY: 'stale',
+      QWEN_AUDIO_REALTIME_API_KEY: 'stale',
     },
     configured: {
-      DASHSCOPE_API_KEY: 'saved',
+      QWEN_AUDIO_REALTIME_API_KEY: 'saved',
       AGENT_PROTOCOL: 'none',
       QWEN_AUDIO_WAKE_WORD_ENABLED: 'true',
       QWEN_AUDIO_WAKE_WORD_MODEL_DIR: '/client/models',
@@ -488,8 +488,7 @@ test('desktop gateway environment applies saved settings and packaged roots', ()
     sourceRoot: '/Applications/Qwen.app/Contents/Resources/app.asar',
     platform: 'linux',
   })
-  assert.equal(environment.DASHSCOPE_API_KEY, 'saved')
-  assert.equal(environment.DASHSCOPE_API_KEY, 'saved')
+  assert.equal(environment.QWEN_AUDIO_REALTIME_API_KEY, 'saved')
   assert.equal(environment.AGENT_PROTOCOL, 'none')
   assert.equal(environment.QWEN_AUDIO_AGENT_DESKTOP, '1')
   assert.equal(environment.QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY, '1')
@@ -503,6 +502,16 @@ test('desktop gateway environment applies saved settings and packaged roots', ()
     environment.QWEN_AUDIO_AGENT_SOURCE_ROOT,
     '/Applications/Qwen.app/Contents/Resources/app.asar',
   )
+})
+
+test('desktop Gateway resolves legacy settings after selecting the fallback provider', () => {
+  const environment = desktopGatewayEnvironment({
+    env: { QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun', QWEN_AUDIO_REALTIME_API_KEY: 'step-key' },
+    configured: { DASHSCOPE_API_KEY: 'backend-only', QWEN_AUDIO_REALTIME_BASE_URL: 'wss://dash.example/realtime' },
+  })
+  assert.equal(environment.QWEN_AUDIO_REALTIME_API_KEY, 'step-key')
+  assert.equal(environment.DASHSCOPE_API_KEY, 'backend-only')
+  assert.equal(resolveRealtimeFrontendConfiguration(environment).active.endpoint, 'wss://api.stepfun.com/v1/realtime')
 })
 
 test('macOS desktop PATH inherits the expanded process PATH plus common locations', () => {

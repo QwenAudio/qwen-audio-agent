@@ -196,7 +196,7 @@ export class RealtimeFrontend {
     if (this.modelProfile?.family === 'unknown') {
       return Promise.reject(new RealtimeConfigurationError(
         `不支持的 Realtime 模型：${this.modelProfile.id}`
-        + `（${this.provider.label}）`,
+        + `（${this.provider.label}）；请先在 frontend-models.json 中登记该模型及其 API`,
       ))
     }
     if (!this.provider.isConfigured()) {
@@ -978,9 +978,11 @@ export class RealtimeFrontend {
       ) {
         pending = this.pendingResponses.shift()
       }
+      // An error that names a response belongs to it; only an id-less error
+      // falls back to the sole waiter.
       if (
         event.type === 'error'
-        && !pending && this.responseWaiters.size === 1
+        && !pending && !id && this.responseWaiters.size === 1
       ) {
         const first = this.responseWaiters.entries().next().value
         id = first[0]
@@ -1152,7 +1154,8 @@ export class RealtimeFrontend {
         this.settlePending(pending, { cancelled: true, phase: 'start' })
         return
       }
-      if (pending.isCurrent?.() === false) {
+      // A refused request never ran: let its gate re-check.
+      if (pending.isCurrent?.({ refused: true }) === false) {
         this.settlePending(pending, { skipped: true, phase: 'superseded' })
         return
       }

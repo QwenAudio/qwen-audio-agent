@@ -8,9 +8,11 @@
 
 ## 演示
 
-下面是原始 DHAV / FlashHead 实现的演示素材；本次客户端重构仍需使用真实 GPU 服务重新部署验收。
+下面是原始 DHAV / FlashHead 演示，保留在线播放链接及[本地素材](assets/digital-human-demo.mp4)。
 
 https://github.com/user-attachments/assets/5301ef5e-b674-4561-93bb-e0c7544cf696
+
+[Vidu 旧版浮窗演示](assets/digital_human_demo_vidu.mp4)展示外观与交互，不代表本次适配后的播放回执已经验证。
 
 ## 连接方式
 
@@ -22,7 +24,7 @@ https://github.com/user-attachments/assets/5301ef5e-b674-4561-93bb-e0c7544cf696
 示例本地服务代理第一条连接，并保护第二条连接的厂商密钥。它不是另一个 Gateway，不改变 GCP 消息，也不保存另一份对话历史。
 
 - **已提供**：DHAV 适配器、本地无 GPU 的合成画面 Mock、连接自部署 DHAV 服务的配置。
-- **扩展位置已提供**：商业服务适配器可以直接播放厂商 RTC 媒体，无须转换为 DHAV；当前版本未包含 Vidu 商业适配器，也未执行付费服务验证。
+- **Vidu 实验适配器**：保留原生 ARTC，复用同一连接与播放控制器，默认关闭。公开协议缺少可靠的逐回复播完信号，当前不发送 `playback.ended`，尚未完成付费服务验证，不能作为已完成的商业集成合入。见 [Vidu 配置及限制](docs/vidu.zh.md)。
 - **当前音频范围**：PCM16 little-endian、24 kHz、单声道。其他采样率会明确拒绝本轮，不隐式按错误速率播放。
 
 ## 快速开始
@@ -92,7 +94,22 @@ DHAV 服务需提供：
 
 在服务端和浏览器注册同名适配器，通过 `DH_RENDERER_ADAPTER` 选择。配置只能选择已注册实现，不能从浏览器传入任意 URL 或加载任意模块。
 
-自部署 DHAV 用 WebAudio + canvas 播放 PCM / I420；#570 的 Vidu / ARTC 路径可将其商业组件控制和 RTC 播放迁入这两个位置。**不用改 Gateway，也不用把 RTC 媒体再转成 DHAV。** 具体接口和迁移对照见 [适配器契约](docs/provider-contract.zh.md)。
+自部署 DHAV 用 WebAudio + canvas 播放 PCM / I420；Vidu 已在这两个位置注册，复用 `useDualConnection` 与 `AvatarPlaybackController`，ARTC 实验模式的播完边界尚未解决。**不用改 Gateway，也不用把 RTC 媒体再转成 DHAV。** 具体接口和迁移对照见 [适配器契约](docs/provider-contract.zh.md)。
+
+## Vidu 与桌面浮窗
+
+同一 `.env.local` 设置 `DH_RENDERER_ADAPTER=vidu` 及 Vidu/ARTC 凭证；只有显式设置 `VIDU_EXPERIMENTAL=1` 才允许预览，步骤见 [Vidu 指南](docs/vidu.zh.md)。共用 `npm run build:client`、`npm start` 和同一浏览器页面。第一块助手音频到达才创建每回复独立的直播，连接页面本身不创建直播。
+
+可选浮窗只打开已运行的同一页面，安装 Electron 后在另一终端执行：
+
+```bash
+npm install --no-save --package-lock=false electron@43.7.9
+npm run desktop
+```
+
+浮窗共用页面的对话、图片上传和播放控制，可拖动顶部；关闭浮窗不会关闭 Gateway 或示例服务。Shell 环境变量 `DH_DESKTOP_URL` 可设置其他本机 HTTP 地址。原悬浮球仍是独立 UI 选项；一次仅用一套 UI 采集麦克风。
+
+要启用“切换悬浮球”按钮，可在启动浮窗的 Shell 设置 `DH_ORB_LAUNCH` 为本机操作者提供的 JSON argv 数组，如 `["npm","run","desktop","--prefix","/path/to/source-checkout"]`；不设时不执行外部启动命令。页面不能指定命令，启动不经过 Shell。
 
 ## 播放与打断
 
@@ -107,6 +124,8 @@ DHAV 服务需提供：
 
 ## 安全与范围
 
+Vidu 例外：起播只观察实际 ARTC 远端音轨的可听 WebAudio 路径；没有可靠的最后一帧信号，保持未完成状态，不用静音、固定延时、`audio.done`、断线或 Token 过期冒充播完。显式打断/新输入结束旧播放并发送取消回执，不回放原 PCM。详见[剩余阻塞项](docs/integration-architecture.zh.md)。
+
 本例默认仅监听回环地址，并校验 Host / WebSocket Origin。Gateway 访问令牌和厂商长期密钥只保留在本地 Node 进程；商业 RTC 必需的短期播放凭据可由适配器下发浏览器。不要把长期密钥放进 Vite 环境变量或前端代码。
 
 本例是单客户端演示，不是多租户生产服务。远程部署需要 HTTPS、访问认证、会话配额和相应 Origin 策略，不能直接对公网暴露此本地凭据代理。
@@ -118,9 +137,13 @@ npm test
 npm run build:client
 npx playwright install chromium
 npm run test:browser
+npm run test:browser:vidu
 ```
 
 测试覆盖协议编解码、Mock / 真实本地 WebSocket、取消隔离、两轮独立时间线、播放回执、安全边界及不同媒体适配器。浏览器测试不使用真实模型或付费 API。
+
+Vidu 浏览器测试以假厂商 SDK 提供真实 MediaStream 音轨，经过浏览器实际 WebAudio 图，
+覆盖多轮、打断、静音、自动播放失败和重连；它不是商业 RTC 网络或音画同步的真实验收。
 
 真实服务验收清单见 [部署验证](docs/implementation-plan.zh.md)。自动化通过不等于已完成 FlashHead / 商业服务的部署验收。
 

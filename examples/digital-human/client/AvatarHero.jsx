@@ -4,7 +4,7 @@ import './avatar-hero.css'
 
 // DHAV paints paired I420 frames into the canvas. The video surface is reserved
 // for renderer adapters that own an RTC media track; neither changes Gateway.
-export default function AvatarHero({ avatar, personaId }) {
+export default function AvatarHero({ avatar, personaId, rendererId = 'dhav' }) {
   const {
     state, playback, avatarState, error,
     canvasRef, videoRef, frameCount, send, clearError,
@@ -39,13 +39,15 @@ export default function AvatarHero({ avatar, personaId }) {
           ref={canvasRef}
           className="avatar-video"
           data-testid="avatar-canvas"
-          data-active={showVideo ? 'true' : 'false'}
+          data-active={showVideo && rendererId === 'dhav' ? 'true' : 'false'}
           aria-label="数字人画面"
         />
         <video
           ref={videoRef}
           className="avatar-rtc-video"
           data-testid="avatar-video"
+          data-active={showVideo && rendererId === 'vidu' ? 'true' : 'false'}
+          muted
           playsInline
         />
         {!showVideo && (

@@ -2,6 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import AvatarHero from './AvatarHero.jsx'
 import { avatarVisualState, avatarStatusDot } from './avatar-status.js'
 import { useDualConnection } from './useDualConnection.js'
+import { installWindowDrag } from './window-drag.mjs'
+
+const DEFAULT_IMAGE = 'https://scene.vidu.zone/media-asset/083014-Qww8rvO5sOtAKZW8.png'
 
 // Standalone shell for bounded avatar mode. The product SPA (web/) owns tasks,
 // permissions, the knowledge library and the multimodal composer; none of that
@@ -66,8 +69,34 @@ function useExampleConfig() {
 
 export default function App() {
   const [sessionId, setSessionId] = useState(getSessionId)
+  const [image, setImage] = useState(DEFAULT_IMAGE)
+  const [imageError, setImageError] = useState(null)
+  const imageEpoch = useRef(0)
+  const dragRef = useRef(null)
   const { config, notice } = useExampleConfig()
-  const avatar = useDualConnection({ sessionId, config })
+  const avatar = useDualConnection({ sessionId, config, image: image || DEFAULT_IMAGE })
+  const desktop = window.viduAvatarDesktop
+  const vidu = config?.renderer?.id === 'vidu'
+  useEffect(() => {
+    if (desktop) installWindowDrag(dragRef.current, desktop)
+  }, [desktop])
+  const upload = async event => {
+    const epoch = ++imageEpoch.current
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 4 * 1024 * 1024) {
+      setImageError('请选择不超过 4 MB 的 PNG/JPEG/WebP 图片。'); return
+    }
+    try {
+      const result = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result)
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+      if (epoch === imageEpoch.current) { setImage(result); setImageError(null) }
+    } catch { if (epoch === imageEpoch.current) setImageError('读取图片失败。') }
+  }
 
   const messagesRef = useRef(null)
   const stickToBottom = useRef(true)
@@ -100,7 +129,12 @@ export default function App() {
   )
 
   return (
-    <main className="app">
+    <main className={`app${vidu ? ' app-vidu' : ''}${desktop ? ' app-desktop' : ''}`}>
+      {desktop && <div className="desktop-toolbar">
+        <div ref={dragRef} className="desktop-drag">数字人浮窗 · 拖动</div>
+        <button onClick={() => { avatar.disconnect(); desktop.quit() }}>关闭</button>
+        {desktop.canSwitchToOrb && <button onClick={() => { avatar.disconnect('switch_to_orb'); desktop.switchToOrb() }}>切换悬浮球</button>}
+      </div>}
       <header>
         <div className="brand">
           <span>V</span>
@@ -114,11 +148,13 @@ export default function App() {
         <button
           className="ghost"
           onClick={avatar.start}
-          disabled={!config || avatar.state === 'connecting' || (avatar.state === 'connected' && avatar.rendererAvailable)}
+          disabled={!config || config.renderer?.enabled === false || avatar.state === 'connecting' || (avatar.state === 'connected' && avatar.rendererAvailable)}
           data-testid="avatar-connect"
         >
           {avatar.state === 'connected' ? (avatar.rendererAvailable ? '已连接' : '重新连接') : avatar.state === 'connecting' ? '连接中…' : '连接数字人'}
         </button>
+        <button className="ghost" onClick={avatar.interrupt} disabled={avatar.state !== 'connected'}>打断</button>
+        <button className="ghost" onClick={() => avatar.disconnect()} disabled={avatar.state === 'idle'}>结束</button>
         <button
           className={`voice${avatar.micEnabled ? ' active' : ''}`}
           aria-label={avatar.micEnabled ? '麦克风静音' : '开启麦克风'}
@@ -131,8 +167,18 @@ export default function App() {
       </header>
 
       <section className="workspace">
-        <AvatarHero avatar={avatar} personaId={config?.persona || '—'} />
+        <AvatarHero avatar={avatar} personaId={config?.persona || '—'} rendererId={config?.renderer?.id} />
         {notice && <p className="notice" role="status">{notice}</p>}
+        {vidu && <aside className="renderer-settings">
+          <p role="status">Vidu 实验预览：目前没有可靠的逐回复播完信号，不发送 playback.ended。
+            新输入或“打断”会停止旧输出；不适合依赖播完回执的工具播报。开始回复可能产生 Vidu/ARTC 费用。</p>
+          {config.renderer?.enabled === false && <p>{config.renderer.reason}</p>}
+          <label>角色图片 HTTPS URL<input value={image.startsWith('data:') ? '' : image}
+            onChange={event => { imageEpoch.current++; setImage(event.target.value); setImageError(null) }} placeholder={DEFAULT_IMAGE} /></label>
+          <label>或上传（最多 4 MB）<input type="file" accept="image/png,image/jpeg,image/webp" onChange={upload} /></label>
+          {image.startsWith('data:') && <small>已选择上传图片</small>}
+          {imageError && <p role="alert">{imageError}</p>}
+        </aside>}
 
         <div
           className="messages"

@@ -12,7 +12,9 @@
     "start": "node bootstrap/start.mjs",
     "renderer:mock": "node providers/mock/mock-renderer-server.mjs",
     "build:client": "vite build",
-    "test:browser": "node test/browser-smoke.mjs"
+    "test:browser": "node test/browser-smoke.mjs",
+    "desktop": "electron desktop/main.mjs",
+    "test:browser:vidu": "node test/vidu-browser-smoke.mjs"
   },
   "dependencies": {
     "ws": "^8.21.3",
@@ -24,6 +26,16 @@
     "vite": "^7.3.7",
     "playwright": "^1.63.0"
   },
-  "peerDependencies": { "qwen-audio-agent": "^2.0.1" },
-  "peerDependenciesMeta": { "qwen-audio-agent": { "optional": true } }
+  "peerDependencies": {
+    "qwen-audio-agent": "^2.0.1",
+    "electron": "^43.7.9"
+  },
+  "peerDependenciesMeta": {
+    "qwen-audio-agent": {
+      "optional": true
+    },
+    "electron": {
+      "optional": true
+    }
+  }
 }

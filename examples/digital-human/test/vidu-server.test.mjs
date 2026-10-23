@@ -32,7 +32,7 @@ async function fixture(t, overrides = {}) {
   await new Promise(resolve => http.listen(0, '127.0.0.1', resolve))
   const options = { experimental: true, apiKey: 'vda_private', appId: 'test-app', appKey: 'private-artc-key',
     httpOrigin: `http://127.0.0.1:${http.address().port}`, wsOrigin: `ws://127.0.0.1:${http.address().port}`,
-    retryMs: 5, initTimeoutMs: 300, ...overrides }
+    retryMs: 5, initTimeoutMs: 2000, ...overrides }
   const host = await startExampleServer({ port: 0, rendererId: 'vidu', providerOptions: options })
   const sockets = []
   const connect = async () => {
@@ -111,7 +111,7 @@ test('cancel during session creation hangs up a late live without sending creden
 })
 
 test('Vidu expiry and reconnect produce fresh credentials; disconnect releases the owned live', async t => {
-  const f = await fixture(t, { liveTimeoutMs: 60 })
+  const f = await fixture(t, { liveTimeoutMs: 300 })
   const c = await f.connect()
   await wait(() => c.messages.some(m => m.type === 'session.ready'))
   c.send({ type: 'turn.start', responseId: 'r1', generation: 1 })

@@ -2,7 +2,7 @@
 
 This directory contains provider-owned data for the framework's static realtime model catalog. The shared catalog entry handles aggregation and resolution without provider-specific configuration. The modules are browser-safe and contain no credentials or connection implementations.
 
-- `dashscope.mjs`, `stepfun.mjs`, `gpt-live.mjs`, `google-live.mjs`, and `doubao-seeduplex.mjs`: pure data for each provider's model IDs, labels, API bindings, default voices, turn detection, capabilities, and integration constraints.
+- `dashscope.mjs`, `stepfun.mjs`, `gpt-live.mjs`, `gpt-live-1.mjs`, `google-live.mjs`, and `doubao-seeduplex.mjs`: pure data for each provider's model IDs, labels, API bindings, default voices, turn detection, capabilities, and integration constraints.
 - `profile.mjs`: browser-safe helpers for immutable model and API declarations.
 - `../realtime-model-catalog.mjs`: the shared entry used by Gateway, Desktop, and CLI. It aggregates provider declarations and default selections, constructs immutable model profiles, and provides catalog queries and model resolution. It does not read user model files or merge user overrides.
 
@@ -14,7 +14,7 @@ To add framework support for a model, update the corresponding provider data fil
 
 本目录保存框架静态实时模型目录中的供应商专属数据。统一目录入口负责聚合与解析，不包含供应商具体配置。模块保持浏览器可用，不含凭据或连接实现。
 
-- `dashscope.mjs`、`stepfun.mjs`、`gpt-live.mjs`、`google-live.mjs`、`doubao-seeduplex.mjs`：各供应商的纯数据，包括模型 ID、展示名称、API 绑定、默认音色、话轮检测、能力和接入约束。
+- `dashscope.mjs`、`stepfun.mjs`、`gpt-live.mjs`、`gpt-live-1.mjs`、`google-live.mjs`、`doubao-seeduplex.mjs`：各供应商的纯数据，包括模型 ID、展示名称、API 绑定、默认音色、话轮检测、能力和接入约束。
 - `profile.mjs`：用于定义不可变模型和 API 数据的浏览器安全辅助函数。
 - `../realtime-model-catalog.mjs`：Gateway、桌面版和 CLI 共用的统一入口，汇总供应商声明与默认选择，生成不可变模型档案，并提供目录查询和模型解析；不读取用户模型文件，也不合并用户覆盖。
 

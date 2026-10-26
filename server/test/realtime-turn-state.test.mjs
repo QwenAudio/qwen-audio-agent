@@ -99,6 +99,29 @@ test('manual ownership ends only when its correlated response starts or fails', 
   assert.equal(turns.failManualInput(failed), true)
 })
 
+test('remembers the user turns committed since the last boundary', () => {
+  const turns = state()
+  const first = turns.beginManual('turn-one').context
+  const second = turns.beginManual('turn-two').context
+  const gateway = { turnId: 'gateway-result', turnGeneration: second.turnGeneration }
+  const since = context => turns.isUserTurnSinceBoundary(context)
+  assert.deepEqual([first, second, gateway].map(since), [true, true, false])
+  turns.advanceBoundary()
+  assert.deepEqual([first, second].map(since), [false, false])
+})
+
+test('only a turn that began after the Gateway first asked a request answers it', () => {
+  const turns = state()
+  const before = turns.beginManual('typed-before').context.turnId
+  assert.equal(turns.beganAfterRequest(before, 'auth-1'), false, 'not asked yet')
+  turns.noteRequest('auth-1')
+  const after = turns.beginManual('typed-after').context.turnId
+  // Asked again, e.g. after a reconnect: the first ask still counts.
+  turns.noteRequest('auth-1')
+  const later = turns.beginManual('typed-later').context.turnId
+  assert.deepEqual([before, after, later].map(turnId => turns.beganAfterRequest(turnId, 'auth-1')), [false, true, true])
+})
+
 test('interrupt and close advance the stale-event boundary', () => {
   const turns = state()
   const active = turns.beginVoice('item-1').context

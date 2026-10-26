@@ -114,10 +114,7 @@ export class RealtimeInputRuntime {
     })
     this.announcementWindow.beginTurn(started.context.turnId)
     this.announcements.dismissActive()
-    this.send({
-      type: GatewayServerEvent.PLAYBACK_CLEAR,
-      reason: 'user_interruption',
-    })
+    this.#clearPlaybackForInterruption()
     this.send({
       type: GatewayServerEvent.TURN_STARTED,
       turnId: started.context.turnId,
@@ -127,7 +124,16 @@ export class RealtimeInputRuntime {
       state: 'listening',
       turnId: started.context.turnId,
     })
-    this.getFrontend()?.cancel()
+    this.getFrontend()?.cancel({ reason: 'user_interruption', speech: true })
+  }
+
+  // A frontend whose model finishes the speech it already generated keeps playing.
+  #clearPlaybackForInterruption() {
+    if (this.getFrontend()?.capabilities?.interruptionPlaysOut) return
+    this.send({
+      type: GatewayServerEvent.PLAYBACK_CLEAR,
+      reason: 'user_interruption',
+    })
   }
 
   #stopSpeech(event) {
@@ -277,10 +283,7 @@ export class RealtimeInputRuntime {
     this.announcementWindow.beginTurn(inputTurnId)
     this.announcementWindow.endSpeech()
     this.announcements.dismissActive()
-    this.send({
-      type: GatewayServerEvent.PLAYBACK_CLEAR,
-      reason: 'user_interruption',
-    })
+    this.#clearPlaybackForInterruption()
     if (supersededVoiceTurn?.turnId) {
       this.send({
         type: GatewayServerEvent.TRANSCRIPT_DISCARD,
@@ -296,7 +299,7 @@ export class RealtimeInputRuntime {
       turnId: inputTurnId,
       origin: 'model',
     })
-    this.getFrontend()?.cancel()
+    this.getFrontend()?.cancel({ reason: 'user_interruption' })
     this.transcripts.record(inputTurnId, text || display)
     this.transcripts.recordParts(inputTurnId, inputFileParts(parts))
     this.conversationSync.record({

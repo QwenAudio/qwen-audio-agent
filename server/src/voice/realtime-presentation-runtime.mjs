@@ -83,6 +83,7 @@ export class RealtimePresentationRuntime {
     getPlaybackReceipts = () => true,
     getResponseTurnCandidate,
     clearResponseCandidate,
+    clearResponseWatchdog,
     announcementQuietMs,
     responseContextCleanupMs,
     turnCitations = null,
@@ -101,6 +102,7 @@ export class RealtimePresentationRuntime {
     this.getPlaybackReceipts = getPlaybackReceipts
     this.getResponseTurnCandidate = getResponseTurnCandidate
     this.clearResponseCandidate = clearResponseCandidate
+    this.clearResponseWatchdog = clearResponseWatchdog
     this.announcementQuietMs = announcementQuietMs
     this.responseContextCleanupMs = responseContextCleanupMs
     this.turnCitations = turnCitations
@@ -204,7 +206,9 @@ export class RealtimePresentationRuntime {
     }
     if (automaticTurn) {
       this.turns.commit(automaticTurn)
-      this.clearResponseCandidate()
+      // A voice-only reply cannot settle a pending permission: keep that fallback.
+      if (event.__voicePlayback && this.#capability('concurrentVoicePlayback')) this.clearResponseWatchdog()
+      else this.clearResponseCandidate()
     }
     if (!context.responseStarted && !context.suppressed) {
       context.responseStarted = true
@@ -276,6 +280,10 @@ export class RealtimePresentationRuntime {
       responseId: id,
       turnId: responseTurnId,
     })
+  }
+
+  #capability(name) {
+    return this.getFrontend()?.capabilities?.[name] === true
   }
 
   #audioTranscriptDelta(event) {
@@ -400,14 +408,17 @@ export class RealtimePresentationRuntime {
       }
     } else {
       const nonVoiceClient = this.getNonVoiceClient()
+      // A full-duplex announcement plays under a response of its own: its
+      // completion is the last signal tied to the announcement.
+      const confirmsOnResponseDone = nonVoiceClient || this.#capability('concurrentVoicePlayback')
       const completedNonVoiceAnnouncement = (
         context?.origin === 'announcement'
-        && nonVoiceClient
+        && confirmsOnResponseDone
         && !failed
       )
       const completedNonVoiceTaskNotification = (
         isTaskNotification(context)
-        && nonVoiceClient
+        && confirmsOnResponseDone
         && !failed
       )
       if (

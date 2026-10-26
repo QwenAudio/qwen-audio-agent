@@ -16,6 +16,7 @@ import {
   DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE,
   DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
   DEFAULT_GPT_LIVE_REALTIME_MODEL,
+  DEFAULT_GPT_LIVE_1_REALTIME_MODEL,
   DEFAULT_STEPFUN_REALTIME_MODEL,
   REALTIME_MODEL_BUILTINS,
   listDashScopeRealtimeModelProfiles,
@@ -55,6 +56,9 @@ test('preserves every built-in ID, label, family, voice, capability and order', 
     ['gpt-live', 'QWEN_AUDIO_REALTIME_MODEL', DEFAULT_GPT_LIVE_REALTIME_MODEL, [
       [DEFAULT_GPT_LIVE_REALTIME_MODEL, 'GPT Realtime 2.1', 'gpt-live', 'gpt-live', null, 'server_vad', false],
     ]],
+    ['gpt-live-1', 'QWEN_AUDIO_REALTIME_MODEL', DEFAULT_GPT_LIVE_1_REALTIME_MODEL, [
+      [DEFAULT_GPT_LIVE_1_REALTIME_MODEL, 'GPT-Live 1', 'gpt-live-1', 'gpt-live-1', null, null, false],
+    ]],
     ['google-live', 'QWEN_AUDIO_REALTIME_MODEL', DEFAULT_GOOGLE_LIVE_REALTIME_MODEL, [
       [DEFAULT_GOOGLE_LIVE_REALTIME_MODEL, 'Gemini 3.8 Live', 'google-live', 'google-live', null, 'server_vad', true],
     ]],
@@ -74,7 +78,7 @@ test('preserves every built-in ID, label, family, voice, capability and order', 
       const profile = resolveRealtimeModelProfile(id, provider)
       assert.deepEqual(profile, {
         id, label, api, family,
-        sessionDefaults: { voice, turnDetection: { type: vad } },
+        sessionDefaults: { voice, turnDetection: vad ? { type: vad } : null },
         modelCapabilities: visual ? visualCapabilities : audioCapabilities,
         transportCapabilities: visual ? visualTransport : audioTransport,
         sessionConstraints: api === 'omni' ? { unsupportedVoices: ['Cherry'] }
@@ -125,7 +129,7 @@ test('provider declarations and catalogs are immutable and consistent', () => {
       assert.equal(profile.modelCapabilities, preset.defaultModelCapabilities)
       assert.equal(profile.transportCapabilities, preset.transportCapabilities)
       assert.equal(profile.sessionConstraints, preset.sessionConstraints)
-      assert.equal(profile.sessionDefaults.turnDetection.type, model.turnDetection || preset.turnDetection.type)
+      assert.equal(profile.sessionDefaults.turnDetection?.type, model.turnDetection || preset.turnDetection?.type)
     }
   }
   const catalog = realtimeModelCatalog()
@@ -137,7 +141,7 @@ test('provider declarations and catalogs are immutable and consistent', () => {
 })
 
 test('unknown models remain display-only without name-based API inference', () => {
-  for (const provider of ['dashscope', 'stepfun', 'gpt-live', 'google-live', 'doubao-seeduplex', 'no-provider']) {
+  for (const provider of ['dashscope', 'stepfun', 'gpt-live', 'gpt-live-1', 'google-live', 'doubao-seeduplex', 'no-provider']) {
     const profile = resolveRealtimeModelProfile('qwen3.8-omni-future', provider)
     assert.equal(profile.id, 'qwen3.8-omni-future')
     assert.equal(profile.label, profile.id)
@@ -160,6 +164,7 @@ test('shared catalog only aggregates provider-owned model declarations', async (
     ['dashscope', 'dashscopeModels'],
     ['stepfun', 'stepfunModels'],
     ['gpt-live', 'gptLiveModels'],
+    ['gpt-live-1', 'gptLive1Models'],
     ['google-live', 'googleLiveModels'],
     ['doubao-seeduplex', 'doubaoSeeduplexModels'],
   ]
@@ -169,4 +174,17 @@ test('shared catalog only aggregates provider-owned model declarations', async (
   }
   const publicApi = await import('../shared/realtime-model-catalog.mjs')
   assert.equal(Object.hasOwn(publicApi, 'createRealtimeModelCatalogs'), false)
+})
+
+test('Live and Realtime models retain separate APIs and turn-detection semantics', () => {
+  const live = resolveRealtimeModelProfile(undefined, 'gpt-live-1')
+  const realtime = resolveRealtimeModelProfile(undefined, 'gpt-live')
+  assert.equal(live.id, DEFAULT_GPT_LIVE_1_REALTIME_MODEL)
+  assert.equal(live.family, 'gpt-live-1')
+  assert.equal(live.sessionDefaults.turnDetection, null)
+  assert.equal(realtime.id, DEFAULT_GPT_LIVE_REALTIME_MODEL)
+  assert.equal(realtime.family, 'gpt-live')
+  assert.deepEqual(realtime.sessionDefaults.turnDetection, { type: 'server_vad' })
+  assert.equal(resolveRealtimeModelProfile(live.id, 'gpt-live').family, 'unknown')
+  assert.equal(resolveRealtimeModelProfile(realtime.id, 'gpt-live-1').family, 'unknown')
 })

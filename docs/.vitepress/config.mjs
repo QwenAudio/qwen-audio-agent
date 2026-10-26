@@ -58,6 +58,7 @@ function sidebar(prefix = '') {
             page('Qwen Omni Realtime', 'Qwen Omni Realtime', 'voice-frontends/qwen-omni-realtime'),
             page('StepAudio 3 Realtime', 'StepAudio 3 Realtime', 'voice-frontends/stepfun'),
             page('GPT-Live', 'GPT-Live', 'voice-frontends/gpt-live'),
+            page('GPT-Live 1', 'GPT-Live 1', 'voice-frontends/gpt-live-1'),
             page('Google Live', 'Google Live', 'voice-frontends/google-live'),
             page('Speech-to-Speech', 'Speech-to-Speech', 'voice-frontends/speech-to-speech'),
             page('MiniCPM-o', 'MiniCPM-o', 'voice-frontends/minicpm-o'),

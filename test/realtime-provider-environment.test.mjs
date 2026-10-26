@@ -63,7 +63,8 @@ for (const provider of REALTIME_PROVIDERS) {
     assert.doesNotThrow(() => requireRealtimeFrontendConfiguration(runtime))
   })
 
-  test(provider.key + ': canonical fields override old names, including explicit blanks', () => {
+  // Only providers older than the shared names have old ones.
+  if (legacyKeys[provider.key]) test(provider.key + ': canonical fields override old names, including explicit blanks', () => {
     const [key, url] = legacyKeys[provider.key]
     const old = { QWEN_AUDIO_REALTIME_PROVIDER: provider.key, [key]: 'old-key', [url]: 'wss://old.example/realtime' }
     assert.equal(resolveRealtimeFrontendConfiguration(old).credential, 'old-key')

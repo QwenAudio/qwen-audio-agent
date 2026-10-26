@@ -211,6 +211,9 @@ export function createRealtimeSessionRuntime({
       onProgressError: error => connectionLogger.warn('progress.injection_failed', {
         error: error.message,
       }),
+      onPresentRequest: requestId => {
+        if (realtimeSession.frontend?.capabilities?.concurrentVoicePlayback) turns.noteRequest(requestId)
+      },
     }),
     onTaskEvent,
     onResult: task => recordTaskResult({ conversationSync, ownerId, sessionId, task }),
@@ -258,6 +261,8 @@ export function createRealtimeSessionRuntime({
         inputSampleRate: createdFrontend.provider.inputSampleRate,
         provider: createdFrontend.provider.key,
         providerLabel: createdFrontend.provider.label,
+        ...(createdFrontend.capabilities?.interruptionPlaysOut ? { interruptionPlaysOut: true } : {}),
+        ...(createdFrontend.capabilities?.pacedOutputAudio ? { pacedOutputAudio: true } : {}),
       })
       sleepController.recordActivity()
       progressAnnouncements.flush()
@@ -382,6 +387,11 @@ export function createRealtimeSessionRuntime({
         })
       })
     : () => {}
+  // Full duplex: only a turn that began after the Gateway asked answers a request.
+  const answersRequest = (turnId, requestId) => (
+    !realtimeSession.frontend?.capabilities?.concurrentVoicePlayback
+    || turns.beganAfterRequest(turnId, requestId)
+  )
   const toolCalls = new ToolCallHandler({
     taskManager,
     taskOperations,
@@ -391,6 +401,9 @@ export function createRealtimeSessionRuntime({
     getFrontend: () => realtimeSession.frontend,
     getTurnId: () => turns.committedTurnId,
     getTurnGeneration: () => turns.committedTurnGeneration,
+    isUserTurnSinceBoundary: context => turns.isUserTurnSinceBoundary(context),
+    userTurnBeganAfter: (laterId, turnId) => turns.beganAfterTurn(laterId, turnId),
+    answersRequest,
     memoryService,
     notesStore,
     getClientContext: () => clientContext,
@@ -474,17 +487,24 @@ export function createRealtimeSessionRuntime({
     turnCitations,
     sessionDigests,
   })
-  const clearResponseCandidate = () => {
+  const clearResponseWatchdog = () => {
     clearTimeout(responseStartWatchdog)
-    clearTimeout(permissionResponseTimer)
     responseStartWatchdog = null
+  }
+  const clearResponseCandidate = () => {
+    clearResponseWatchdog()
+    clearTimeout(permissionResponseTimer)
     permissionResponseTimer = null
     responseTurnCandidate = null
   }
 
   const ensurePermissionResponseFor = context => {
     clearTimeout(permissionResponseTimer)
-    const hasPendingPermission = () => taskCoordinator.hasPendingPermission()
+    const hasPendingPermission = () => (realtimeSession.frontend?.capabilities?.concurrentVoicePlayback
+      ? taskCoordinator.activeTasks().some(({ authorization }) => (
+        authorization?.status === 'pending' && turns.beganAfterRequest(context.turnId, authorization.id)
+      ))
+      : taskCoordinator.hasPendingPermission())
     if (!hasPendingPermission()) return
     permissionResponseTimer = setTimeout(() => {
       permissionResponseTimer = null
@@ -512,6 +532,11 @@ export function createRealtimeSessionRuntime({
       clearResponseCandidate()
       // The turn is given up: Gateway requests no longer wait for its reply.
       announcementWindow.responseDone({ turnId: context.turnId, failed: true })
+      // A full-duplex model may leave a turn unanswered: not a stall.
+      if (realtimeSession.frontend?.capabilities?.concurrentVoicePlayback) {
+        if (!turns.userSpeaking) emit({ type: 'voice.state', state: 'idle', turnId: context.turnId, origin: 'model' })
+        return
+      }
       emit({
         type: 'error',
         message: '实时模型没有开始回复，语音连接已自动恢复，请再说一次。',
@@ -573,6 +598,7 @@ export function createRealtimeSessionRuntime({
     getPlaybackReceipts: () => playbackReceipts,
     getResponseTurnCandidate: () => responseTurnCandidate,
     clearResponseCandidate,
+    clearResponseWatchdog,
     announcementQuietMs: config.announcementQuietMs,
     responseContextCleanupMs: RESPONSE_CONTEXT_CLEANUP_MS,
     turnCitations,
@@ -1098,7 +1124,10 @@ export function createRealtimeSessionRuntime({
       announcementWindow.interrupt()
       announcements.dismissActive()
       realtimeSession.cancelResponse()
-      emit({ type: GatewayServerEvent.PLAYBACK_CLEAR, reason: 'user_interruption' })
+      // A frontend whose model finishes the speech it already generated plays it out, then stops.
+      if (!realtimeSession.frontend?.capabilities?.interruptionPlaysOut) {
+        emit({ type: GatewayServerEvent.PLAYBACK_CLEAR, reason: 'user_interruption' })
+      }
     } else if (event.type === GatewayClientEvent.PLAYBACK_STARTED) {
       const id = String(event.responseId || '')
       const playbackContext = presentationRuntime.get(id)

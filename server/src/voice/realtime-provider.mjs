@@ -105,6 +105,14 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   mutableSession: true,
   // Requires an audio timeline before accepting the first visual frame.
   imageRequiresAudioStart: false,
+  // Voice plays while the backend works; playback responses gate no Gateway request.
+  concurrentVoicePlayback: false,
+  // A response with calls resumes on a response.create after all their outputs.
+  toolOutputsBeforeResponse: false,
+  // The model finishes the speech it already generated when the user interrupts: playback is not cleared.
+  interruptionPlaysOut: false,
+  // Output audio arrives at playback speed, with no lead: clients buffer it even from a local Gateway.
+  pacedOutputAudio: false,
 })
 const DEFAULT_RESPONSE_CANCEL_GRACE_MS = 1_000
 
@@ -129,6 +137,10 @@ export class RealtimeFrontend {
       provider.createProtocol?.({
         connectionId: this.connectionId,
         provider,
+        // Protocol hook: a synthetic provider event, through normalizeIncoming.
+        emit: event => this.emitProviderEvent(event),
+        // Protocol hook: a wire event of its own; correlate: false skips requests.
+        send: (payload, options) => this.send(payload, options),
       }) ?? provider.protocol,
       provider.key || provider.label,
     )
@@ -150,6 +162,13 @@ export class RealtimeFrontend {
     this.restoringContext = false
     this.audioInputStarted = false
     this.activeResponses = new Set()
+    // Voice-only playback responses (concurrentVoicePlayback).
+    this.playbackResponses = new Set()
+    // toolOutputsBeforeResponse: calls awaiting output; responses that made calls
+    // -> whether a response.create followed; whether a continuation is owed.
+    this.openCalls = new Set()
+    this.toolResponses = new Map()
+    this.continuationOwed = false
     this.pendingResponses = []
     this.retryingResponses = new Set()
     this.responseWaiters = new Map()
@@ -284,6 +303,15 @@ export class RealtimeFrontend {
         }
       })
     })
+  }
+
+  emitProviderEvent(providerEvent) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    try {
+      this.handleProviderEvent(providerEvent)
+    } catch (error) {
+      this.onError?.(error)
+    }
   }
 
   handleProviderEvent(providerEvent, { onSessionReady, onSessionError } = {}) {
@@ -487,8 +515,16 @@ export class RealtimeFrontend {
     return this.enqueueResponse('agent', context, pending => {
       pending.isCurrent = shouldCreate
       if (shouldCreate && !shouldCreate()) return false
+      // Tool results continue the response that made the calls once.
+      if (afterToolResults && this.capabilities.toolOutputsBeforeResponse && !this.continuationOwed) return false
       return this.sendResponse(response)
     })
+  }
+
+  // Unvoiced results still continue the response that made the calls.
+  continueToolResults(context = {}) {
+    if (!this.capabilities.toolOutputsBeforeResponse) return Promise.resolve({ skipped: true })
+    return this.ensureResponse(context, { afterToolResults: true })
   }
 
   sendFunctionOutput(callId, output, context = {}, {
@@ -511,12 +547,36 @@ export class RealtimeFrontend {
       // This acknowledges delivery, not completion of the ensuing speech.
       return sendOutput().then(() => ({ delivered: true, automatic: true }))
     }
-    if (!createResponse) return this.enqueueAction(sendOutput)
+    // Queued requests wait for this output, so it must not queue behind them.
+    const answered = this.capabilities.toolOutputsBeforeResponse
+      ? this.answerCall(callId, sendOutput)
+      : null
+    if (!createResponse) return answered || this.enqueueAction(sendOutput)
+    // A failure is reported through the response request below.
+    answered?.catch(() => {})
     return this.enqueueResponse('agent', context, async pending => {
       pending.isCurrent = shouldRespond
-      await sendOutput()
+      await (answered || sendOutput())
       return this.sendResponse(response)
     })
+  }
+
+  // Sends a call's output once its response has ended; unknown calls get none.
+  async answerCall(callId, sendOutput) {
+    if (!this.openCalls.has(callId)) return
+    try {
+      await this.whenIdle()
+      if (this.ready) await sendOutput()
+    } finally {
+      if (this.openCalls.delete(callId)) this.resolveIdle()
+    }
+  }
+
+  // A call that failed still gets an output: the service waits for one.
+  failCall(callId, output) {
+    return this.answerCall(callId, () => this.createConversationItem(
+      this.protocol.functionOutputItem(callId, output),
+    ))
   }
 
   createConversationItem(item, { contextOnly = true } = {}) {
@@ -706,16 +766,50 @@ export class RealtimeFrontend {
     // A dialect may need a conversation item instead of transient response
     // instructions. Wait for its acknowledgement before triggering inference.
     const item = this.protocol.responseInstructionsItem?.(response)
+    // Outputs for open calls go first, then these instructions.
+    if (item && this.openCalls.size) {
+      await this.whenCallsAnswered(pending)
+      if (pending.settled) return false
+    }
     if (item) await this.createConversationItem(item)
     // An automatic response may have started while the input/context receipt
     // was in flight. Recheck immediately before sending, not just on enqueue.
     await this.whenIdle()
     if (!this.ready || pending.settled || pending.isCurrent?.() === false) return false
+    const payload = this.protocol.responseCreate(response)
+    if (payload?.type === 'response.create' && this.openCalls.size) {
+      await this.whenCallsAnswered(pending)
+      // Held like a refused request, it never ran: let its gate re-check.
+      if (!this.ready || pending.settled || pending.isCurrent?.({ refused: true }) === false) return false
+    }
     pending.responseRequested = true
-    this.send(this.protocol.responseCreate(response))
+    pending.playbackRequest = Boolean(payload) && payload.type !== 'response.create'
+    this.send(payload)
   }
 
-  cancel() {
+  // Holds a request until every open call has its output, or it settles.
+  async whenCallsAnswered(pending) {
+    while (!pending.settled && (this.openCalls.size || this.gatingResponsesActive())) {
+      await new Promise(resolve => {
+        pending.cancelCallWait = resolve
+        this.idleWaiters.push(resolve)
+      })
+    }
+    pending.cancelCallWait = null
+  }
+
+  cancel({ reason = '', speech = false } = {}) {
+    if (this.capabilities.concurrentVoicePlayback) {
+      // Only playback stops: user speech leaves backend work and queued requests
+      // running; any other cancel also drops them.
+      const userInterruption = reason === 'user_interruption'
+      // The protocol may return a frame that stops the model's speech; the model hears spoken interruptions.
+      this.send(this.protocol.interruptPlayback?.({ stop: !userInterruption, speech: userInterruption && speech }))
+      if (userInterruption) {
+        this.resolveIdle()
+        return
+      }
+    }
     this.responseQueueGeneration += 1
     const cancelledResponseIds = [...this.activeResponses]
     const hasResponse = cancelledResponseIds.length
@@ -743,6 +837,8 @@ export class RealtimeFrontend {
     }
     const recoveryTimer = setTimeout(() => {
       for (const responseId of cancelledResponseIds) {
+        // A playback response stays tracked until its own response.done.
+        if (this.playbackResponses.has(responseId)) continue
         this.activeResponses.delete(responseId)
         this.responseWaiters.delete(responseId)
       }
@@ -863,11 +959,18 @@ export class RealtimeFrontend {
   }
 
   handleLifecycle(event) {
+    const callId = event.type === 'response.function_call_arguments.done'
+      ? event.call_id || event.item?.call_id : ''
+    if (callId && this.capabilities.toolOutputsBeforeResponse) {
+      this.openCalls.add(callId)
+      this.toolResponses.set(realtimeResponseId(event), false)
+    }
     if (event.type === 'error'
       && this.provider.classifyError(realtimeEventErrorMessage(event)) === 'no_active_response') {
       // This acknowledges cancellation; it must not reject an unrelated item.
       if (this.responseSlot.phase === 'cancelling') {
         this.activeResponses.clear()
+        this.playbackResponses.clear()
         this.responseWaiters.clear()
         this.responseSlot.release()
         this.resolveIdle()
@@ -944,8 +1047,12 @@ export class RealtimeFrontend {
         if (index >= 0) {
           pending = this.pendingResponses.splice(index, 1)[0]
         }
-      } else {
-        const index = this.pendingResponses.findIndex(item => item.responseRequested)
+      } else if (!(this.capabilities.concurrentVoicePlayback && event.__voiceAutomatic)) {
+        // The model's own speech answers no queued request; a speak request
+        // is answered by playback only.
+        const playback = this.capabilities.concurrentVoicePlayback && Boolean(event.__voicePlayback)
+        const index = this.pendingResponses.findIndex(item => item.responseRequested
+          && (!this.capabilities.concurrentVoicePlayback || Boolean(item.playbackRequest) === playback))
         if (index >= 0) pending = this.pendingResponses.splice(index, 1)[0]
       }
       clearTimeout(pending?.timer)
@@ -954,6 +1061,9 @@ export class RealtimeFrontend {
       if (pending?.isCurrent?.() === false) event.__voiceContext = { ...pending.context, suppressed: true }
       if (id) {
         this.activeResponses.add(id)
+        if (this.capabilities.concurrentVoicePlayback && event.__voicePlayback) {
+          this.playbackResponses.add(id)
+        }
         if (pending) {
           this.responseWaiters.set(id, pending)
           pending.responseStartedAt = Date.now()
@@ -970,7 +1080,8 @@ export class RealtimeFrontend {
       event.type === 'response.done'
       || event.type === 'error'
     ) {
-      let id = realtimeResponseId(event)
+      const namedId = realtimeResponseId(event)
+      let id = namedId
       let pending = this.responseWaiters.get(id)
       if (
         event.type === 'error'
@@ -996,6 +1107,7 @@ export class RealtimeFrontend {
       if (
         event.type === 'error'
         && !id && this.activeResponses.size === 1
+        && !this.playbackResponses.has(this.activeResponses.values().next().value)
       ) {
         id = this.activeResponses.values().next().value
         event.response_id = id
@@ -1004,11 +1116,15 @@ export class RealtimeFrontend {
       event.__voiceContext = { ...(pending?.context || {}), ...event.__voiceContext }
       if (id) {
         this.activeResponses.delete(id)
+        this.playbackResponses.delete(id)
         this.responseWaiters.delete(id)
       }
       const status = event.response?.status
       const completed = event.type === 'response.done'
         && !['failed', 'cancelled', 'incomplete'].includes(status)
+      // A response that made calls owes a response.create unless one went out.
+      const continued = this.toolResponses.get(namedId)
+      if (this.toolResponses.delete(namedId) && completed && !continued) this.continuationOwed = true
       this.settlePending(pending, completed
         ? { completed: true, responseId: id }
         : { failed: true, responseId: id, status })
@@ -1108,6 +1224,7 @@ export class RealtimeFrontend {
         if (this.responseWaiters.get(responseId) !== pending) return
         this.responseWaiters.delete(responseId)
         this.activeResponses.delete(responseId)
+        this.playbackResponses.delete(responseId)
         this.resolveIdle()
       }, 1000)
       recoveryTimer.unref?.()
@@ -1120,6 +1237,7 @@ export class RealtimeFrontend {
     pending.settled = true
     clearTimeout(pending.timer)
     pending.cancelRetryDelay?.()
+    pending.cancelCallWait?.()
     this.retryingResponses.delete(pending)
     pending.resolve(outcome)
     try {
@@ -1176,21 +1294,32 @@ export class RealtimeFrontend {
     })
   }
 
+  // Active responses that gate Gateway work: all but voice playback ones.
+  gatingResponsesActive() {
+    if (!this.capabilities.concurrentVoicePlayback) return this.activeResponses.size > 0
+    for (const id of this.activeResponses) if (!this.playbackResponses.has(id)) return true
+    return false
+  }
+
   async whenIdle() {
-    while (this.responseSlot.blocked || this.activeResponses.size) {
+    while (this.responseSlot.blocked || this.gatingResponsesActive()) {
       if (this.responseSlot.blocked) await this.responseSlot.wait()
       else await new Promise(resolve => this.idleWaiters.push(resolve))
     }
   }
 
   resolveIdle() {
-    if (this.activeResponses.size) return
+    if (this.gatingResponsesActive()) return
     while (this.idleWaiters.length) this.idleWaiters.shift()?.()
   }
 
   resetResponses() {
     this.responseQueueGeneration += 1
     this.activeResponses.clear()
+    this.playbackResponses.clear()
+    this.openCalls.clear()
+    this.toolResponses.clear()
+    this.continuationOwed = false
     this.responseSlot.release()
     this.rejectConversationItemWaiters(new Error('Realtime 会话已重置'))
     this.pendingResponses.forEach(item => this.settlePending(item, { cancelled: true }))
@@ -1240,7 +1369,11 @@ export class RealtimeFrontend {
     if (!payload) return
     if (this.ws?.readyState === WebSocket.OPEN) {
       let outgoing = payload
-      if (payload.type === 'response.create' && this.pendingResponses.length) {
+      if (payload.type === 'response.create') {
+        this.continuationOwed = false
+        for (const id of this.toolResponses.keys()) this.toolResponses.set(id, true)
+      }
+      if (payload.type === 'response.create' && options.correlate !== false && this.pendingResponses.length) {
         const pending = this.pendingResponses[this.pendingResponses.length - 1]
         outgoing = this.protocol.correlateResponseCreate(
           payload,

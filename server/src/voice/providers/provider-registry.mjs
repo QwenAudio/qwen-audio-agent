@@ -41,6 +41,10 @@ const CAPABILITY_FLAGS = [
   'clientResponses',
   'mutableSession',
   'imageRequiresAudioStart',
+  'concurrentVoicePlayback',
+  'toolOutputsBeforeResponse',
+  'interruptionPlaysOut',
+  'pacedOutputAudio',
 ]
 
 const MODEL_CAPABILITY_FLAGS = [
@@ -160,7 +164,7 @@ export function validateRealtimeProtocol(protocol, providerKey = 'unknown') {
       `Realtime Provider ${providerKey} protocol.connectionMessages 必须是函数`,
     )
   }
-  for (const method of ['inputMute', 'inputUnmute', 'sessionClose']) {
+  for (const method of ['inputMute', 'inputUnmute', 'sessionClose', 'interruptPlayback']) {
     if (
       protocol[method] !== undefined
       && typeof protocol[method] !== 'function'

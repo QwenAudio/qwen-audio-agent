@@ -24,7 +24,7 @@ async function until(predicate) {
 
 function harness(t, {
   backend = true, ownerId = 'runtime-owner', sessionId = 'conversation',
-  taskManager = new TaskManager(), ...overrides
+  taskManager = new TaskManager(), respondAuthorization, respondInput, ...overrides
 } = {}) {
   const events = [], frontends = [], tasks = [], observations = [], done = []
   const runs = new Map(), memoryListeners = new Set()
@@ -44,7 +44,7 @@ function harness(t, {
     }),
     cancel: async () => ({ layer: 'backend', state: 'cancelled' }),
   }
-  const operations = new TaskOperations({ taskManager: manager, backendRuntime })
+  const operations = new TaskOperations({ taskManager: manager, backendRuntime, respondAuthorization, respondInput })
   let active = false
   const runtime = createRealtimeSessionRuntime({
     ownerId, sessionId, logger, taskManager: manager, taskOperations: operations,
@@ -73,7 +73,8 @@ function harness(t, {
     taskAnnouncementFactory: createTaskAnnouncementRuntime,
     realtimeFrontendFactory: options => {
       const f = {
-        provider, ready: false, inputs: [], audio: [], images: [], outputs: [], deliveries: [], updates: [], cancels: 0,
+        provider, capabilities: provider.capabilities,
+        ready: false, inputs: [], audio: [], images: [], outputs: [], deliveries: [], updates: [], cancels: 0,
         initialContext: options.agentContext, sessionOptions: options.sessionOptions,
         async connect() { this.ready = true },
         close() { this.ready = false },
@@ -185,6 +186,31 @@ test('a turn the reply watchdog gives up on no longer holds Gateway requests', a
   await until(() => h.frontends[1].deliveries.some(d => d.origin === 'announcement'))
 })
 
+// A user turn on the frontend: speech, then its transcript when given.
+function speak(f, item, transcript) {
+  f.emit({ type: 'input_audio_buffer.speech_started', item_id: item })
+  f.emit({ type: 'input_audio_buffer.speech_stopped', item_id: item })
+  if (transcript) f.emit({ type: 'conversation.item.input_audio_transcription.completed', item_id: item, transcript })
+}
+
+test('a turn left unanswered on a full-duplex frontend is released, not treated as a stall', async t => {
+  const h = harness(t)
+  h.provider.responseStartTimeoutMs = 20
+  const f = await h.connect()
+  f.capabilities = { concurrentVoicePlayback: true }
+  const task = h.request('diagnostic work')
+  await until(() => h.runs.has(task.id))
+  speak(f, 'unanswered')
+  // The model may leave a turn unanswered: once the watchdog fires, the turn
+  // stops holding Gateway work and goes idle, with no error and no reconnect.
+  await until(() => h.events.some(event => event.type === 'voice.state' && event.state === 'idle'))
+  h.runs.get(task.id).resolve({ content: 'diagnostic result' })
+  await h.manager.wait(task.id)
+  await until(() => f.deliveries.some(delivery => delivery.origin === 'announcement'))
+  assert.equal(h.events.some(event => event.message?.includes('没有开始回复')), false)
+  assert.equal(h.frontends.length, 1, 'no reconnect')
+})
+
 test('interruption clears old audio without requiring a client cancellation receipt', async t => {
   const h = harness(t)
   const f = await h.connect()
@@ -204,6 +230,27 @@ test('interruption clears old audio without requiring a client cancellation rece
   h.send({ type: Input.INTERRUPT })
   assert.equal(h.events.at(-1).type, 'playback.clear')
   await until(() => f.deliveries.some(d => d.origin === 'announcement'))
+})
+
+test('a frontend whose model plays out interrupted speech is announced, and the stop button clears no playback', async t => {
+  for (const playsOut of [false, true]) {
+    const h = harness(t)
+    if (playsOut) h.provider.capabilities.interruptionPlaysOut = true
+    const f = await h.connect()
+    assert.equal(h.events.find(event => event.type === 'voice.ready')?.interruptionPlaysOut, playsOut ? true : undefined)
+    h.send({ type: Input.INTERRUPT })
+    assert.equal(f.cancels, 1, 'the frontend is told either way')
+    assert.equal(h.events.some(event => event.type === 'playback.clear'), !playsOut)
+  }
+})
+
+test('a frontend whose speech arrives at playback speed is announced, so clients play it from a reserve', async t => {
+  for (const paced of [false, true]) {
+    const h = harness(t)
+    if (paced) h.provider.capabilities.pacedOutputAudio = true
+    await h.connect()
+    assert.equal(h.events.find(event => event.type === 'voice.ready')?.pacedOutputAudio, paced ? true : undefined)
+  }
 })
 
 for (const sourceDoneFirst of [false, true]) {
@@ -230,6 +277,26 @@ for (const sourceDoneFirst of [false, true]) {
     await until(() => f.deliveries.some(d => d.origin === 'announcement'))
   })
 }
+
+test('a tool call that fails without an output is answered as failed on the frontend', async t => {
+  const h = harness(t)
+  const f = await h.connect()
+  const released = []
+  f.failCall = async (callId, output) => released.push([callId, output.error_code])
+  f.sendFunctionOutput = async () => { throw new Error('tool output transport failure') }
+  h.send({ type: Input.TEXT_MESSAGE, text: 'run a background task' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'failed-call' } })
+  f.emit({ type: 'response.function_call_arguments.done', response_id: 'failed-call',
+    call_id: 'failed-spawn', name: 'spawn_thinking', arguments: '{"objective":"task"}' })
+  await until(() => released.length === 1)
+  assert.deepEqual(released, [['failed-spawn', 'tool_failed']])
+  f.emit({ type: 'response.done', response: { id: 'failed-call', status: 'completed' } })
+  const task = h.manager.list({ active: true })[0]
+  await until(() => h.runs.has(task.id))
+  h.runs.get(task.id).resolve({ content: 'completed result' })
+  await h.manager.wait(task.id)
+})
 
 test('failure to request a tool continuation releases task delivery', async t => {
   const h = harness(t)
@@ -530,6 +597,146 @@ test('the pending-permission gate decides once and skips a stale or refused requ
   const outcome = await Promise.race([retried, new Promise(resolve => setTimeout(resolve, 500, 'resent'))])
   assert.equal(outcome.skipped, true)
   assert.equal(c.creates(), 1)
+})
+
+// A task whose backend accepts decisions, with helpers for its requests and the model's calls.
+async function answerableTask(t, { fullDuplex = true } = {}) {
+  const h = harness(t, { respondAuthorization: async () => {}, respondInput: async () => {} })
+  const f = await h.connect()
+  if (fullDuplex) f.capabilities = { concurrentVoicePlayback: true }
+  const requested = []
+  f.ensureResponse = async (...args) => { requested.push(args) }
+  const task = h.request('write a file')
+  await until(() => h.runs.has(task.id))
+  const backend = h.runs.get(task.id)
+  const call = async (response, name, args) => {
+    f.emit({ type: 'response.created', response: { id: response } })
+    f.emit({ type: 'response.function_call_arguments.done', response_id: response,
+      call_id: `call-${response}`, name, arguments: JSON.stringify(args) })
+    await until(() => f.outputs.some(output => output.callId === `call-${response}`))
+    return f.outputs.find(output => output.callId === `call-${response}`).result
+  }
+  const asked = origin => until(() => f.deliveries.some(delivery => delivery.origin === origin))
+  // Each request kind: raise it, or let the model answer it with the user's answer, if any.
+  const permission = {
+    raise: () => backend.onEvent({ type: 'backend.permission.requested',
+      permission: { id: 'auth_late', status: 'pending', summary: 'write a file' } }),
+    ask: () => { permission.raise(); return asked('permission') },
+    answer: (response, userAnswer) => call(response, 'respond_permission', { decision: userAnswer ? 'task' : 'reject' }),
+    userAnswer: '同意', refused: 'permission_not_answered', accepted: 'submitted',
+  }
+  const input = {
+    raise: () => backend.onEvent({ type: 'backend.input.requested', input: { id: 'ask-file', prompt: '写到哪个文件？' } }),
+    ask: () => { input.raise(); return asked('backend-input') },
+    answer: (response, userAnswer = '说说今天几号') => call(response, 'update_agent_task', { task_id: task.id, instruction: userAnswer }),
+    userAnswer: '写到 a.txt', refused: 'input_not_answered', accepted: 'accepted',
+  }
+  const reply = id => {
+    f.emit({ type: 'response.created', response: { id } })
+    f.emit({ type: 'response.done', response: { id, status: 'completed' } })
+  }
+  return { h, f, task, requested, asked, permission, input, reply }
+}
+
+for (const [kind, request] of [['permission', 'a permission request'], ['input', 'a backend question']]) {
+  for (const fullDuplex of [true, false]) {
+    test(`a turn that began before ${request} ${fullDuplex ? 'cannot answer it on a full-duplex frontend, even after a stop' : 'is not refused by the full-duplex rule on other frontends'}`, async t => {
+      const { h, f, task, reply, [kind]: pending } = await answerableTask(t, { fullDuplex })
+      // The user talks on about something else; the backend asks afterwards.
+      speak(f, 'talk-on', '顺便说说今天几号')
+      reply('reply')
+      await pending.ask()
+      const early = await pending.answer('early')
+      if (!fullDuplex) {
+        assert.equal(early.status, pending.accepted)
+        return
+      }
+      assert.equal(early.error_code, pending.refused)
+      if (kind === 'permission') assert.equal(h.manager.get(task.id).authorization.status, 'pending')
+      // After a stop the model's next response still carries the earlier turn.
+      h.send({ type: Input.INTERRUPT })
+      assert.equal((await pending.answer('after-stop')).error_code, pending.refused)
+      speak(f, 'answer', pending.userAnswer)
+      assert.equal((await pending.answer('later', pending.userAnswer)).status, pending.accepted)
+    })
+  }
+}
+
+test('no turn begun before the Gateway asks can answer a request', async t => {
+  const { f, reply, asked, permission, input } = await answerableTask(t)
+  // The requests arrive while a user turn awaits its reply; the user speaks again before the Gateway asks.
+  speak(f, 'question', '帮我写个文件')
+  permission.raise()
+  input.raise()
+  speak(f, 'meanwhile', '顺便说说今天几号')
+  assert.equal((await permission.answer('permission', '同意')).error_code, 'permission_not_answered')
+  assert.equal((await input.answer('input')).error_code, 'input_not_answered')
+  assert.equal(f.deliveries.length, 0, 'the Gateway has not asked yet')
+  reply('reply')
+  await asked('permission')
+  assert.equal((await permission.answer('early')).error_code, 'permission_not_answered')
+  speak(f, 'answer', '同意')
+  assert.equal((await permission.answer('later', '同意')).status, 'submitted')
+})
+
+test('a turn begun while the question waits to be sent cannot answer it', async t => {
+  const { f, asked, permission } = await answerableTask(t)
+  // The question is queued behind earlier output; the user talks on meanwhile.
+  const inject = f.injectDelivery.bind(f)
+  let send
+  f.injectDelivery = (...args) => new Promise(resolve => { send = () => resolve(inject(...args)) })
+  permission.raise()
+  await until(() => send)
+  speak(f, 'meanwhile', '顺便说说今天几号')
+  send()
+  await asked('permission')
+  assert.equal((await permission.answer('early')).error_code, 'permission_not_answered')
+  speak(f, 'answer', '同意')
+  assert.equal((await permission.answer('later', '同意')).status, 'submitted')
+})
+
+test('a question that did not go out leaves no turn able to answer it', async t => {
+  const { f, permission } = await answerableTask(t)
+  let attempts = 0
+  f.injectDelivery = async () => { attempts += 1; return { completed: false } }
+  permission.raise()
+  await until(() => attempts)
+  speak(f, 'unasked', '同意')
+  assert.equal((await permission.answer('early', '同意')).error_code, 'permission_not_answered')
+})
+
+test('a spoken answer to a permission raised mid-utterance still gets the fallback response request on other frontends', async t => {
+  const { h, f, task, requested, permission } = await answerableTask(t, { fullDuplex: false })
+  f.emit({ type: 'input_audio_buffer.speech_started', item_id: 'answer' })
+  permission.raise()
+  await until(() => h.manager.get(task.id).authorization?.status === 'pending')
+  f.emit({ type: 'input_audio_buffer.speech_stopped', item_id: 'answer' })
+  f.emit({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'answer', transcript: '同意' })
+  await until(() => requested.length === 1)
+})
+
+test('on a full-duplex frontend only an answer begun after a permission request gets the fallback response request', async t => {
+  const { f, requested, asked, permission } = await answerableTask(t)
+  // The backend asks while the user is still speaking about something else.
+  f.emit({ type: 'input_audio_buffer.speech_started', item_id: 'talk-on' })
+  permission.raise()
+  f.emit({ type: 'input_audio_buffer.speech_stopped', item_id: 'talk-on' })
+  f.emit({ type: 'response.created', response: { id: 'say-0' }, __voicePlayback: true })
+  f.emit({ type: 'response.done', response: { id: 'say-0', status: 'completed' }, __voicePlayback: true })
+  await asked('permission')
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  f.emit({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'talk-on', transcript: '顺便说说今天几号' })
+  t.mock.timers.tick(5_000)
+  assert.equal(requested.length, 0)
+  t.mock.timers.reset()
+  // The user answers; the voice layer acknowledges on its own stream and never delegates.
+  speak(f, 'answer')
+  f.emit({ type: 'response.created', response: { id: 'say-1' }, __voicePlayback: true })
+  f.emit({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'answer', transcript: '同意' })
+  await until(() => requested.length === 1)
+  const { shouldCreate } = requested[0][1]
+  assert.equal(shouldCreate(), true, 'claims the turn')
+  assert.equal(shouldCreate(), true, 'still wanted when the frontend re-checks before sending')
 })
 
 test('a transport reconnect restores an unresolved permission without restarting backend work', async t => {

@@ -240,6 +240,8 @@ await orb.load()
 | 服务端 → 客户端 | `input.suspend` | 立即停止采集（比用户级静音更强：不采集、不做唤醒词检测）；携带 `owner`、`reason`、`expiresAt` |
 | 服务端 → 客户端 | `input.resume` | 可以恢复采集 |
 | 客户端 → 服务端 | `input.suspend.ack` | 确认抢占已在本客户端生效 |
+| 服务端 → 客户端 | `voice.ready` | 语音模型在打断时会把已经生成的语音说完时带 `interruptionPlaysOut: true`：插话、文字输入或 `interrupt` 时 Gateway 不发 `playback.clear`，客户端在 `voice.state` 为 `listening` 和自己发 `interrupt` 时继续播放 |
+| 服务端 → 客户端 | `voice.ready` | 输出音频按播放速度到达时带 `pacedOutputAudio: true`：客户端连本机 Gateway 时也先缓冲再播放 |
 | 服务端 → 客户端 | `voice.state` | 前台语音轮次的表现状态：`idle`、`listening`、`processing` 或 `speaking`；同步前台工具调用期间保持 `processing`，直到终止结果或直连后续回复开始 |
 | 服务端 → 客户端 | `transcript.final` | 最终助手转写可携带 `citations: [{ id, title, url, snippet?, source?, published_at? }]`；能力位：`messages.citations` |
 

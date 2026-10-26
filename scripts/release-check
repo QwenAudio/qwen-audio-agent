@@ -82,7 +82,7 @@ for (const [launcher, packageName] of [
   ['opencode', 'opencode-ai'],
   ['openclaw', 'openclaw'],
   ['codex-acp', '@agentclientprotocol/codex-acp'],
-  ['claude-code-acp', '@zed-industries/claude-code-acp'],
+  ['claude-code-acp', '@agentclientprotocol/claude-agent-acp'],
   ['pi-acp', 'pi-acp'],
 ]) {
   if (!readFileSync(`scripts/runtime/${launcher}.mjs`, 'utf8').includes(`${packageName}@latest`)) {

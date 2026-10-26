@@ -272,7 +272,7 @@ const definitions = new Map([
       command: 'claude',
       executableEnvironment: 'CLAUDE_CODE_EXECUTABLE',
       integration: 'adapter',
-      adapterCommand: 'claude-code-acp',
+      adapterCommand: 'claude-agent-acp',
       adapterEnvironment: 'CLAUDE_CODE_ACP_BIN',
       adapterRuntimeEnvironment: 'CLAUDE_CODE_ACP_RUNTIME',
     },
@@ -280,7 +280,7 @@ const definitions = new Map([
       installation: {
         steps: [
           { kind: 'npm', package: '@anthropic-ai/claude-code@latest', packageEnv: 'CLAUDE_CODE_PACKAGE' },
-          { kind: 'npm', label: 'ACP 适配器', component: 'adapter', package: '@zed-industries/claude-code-acp@latest', packageEnv: 'CLAUDE_CODE_ACP_PACKAGE' },
+          { kind: 'npm', label: 'ACP 适配器', component: 'adapter', package: '@agentclientprotocol/claude-agent-acp@latest', packageEnv: 'CLAUDE_CODE_ACP_PACKAGE' },
         ],
       },
       configuration: { mode: 'backend-owned' },

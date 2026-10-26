@@ -454,7 +454,7 @@ test('Claude Code ACP prefers an installed adapter and uses latest for its packa
   const packageRuntime = fixture()
   try {
     command(resolve(binary.bin, 'claude'))
-    command(resolve(binary.bin, 'claude-code-acp'), {
+    command(resolve(binary.bin, 'claude-agent-acp'), {
       captureNativePaths: true,
     })
     command(resolve(packageRuntime.bin, 'claude'))
@@ -463,7 +463,7 @@ test('Claude Code ACP prefers an installed adapter and uses latest for its packa
       CLAUDE_CODE_ACP_RUNTIME: 'auto',
     }, ['--help'])
     assert.deepEqual(installed.slice(0, 2), [
-      'claude-code-acp',
+      'claude-agent-acp',
       '--help',
     ])
     assert.equal(
@@ -475,7 +475,7 @@ test('Claude Code ACP prefers an installed adapter and uses latest for its packa
     }, ['--help']), [
       'npx',
       '-y',
-      '@zed-industries/claude-code-acp@latest',
+      '@agentclientprotocol/claude-agent-acp@latest',
       '--help',
     ])
   } finally {
@@ -571,7 +571,7 @@ test('external ACP adapters require the user backend to be installed', {
   const pi = fixture()
   try {
     command(resolve(codex.bin, 'codex-acp'))
-    command(resolve(claude.bin, 'claude-code-acp'))
+    command(resolve(claude.bin, 'claude-agent-acp'))
     command(resolve(pi.bin, 'pi-acp'))
     const codexResult = execute('scripts/runtime/codex-acp.mjs', codex, {
       CODEX_ACP_RUNTIME: 'auto',

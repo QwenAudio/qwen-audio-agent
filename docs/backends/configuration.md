@@ -293,9 +293,9 @@ CODEX_BASE_URL=
 ## Claude Code
 
 Claude Code connects via
-[@zed-industries/claude-code-acp](https://github.com/zed-industries/claude-code-acp)
-maintained by Zed. The launcher script preferentially uses the already installed
-`claude-code-acp`. If missing, the CLI can use the latest version via `npx`; the desktop app
+[@agentclientprotocol/claude-agent-acp](https://github.com/agentclientprotocol/claude-agent-acp),
+the maintained successor of Zed's deprecated `@zed-industries/claude-code-acp`. The launcher
+script preferentially uses the already installed `claude-agent-acp`. If missing, the CLI can use the latest version via `npx`; the desktop app
 offers “Install adapter” without reinstalling Claude Code. Claude Code must still be authenticated.
 
 ```dotenv
@@ -310,7 +310,7 @@ model via ACP. Advanced configuration:
 
 ```dotenv
 CLAUDE_CODE_ACP_BIN=
-CLAUDE_CODE_ACP_PACKAGE=@zed-industries/claude-code-acp@0.16.2
+CLAUDE_CODE_ACP_PACKAGE=@agentclientprotocol/claude-agent-acp@0.93.0
 CLAUDE_CODE_ACP_RUNTIME=auto
 CLAUDE_WORKSPACE=
 CLAUDE_CODE_EXECUTABLE=

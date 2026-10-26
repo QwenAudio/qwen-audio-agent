@@ -641,7 +641,7 @@ test('all default npm install steps track latest, including adapters', () => {
 
 for (const [id, adapterPackage] of [
   ['codex', '@agentclientprotocol/codex-acp'],
-  ['claude', '@zed-industries/claude-code-acp'],
+  ['claude', '@agentclientprotocol/claude-agent-acp'],
   ['pi', 'pi-acp'],
 ]) {
   test(`${id}: installed host + managed fallback only installs the missing adapter`, async () => {

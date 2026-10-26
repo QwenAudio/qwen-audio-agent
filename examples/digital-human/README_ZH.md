@@ -103,7 +103,7 @@ DHAV 服务需提供：
 可选浮窗只打开已运行的同一页面，安装 Electron 后在另一终端执行：
 
 ```bash
-npm install --no-save --package-lock=false electron@43.7.9
+npm install --no-save --package-lock=false electron@43.8.1
 npm run desktop
 ```
 

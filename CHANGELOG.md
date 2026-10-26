@@ -14,6 +14,8 @@
 
 ### 修复与改进
 
+- 更新 body-parser、Zod、Electron、undici、fast-uri 和 ip-address 的安全修复版本，修复依赖审计阻塞 CI 发布检查的问题；保留现有审计门槛。
+
 - 统一语音前台的供应商、模型、API Key、地址和音色配置，兼容读取旧变量；桌面设置按供应商选择模型，前台凭据与后台及其他模块隔离。
 - 新增 `frontend-models.json` 模型登记：与现有接入协议兼容的新模型可通过配置添加，无需修改 Provider 代码。
 - 默认前台升级为 Qwen Audio 3.1 Realtime Plus，音色随模型选择；生成的 `config.env` 直接展示常用默认值与待填写的 API Key。

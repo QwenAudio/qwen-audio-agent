@@ -28,7 +28,7 @@
   },
   "peerDependencies": {
     "qwen-audio-agent": "^2.0.1",
-    "electron": "^43.7.9"
+    "electron": "^43.8.1"
   },
   "peerDependenciesMeta": {
     "qwen-audio-agent": {

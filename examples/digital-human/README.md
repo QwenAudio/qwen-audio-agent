@@ -85,7 +85,7 @@ Vidu does not expose a per-response playback boundary to the Agent. Original PCM
 The optional Electron shell opens the same running example page. In another terminal here:
 
 ```sh
-npm install --no-save --package-lock=false electron@43.7.9
+npm install --no-save --package-lock=false electron@43.8.1
 npm run desktop
 ```
 

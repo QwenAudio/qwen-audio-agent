@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import AvatarHero from './AvatarHero.jsx'
+import defaultPreview from './assets/vidu-default-preview.png'
 import { avatarVisualState, avatarStatusDot } from './avatar-status.js'
 import { useDualConnection } from './useDualConnection.js'
 import { installWindowDrag } from './window-drag.mjs'
@@ -74,9 +75,13 @@ export default function App() {
   const imageEpoch = useRef(0)
   const dragRef = useRef(null)
   const { config, notice } = useExampleConfig()
-  const avatar = useDualConnection({ sessionId, config, image: image || DEFAULT_IMAGE })
-  const desktop = window.viduAvatarDesktop
   const vidu = config?.renderer?.id === 'vidu'
+  const avatar = useDualConnection({ sessionId, config, image: image || DEFAULT_IMAGE, autoMic: vidu })
+  const desktop = window.viduAvatarDesktop
+  const overlay = Boolean(desktop && vidu)
+  const [alwaysOnTop, setAlwaysOnTop] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [conversationOpen, setConversationOpen] = useState(false)
   useEffect(() => {
     if (desktop) installWindowDrag(dragRef.current, desktop)
   }, [desktop])
@@ -129,9 +134,16 @@ export default function App() {
   )
 
   return (
-    <main className={`app${vidu ? ' app-vidu' : ''}${desktop ? ' app-desktop' : ''}`}>
+    <main className={`app${vidu ? ' app-vidu' : ''}${desktop ? ' app-desktop' : ''}${overlay ? ' app-overlay' : ''}${settingsOpen ? ' settings-open' : ''}${conversationOpen ? ' conversation-open' : ''}`}>
       {desktop && <div className="desktop-toolbar">
         <div ref={dragRef} className="desktop-drag">数字人浮窗 · 拖动</div>
+        {overlay && <>
+          <button aria-expanded={conversationOpen} onClick={() => setConversationOpen(value => !value)}>对话</button>
+          <button aria-expanded={settingsOpen} onClick={() => setSettingsOpen(value => !value)}>设置</button>
+        </>}
+        {desktop.setAlwaysOnTop && <button aria-pressed={alwaysOnTop} onClick={async () => {
+          try { setAlwaysOnTop(await desktop.setAlwaysOnTop(!alwaysOnTop)) } catch { /* Window is closing. */ }
+        }}>{alwaysOnTop ? '取消置顶' : '置顶'}</button>}
         <button onClick={() => { avatar.disconnect(); desktop.quit() }}>关闭</button>
         {desktop.canSwitchToOrb && <button onClick={() => { avatar.disconnect('switch_to_orb'); desktop.switchToOrb() }}>切换悬浮球</button>}
       </div>}
@@ -167,15 +179,17 @@ export default function App() {
       </header>
 
       <section className="workspace">
-        <AvatarHero avatar={avatar} personaId={config?.persona || '—'} rendererId={config?.renderer?.id} />
+        <AvatarHero avatar={avatar} personaId={config?.persona || '—'} rendererId={config?.renderer?.id} referenceImage={!image || image === DEFAULT_IMAGE ? defaultPreview : image} />
         {notice && <p className="notice" role="status">{notice}</p>}
         {vidu && <aside className="renderer-settings">
-          <p role="status">Vidu 实验预览：目前没有可靠的逐回复播完信号，不发送 playback.ended。
-            新输入或“打断”会停止旧输出；不适合依赖播完回执的工具播报。开始回复可能产生 Vidu/ARTC 费用。</p>
+          <p role="status">Vidu 延迟展示预览。打断按原始音频时间线处理，已上传的数字人内容会继续展示，不硬切。
+            连接即启动持续直播，待机也可能产生 Vidu/ARTC 费用；结束后挂断。</p>
+          <label><input type="checkbox" checked={avatar.sourceAudible} disabled={avatar.state !== 'connected'}
+            onChange={avatar.toggleSourceAudio} />原声对照（隐藏数字人并播放原始音频）</label>
           {config.renderer?.enabled === false && <p>{config.renderer.reason}</p>}
-          <label>角色图片 HTTPS URL<input value={image.startsWith('data:') ? '' : image}
+          <label>角色图片 HTTPS URL<input disabled={avatar.state !== 'idle' && avatar.state !== 'error'} value={image.startsWith('data:') ? '' : image}
             onChange={event => { imageEpoch.current++; setImage(event.target.value); setImageError(null) }} placeholder={DEFAULT_IMAGE} /></label>
-          <label>或上传（最多 4 MB）<input type="file" accept="image/png,image/jpeg,image/webp" onChange={upload} /></label>
+          <label>或上传（最多 4 MB，连接前选择）<input disabled={avatar.state !== 'idle' && avatar.state !== 'error'} type="file" accept="image/png,image/jpeg,image/webp" onChange={upload} /></label>
           {image.startsWith('data:') && <small>已选择上传图片</small>}
           {imageError && <p role="alert">{imageError}</p>}
         </aside>}

@@ -1,73 +1,99 @@
-import { AvatarPlaybackController } from '../avatar-playback.mjs'
+import { createSourcePlayback } from '../source-playback.mjs'
 import { createArtcPlayer } from './artc-player.mjs'
-const same = (a, b) => a && b && a.responseId === b.responseId && a.generation === b.generation
 
-export function createViduRenderer({ player, sendRenderer, image = () => undefined, onError = () => {} }) {
-  let current = null, closed = false
+// A best-effort display mirror. Only sourcePlayback can send Gateway receipts.
+export function createViduController({ player, sourcePlayback, sendRenderer, image = () => undefined,
+  onError = () => {}, maxPendingBytes = 8 * 1024 * 1024 } = {}) {
+  let closed = false, opened = false, connected = false, failed = false, generation = 0, current = null, turnId = ''
+  let pending = [], pendingBytes = 0
+  const retired = new Set()
+  const notice = error => {
+    if (closed || failed) return
+    failed = true; pending = []; pendingBytes = 0
+    void player.close()
+    onError(error instanceof Error ? error : new Error(error))
+  }
+  const write = event => {
+    if (closed || failed) return
+    if (!opened) {
+      const size = JSON.stringify(event).length
+      if (pendingBytes + size > maxPendingBytes) { notice('数字人输入积压，展示已停止；原始对话继续。'); return }
+      pending.push(event); pendingBytes += size
+    } else {
+      try { if (sendRenderer(event) === false) notice('数字人连接不可用；原始对话继续。') }
+      catch { notice('数字人连接不可用；原始对话继续。') }
+    }
+  }
+  const retire = id => {
+    if (id) retired.add(id)
+    // Fencing future uploads is not a request to stop already uploaded media.
+    if (current && (!id || current.responseId === id)) {
+      write({ type: 'turn.cancel', ...current })
+      retired.add(current.responseId); current = null
+    }
+  }
   return {
-    startTurn(turn, callbacks) {
-      if (closed) return false
-      current = { ...turn, callbacks, inputEnded: false, sessionReceived: false }
-      return sendRenderer({ type: 'turn.start', ...turn, image: image() })
-    },
-    appendAudio(turn, audio) {
-      if (!same(current, turn) || current.inputEnded) return false
-      return sendRenderer({ type: 'audio.append', ...turn, audio, sampleRate: 24000 })
-    },
-    endTurn(turn) {
-      if (!same(current, turn) || current.inputEnded) return
-      current.inputEnded = true
-      return sendRenderer({ type: 'audio.end', ...turn })
-    },
-    cancelTurn(turn, reason) {
-      if (!same(current, turn)) return
-      // Synchronous local gate first; it may report a delayed actual start.
-      // The common controller is the only owner of cancellation receipts.
-      player.stop()
-      current = null
-      sendRenderer({ type: 'turn.cancel', ...turn, reason })
-    },
-    handleMessage(raw) {
-      if (closed || typeof raw !== 'string') return
-      let message
-      try { message = JSON.parse(raw) } catch { current?.callbacks.onError(new Error('Invalid Vidu message')); return }
-      const turn = current
-      if (!same(turn, message)) return
-      if (message.type === 'renderer.error') {
-        const error = new Error(message.message || 'Vidu unavailable')
-        turn.callbacks.onError(error); onError(error); return
-      }
-      if (message.type !== 'vidu.session' || turn.sessionReceived) return
-      turn.sessionReceived = true
-      // One live/channel per response binds an otherwise untagged RTC stream
-      // to exactly one response/generation; retired callbacks cannot revive it.
-      const currentCallbacks = Object.fromEntries(['onStarted', 'onError'].map(name => [name, value => {
-        if (current === turn && !closed) {
-          turn.callbacks[name](value)
-          if (name === 'onError') onError(value)
+    handleGateway(event) {
+      if (closed) return
+      sourcePlayback.handleGateway(event) // always independent of renderer readiness
+      if (event.type === 'turn.started') turnId = event.turnId || ''
+      else if (event.type === 'playback.clear') retire()
+      else if (event.type === 'voice.state' && event.state === 'listening'
+        && (!event.turnId || event.turnId === turnId || event.origin !== 'model')) retire()
+      else if (event.type === 'response.interrupted') retire(event.responseId)
+      else if (event.type === 'audio.delta' && !retired.has(event.responseId)) {
+        if (!current || current.responseId !== event.responseId) {
+          if (current) retired.add(current.responseId)
+          current = { responseId: event.responseId, generation: ++generation }
+          write({ type: 'turn.start', ...current })
         }
-      }]))
-      if (player.start(turn, message.rtc, currentCallbacks) === false) turn.callbacks.onError(new Error('ARTC unavailable'))
+        write({ type: 'audio.append', ...current, sampleRate: event.sampleRate ?? 24000, audio: event.audio })
+      } else if (event.type === 'audio.done' && current?.responseId === event.responseId) {
+        write({ type: 'audio.end', ...current })
+        retired.add(current.responseId); current = null
+      }
+      if (retired.size > 4096) notice('数字人会话回复数达到上限，请重新连接展示。')
     },
-    disconnected(reason) {
-      player.stop()
-      const turn = current
-      current = null
-      turn?.callbacks.onError(new Error(reason || 'Vidu disconnected'))
+    handleRenderer(raw) {
+      if (closed || failed || typeof raw !== 'string') return
+      let message
+      try { message = JSON.parse(raw) } catch { notice('Invalid Vidu message'); return }
+      if (message.type === 'session.ready' && !opened) {
+        opened = true
+        if (sendRenderer({ type: 'session.open', image: image() }) === false) { notice('Vidu connection unavailable'); return }
+        const queued = pending; pending = []; pendingBytes = 0
+        for (const event of queued) write(event)
+      } else if (message.type === 'vidu.session' && !connected) {
+        connected = true
+        player.connect(message.rtc, { onError: error => {
+          notice(error)
+          sendRenderer({ type: 'session.close' })
+        } })
+      } else if (message.type === 'renderer.error') notice(message.message || 'Vidu unavailable')
     },
-    close() { player.stop(); current = null; closed = true; void player.close() },
+    setSourceAudible(value) {
+      // Swap only the output paths. Source scheduling and receipts are identical.
+      if (value) { player.setAudible(false); sourcePlayback.setAudible(true) }
+      else { sourcePlayback.setAudible(false); player.setAudible(true) }
+    },
+    rendererDisconnected(reason) { notice(reason || '数字人连接已断开；原始对话继续。') },
+    close(reason = 'closed') {
+      if (closed) return
+      sourcePlayback.close(reason)
+      closed = true; pending = []; pendingBytes = 0
+      try { sendRenderer({ type: 'session.close' }) } catch {}
+      void player.close()
+    },
   }
 }
+
 export const viduAdapter = {
-  // A 4 MiB image becomes ~5.6 MiB base64; keep the shared sender bounded
-  // without rejecting the first PCM packet while that image is in flight.
+  presentationOnly: true,
   maxBufferedBytes: 8 * 1024 * 1024,
+  connectTimeoutMs: 65000,
   createPlayer: options => createArtcPlayer(options),
-  createController: ({ player, sendRenderer, image, ...options }) => new AvatarPlaybackController({
-    ...options, renderer: createViduRenderer({ player, sendRenderer, image,
-      onError: error => options.onStatus?.({ state: 'error', reason: error.message }),
-    }),
-    // Without verifiable output boundary, replay can never be proven safe.
-    fallbackPlayer: null, firstPlaybackTimeoutMs: 65000,
+  createController: ({ player, audioContext, sendGateway, onStatus, ...options }) => createViduController({
+    ...options, player,
+    sourcePlayback: createSourcePlayback({ audioContext, sendGateway, onStatus }),
   }),
 }

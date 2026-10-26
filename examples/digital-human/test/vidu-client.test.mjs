@@ -1,178 +1,162 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { AvatarPlaybackController } from '../client/avatar-playback.mjs'
-import { createViduRenderer } from '../client/renderers/vidu.mjs'
+import { createSourcePlayback } from '../client/source-playback.mjs'
+import { createViduController } from '../client/renderers/vidu.mjs'
 import { createArtcPlayer } from '../client/renderers/artc-player.mjs'
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
-const pcm = Buffer.alloc(4800).toString('base64')
-function controllerFixture() {
-  const sent = [], receipts = [], order = [], sessions = []
-  const player = {
-    start(turn, rtc, callbacks) { sessions.push({ turn, rtc, callbacks }); return true },
-    stop() { order.push('local-stop') }, close() {},
+const pcm = Buffer.from([0, 0, 0, 64, 0, 192, 0, 32]).toString('base64')
+function fixture({ audible = false } = {}) {
+  const receipts = [], statuses = [], nodes = [], jobs = [], sent = [], failures = [], gains = []
+  const context = { state: 'running', currentTime: 0, destination: {},
+    createGain() { const n = { gain: { value: 1 }, connect() {}, disconnect() {} }; gains.push(n); return n },
+    createBuffer(_channels, count, rate) { const samples = new Float32Array(count); return { duration: count / rate, getChannelData: () => samples } },
+    createBufferSource() { const n = { connect() {}, disconnect() {}, start(at) { this.at = at }, stop() { this.stopped = true } }; nodes.push(n); return n },
   }
-  const renderer = createViduRenderer({ player, sendRenderer: event => { sent.push(event); order.push(event.type); return true } })
-  const controller = new AvatarPlaybackController({ renderer, sendGateway: event => receipts.push(event),
-    setTimer: () => 1, clearTimer() {} })
-  const audio = id => controller.handleGateway({ type: 'audio.delta', responseId: id, sampleRate: 24000, audio: pcm })
-  const session = () => {
-    const turn = sent.filter(m => m.type === 'turn.start').at(-1)
-    controller.handleRenderer(JSON.stringify({ type: 'vidu.session', ...turn, type: 'vidu.session', rtc: { token: 'scoped' } }))
-    return sessions.at(-1)
-  }
-  return { sent, receipts, order, sessions, controller, audio, session }
+  const source = createSourcePlayback({ audioContext: context, audible, sendGateway: e => receipts.push(e), onStatus: e => statuses.push(e),
+    setTimer(fn, delay) { const job = { fn, delay }; jobs.push(job); return job }, clearTimer(job) { if (job) job.cancelled = true } })
+  const player = { connect(_rtc, callbacks) { this.callbacks = callbacks }, setAudible(value) { this.audible = value }, close() { this.closed = true } }
+  const controller = createViduController({ player, sourcePlayback: source, sendRenderer: e => { sent.push(e); return true }, onError: e => failures.push(e.message) })
+  const audio = id => controller.handleGateway({ type: 'audio.delta', responseId: id, audio: pcm, sampleRate: 24000 })
+  const done = id => controller.handleGateway({ type: 'audio.done', responseId: id })
+  const end = node => { context.currentTime = node.at + node.buffer.duration; node.onended?.() }
+  return { controller, source, context, receipts, statuses, nodes, gains, jobs, sent, failures, player, audio, done, end }
 }
 
-test('Vidu never derives receipts from ready, subscription, input end or elapsed source duration', t => {
-  const f = controllerFixture(); t.after(() => f.controller.close())
-  f.controller.handleRenderer(JSON.stringify({ type: 'session.ready' }))
-  f.audio('r1')
-  const session = f.session()
-  f.controller.handleGateway({ type: 'audio.done', responseId: 'r1' })
-  f.controller.handleRenderer(JSON.stringify({ type: 'vidu.input_ended', ...session.turn, type: 'vidu.input_ended' }))
+test('original PCM creates source receipts even when Vidu never becomes ready or returns media', () => {
+  const f = fixture(); f.audio('a'); f.done('a')
   assert.deepEqual(f.receipts, [])
-  session.callbacks.onStarted()
-  assert.deepEqual(f.receipts.map(m => m.type), ['playback.started'])
-  assert.equal(session.callbacks.onDrained, undefined)
-  assert.ok(!f.receipts.some(m => m.type === 'playback.ended'))
+  assert.equal(f.gains[0].gain.value, 0)
+  assert.deepEqual([...f.nodes[0].buffer.getChannelData(0)], [0, 0.5, -0.5, 0.25])
+  f.end(f.nodes[0])
+  assert.deepEqual(f.receipts.map(e => e.type), ['playback.started', 'playback.ended'])
+  assert.deepEqual(f.sent, []) // initialization never blocks the source timeline
+  f.controller.close()
 })
 
-test('Vidu cancellation stops local media before remote control and fences old callbacks over multiple turns', t => {
-  const f = controllerFixture(); t.after(() => f.controller.close())
-  for (let i = 0; i < 3; i++) {
-    f.audio(`r${i}`)
-    const old = f.session()
-    old.callbacks.onStarted()
-    f.order.length = 0
-    f.controller.handleGateway({ type: 'playback.clear', reason: 'user_interruption' })
-    assert.deepEqual(f.order.slice(0, 2), ['local-stop', 'turn.cancel'])
-    const count = f.receipts.length
-    old.callbacks.onStarted()
-    old.callbacks.onError(new Error('late callback'))
-    f.controller.handleRenderer(JSON.stringify({ ...old.turn, type: 'vidu.session', rtc: {} }))
-    assert.equal(f.receipts.length, count)
+test('audible reference and muted mirror have identical source data, schedules and Gateway receipts', () => {
+  const muted = fixture(), audible = fixture({ audible: true })
+  for (const f of [muted, audible]) {
+    f.audio('a'); f.audio('a'); f.done('a'); f.audio('b'); f.done('b')
+    for (const n of f.nodes) f.end(n)
   }
-  assert.equal(f.receipts.filter(m => m.type === 'playback.cancelled').length, 3)
-  assert.equal(f.receipts.filter(m => m.type === 'playback.ended').length, 0)
+  assert.deepEqual(muted.nodes.map(n => n.at), audible.nodes.map(n => n.at))
+  assert.deepEqual(muted.nodes.map(n => [...n.buffer.getChannelData(0)]), audible.nodes.map(n => [...n.buffer.getChannelData(0)]))
+  assert.deepEqual(muted.receipts, audible.receipts)
+  assert.equal(muted.gains[0].gain.value, 0); assert.equal(audible.gains[0].gain.value, 1)
+  muted.controller.close(); audible.controller.close()
 })
 
-test('microphone mute does not cancel Vidu output; renderer disconnect cancels without PCM replay', t => {
-  const f = controllerFixture(); t.after(() => f.controller.close())
-  f.audio('r'); const session = f.session()
-  f.controller.handleGateway({ type: 'input.mute' })
-  assert.equal(f.order.includes('local-stop'), false)
-  session.callbacks.onStarted()
-  f.controller.rendererDisconnected()
+test('source clear cancels originals but never stops, mutes or interrupts the Vidu presentation', () => {
+  const f = fixture()
+  f.controller.handleRenderer(JSON.stringify({ type: 'session.ready' }))
+  f.audio('a'); f.done('a')
+  const old = f.nodes[0].onended
+  f.controller.handleGateway({ type: 'playback.clear', reason: 'user_interruption' })
+  assert.equal(f.nodes[0].stopped, true)
   assert.equal(f.receipts.at(-1).type, 'playback.cancelled')
-  assert.ok(!f.receipts.some(m => m.type === 'playback.ended'))
+  assert.equal(f.player.closed, undefined); assert.equal(f.player.audible, undefined)
+  old(); f.audio('a')
+  assert.equal(f.nodes.length, 1)
+  assert.ok(!f.sent.some(e => e.type === 'turn.finish'))
+  f.audio('b'); f.done('b'); f.end(f.nodes[1])
+  assert.equal(f.receipts.at(-1).type, 'playback.ended')
+  f.controller.close()
 })
 
-function artcFixture({ blocked = false, expired = false, delayedTrack = false, hangingJoin = false, destroyDelay } = {}) {
-  const engines = [], jobs = [], observations = [], nodes = []
-  let level = 0, resolveTrack
-  const node = () => {
-    const value = { gain: { value: 1 }, connected: false,
-      connect(next) { this.connected = true; return next }, disconnect() { this.connected = false },
-      fftSize: 8, getFloatTimeDomainData(data) { data.fill(level) } }
-    nodes.push(value); return value
-  }
-  const context = { state: 'running', destination: {}, createMediaStreamSource: node, createGain: node, createAnalyser: node }
-  const video = { muted: false, srcObject: null, pause() { this.paused = true }, play: () => blocked ? Promise.reject(new Error('blocked')) : Promise.resolve() }
-  const trackPromise = delayedTrack ? new Promise(resolve => { resolveTrack = resolve }) : Promise.resolve({ kind: 'audio' })
+test('renderer error and disconnection cannot cancel, end or delay the original playback', () => {
+  const f = fixture(); f.audio('a'); f.done('a')
+  f.controller.handleRenderer(JSON.stringify({ type: 'renderer.error', message: 'vendor unavailable' }))
+  f.controller.rendererDisconnected('late disconnect')
+  assert.deepEqual(f.receipts, [])
+  assert.equal(f.failures.length, 1)
+  f.end(f.nodes[0])
+  f.audio('b'); f.done('b'); f.end(f.nodes[1])
+  assert.deepEqual(f.receipts.map(e => e.type), ['playback.started', 'playback.ended', 'playback.started', 'playback.ended'])
+  f.controller.close()
+})
+
+test('a throwing display transport cannot interrupt original PCM scheduling or completion', () => {
+  const f = fixture(), failures = []
+  let fail = false
+  const controller = createViduController({ player: f.player, sourcePlayback: f.source,
+    sendRenderer: () => { if (fail) throw new Error('socket closed'); return true }, onError: e => failures.push(e.message) })
+  controller.handleRenderer(JSON.stringify({ type: 'session.ready' }))
+  fail = true
+  controller.handleGateway({ type: 'audio.delta', responseId: 'r', audio: pcm })
+  controller.handleGateway({ type: 'audio.done', responseId: 'r' })
+  f.end(f.nodes[0])
+  assert.deepEqual(f.receipts.map(e => e.type), ['playback.started', 'playback.ended'])
+  assert.equal(failures.length, 1)
+  assert.doesNotThrow(() => controller.close())
+})
+
+test('input mute does not stop originals; original output selection changes only gains', () => {
+  const f = fixture(); f.audio('a')
+  f.controller.handleGateway({ type: 'input.mute' })
+  f.controller.setSourceAudible(true)
+  assert.equal(f.gains[0].gain.value, 1); assert.equal(f.player.audible, false)
+  f.controller.setSourceAudible(false)
+  assert.equal(f.gains[0].gain.value, 0); assert.equal(f.player.audible, true)
+  assert.equal(f.nodes.length, 1); assert.deepEqual(f.receipts, [])
+  f.controller.close()
+})
+
+test('queued source packets are mirrored in order after bridge opens, with no turn ready barrier', () => {
+  const f = fixture(); f.audio('a'); f.done('a'); f.audio('b'); f.done('b')
+  f.controller.handleRenderer(JSON.stringify({ type: 'session.ready' }))
+  assert.deepEqual(f.sent.map(e => e.type), ['session.open', 'turn.start', 'audio.append', 'audio.end', 'turn.start', 'audio.append', 'audio.end'])
+  assert.equal(f.sent[2].audio, pcm)
+  f.controller.close()
+})
+
+function nativeFixture(t, { blocked = false, delayedTrack = false, hangingJoin = false } = {}) {
+  const engines = [], errors = []
+  let resolveTrack
+  const video = { srcObject: null, muted: true, paused: true, readyState: 2,
+    pause() { this.paused = true }, async play() { if (blocked) throw Error('blocked'); this.paused = false } }
+  const stream = tracks => ({ tracks: [...tracks], addTrack(t) { this.tracks.push(t) }, getTracks() { return this.tracks } })
   const sdk = { isSupported: async () => ({ support: true }), getInstance() {
-    const handlers = {}
-    const engine = {
-      handlers, on(event, fn) { handlers[event] = fn }, setPlayoutVolume(value) { this.volume = value },
-      setChannelProfile() {}, publishLocalAudioStream(value) { assert.equal(value, false) },
-      publishLocalVideoStream(value) { assert.equal(value, false) }, enableLocalVideo() {},
+    const handlers = {}, engine = { handlers, on(name, fn) { handlers[name] = fn }, setPlayoutVolume(v) { this.volume = v },
+      getAudioTrack: () => delayedTrack ? new Promise(resolve => { resolveTrack = resolve }) : { kind: 'audio' }, getVideoTrack: async () => ({ kind: 'video' }),
+      setChannelProfile() {}, publishLocalAudioStream() {}, publishLocalVideoStream() {}, enableLocalVideo() {},
       setDefaultSubscribeAllRemoteAudioStreams() {}, setDefaultSubscribeAllRemoteVideoStreams() {},
-      setRemoteViewConfig() {}, getAudioTrack: () => trackPromise,
-      async joinChannel() { this.joined = true; if (hangingJoin) await new Promise(() => {}) },
-      async leaveChannel() { this.left = true }, async destroy() { await destroyDelay; this.destroyed = true },
-    }
+      async joinChannel() { if (hangingJoin) await new Promise(() => {}) }, async leaveChannel() {}, async destroy() { this.destroyed = true } }
     engines.push(engine); return engine
   } }
-  const player = createArtcPlayer({ audioContext: context, video, loadSdk: async () => sdk,
-    makeStream: track => ({ track }), now: () => 1000,
-    setTimer(fn, delay) { const job = { fn, delay }; jobs.push(job); return job }, clearTimer(job) { if (job) job.cancelled = true } })
-  const start = id => player.start({ responseId: id, generation: engines.length + 1 }, {
-    token: 'short-lived', user_id: 'viewer', avatar_user_id: 'avatar', expires_at: expired ? 0 : 100,
-  }, { onStarted: () => observations.push('started'), onError: error => observations.push(error.message) })
-  return { player, start, engines, nodes, jobs, observations, context, video,
-    level: value => { level = value }, resolveTrack: () => resolveTrack?.({ kind: 'audio' }) }
+  const player = createArtcPlayer({ video, loadSdk: async () => sdk, makeStream: stream, now: () => 1000,
+    setTimer: () => 1, clearTimer() {} })
+  player.connect({ user_id: 'viewer', avatar_user_id: 'avatar', token: 'scoped', expires_at: 100 }, { onError: e => errors.push(e.message) })
+  t.after(() => player.close())
+  return { player, video, engines, errors, resolveTrack: () => resolveTrack?.({ kind: 'audio' }) }
 }
 
-test('ARTC start is observed on the real audible graph; delayed start is flushed before local cancellation', async () => {
-  const f = artcFixture(); f.start('r'); await tick()
-  const engine = f.engines[0]
-  assert.equal(engine.volume, 0) // SDK automatic audio must never double-play
-  await engine.handlers.audioSubscribeStateChanged('avatar', 0, 3)
-  assert.deepEqual(f.observations, []) // silent/idle remote audio is not a start
-  f.level(0.2)
-  f.player.stop() // JS poll can be late; synchronously inspect before muting
-  assert.deepEqual(f.observations, ['started'])
-  assert.equal(f.nodes.find(n => n.gain.value === 0)?.gain.value, 0)
-  assert.ok(f.nodes.every(n => !n.connected))
-  await f.player.close()
-  assert.equal(engine.destroyed, true)
-})
-
-test('ARTC autoplay rejection reports failure, never a successful drain', async () => {
-  const f = artcFixture({ blocked: true }); f.start('r'); await tick()
-  f.engines[0].handlers.videoSubscribeStateChanged('avatar', 0, 3)
-  await tick()
-  assert.deepEqual(f.observations, ['ARTC autoplay blocked'])
-  assert.equal(f.engines[0].volume, 0)
-  await f.player.close()
-})
-
-test('ARTC expired credentials and suspension cannot create playback receipts', async () => {
-  const expired = artcFixture({ expired: true }); expired.start('r'); await tick()
-  assert.deepEqual(expired.observations, ['ARTC credentials expired'])
-  assert.equal(expired.engines.length, 0)
-  await expired.player.close()
-  const f = artcFixture(); f.start('r'); await tick()
-  f.context.state = 'suspended'
+test('RTC continuously plays original audio and video in one element with no per-turn lifecycle or analysis', async t => {
+  const f = nativeFixture(t); await tick()
   await f.engines[0].handlers.audioSubscribeStateChanged('avatar', 0, 3)
-  assert.deepEqual(f.observations, ['ARTC audio playback suspended'])
-  await f.player.close()
+  await f.engines[0].handlers.videoSubscribeStateChanged('avatar', 0, 3)
+  await tick()
+  assert.equal(f.engines[0].volume, 0)
+  assert.equal(f.video.muted, false); assert.equal(f.video.paused, false)
+  assert.deepEqual(f.video.srcObject.getTracks().map(t => t.kind), ['audio', 'video'])
+  assert.equal(f.player.startTurn, undefined); assert.equal(f.player.stop, undefined)
+  f.player.setAudible(false); assert.equal(f.video.muted, true)
+  f.player.setAudible(true); assert.equal(f.video.muted, false)
+  assert.deepEqual(f.errors, [])
 })
 
-test('cancelled ARTC track promises and old session events cannot reconnect audible media', async () => {
-  const f = artcFixture({ delayedTrack: true }); f.start('old'); await tick()
-  const old = f.engines[0]
-  const attaching = old.handlers.audioSubscribeStateChanged('avatar', 0, 3)
-  f.player.stop()
-  f.start('new')
-  f.resolveTrack(); await attaching; await tick()
-  assert.equal(f.nodes.length, 0)
-  old.handlers.videoSubscribeStateChanged('avatar', 0, 3)
-  old.handlers.authInfoExpired()
-  assert.deepEqual(f.observations, [])
-  assert.equal(old.destroyed, true)
-  assert.equal(f.engines.length, 2)
-  await f.player.close()
-  assert.ok(f.engines.every(e => e.destroyed))
+test('late track and unresolved join cleanup cannot revive a closed presentation', async t => {
+  const f = nativeFixture(t, { delayedTrack: true }); await tick()
+  const attaching = f.engines[0].handlers.audioSubscribeStateChanged('avatar', 0, 3)
+  const closing = f.player.close(); f.resolveTrack(); await attaching; await closing
+  assert.equal(f.video.srcObject, null); assert.equal(f.engines[0].destroyed, true)
+  const hanging = nativeFixture(t, { hangingJoin: true }); await tick()
+  await hanging.player.close(); assert.equal(hanging.engines[0].destroyed, true)
 })
 
-test('cancelling an unresolved RTC join releases resources without waiting for vendor completion', async () => {
-  const f = artcFixture({ hangingJoin: true }); f.start('r'); await tick()
-  assert.equal(f.engines[0].joined, true)
-  await f.player.close()
-  assert.equal(f.engines[0].destroyed, true)
-  assert.deepEqual(f.observations, [])
-})
-
-test('a new controller waits for destruction of the SDK singleton owned by the previous player', async () => {
-  let release
-  const delay = new Promise(resolve => { release = resolve })
-  const old = artcFixture({ destroyDelay: delay }); old.start('old'); await tick()
-  const closing = old.player.close()
-  const next = artcFixture(); next.start('new'); await tick()
-  assert.equal(next.engines.length, 0)
-  release(); await closing; await tick()
-  assert.equal(old.engines[0].destroyed, true)
-  assert.equal(next.engines.length, 1)
-  await next.player.close()
+test('blocked RTC autoplay is a presentation error only', async t => {
+  const f = nativeFixture(t, { blocked: true }); await tick()
+  await f.engines[0].handlers.audioSubscribeStateChanged('avatar', 0, 3); await tick()
+  assert.match(f.errors[0], /failed or blocked/)
+  await f.player.close(); assert.equal(f.engines[0].destroyed, true)
 })

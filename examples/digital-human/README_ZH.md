@@ -24,7 +24,7 @@ https://github.com/user-attachments/assets/5301ef5e-b674-4561-93bb-e0c7544cf696
 示例本地服务代理第一条连接，并保护第二条连接的厂商密钥。它不是另一个 Gateway，不改变 GCP 消息，也不保存另一份对话历史。
 
 - **已提供**：DHAV 适配器、本地无 GPU 的合成画面 Mock、连接自部署 DHAV 服务的配置。
-- **Vidu 实验适配器**：保留原生 ARTC，复用同一连接与播放控制器，默认关闭。公开协议缺少可靠的逐回复播完信号，当前不发送 `playback.ended`，尚未完成付费服务验证，不能作为已完成的商业集成合入。见 [Vidu 配置及限制](docs/vidu.zh.md)。
+- **Vidu 实验适配器**：标准 Gateway 的独立延迟展示旁路。源 PCM 静音调度并独立回执；原生 ARTC 持续播放数字人音视频，不影响 Agent 播报时序。支持原声对照，默认关闭；新范围需维护者确认。见 [Vidu 配置及限制](docs/vidu.zh.md)。
 - **当前音频范围**：PCM16 little-endian、24 kHz、单声道。其他采样率会明确拒绝本轮，不隐式按错误速率播放。
 
 ## 快速开始
@@ -90,15 +90,15 @@ DHAV 服务需提供：
 服务适配分为两个位置，均在本示例内：
 
 1. `server/renderers/`：厂商鉴权、创建 / 关闭服务会话、音频转交、短期媒体凭据。
-2. `client/renderers/`：接收媒体、调用厂商播放器、上报真实播放开始 / 排空 / 错误。
+2. `client/renderers/`：接收媒体、调用厂商播放器；DHAV 回报实际播放，Vidu 独立展示。
 
 在服务端和浏览器注册同名适配器，通过 `DH_RENDERER_ADAPTER` 选择。配置只能选择已注册实现，不能从浏览器传入任意 URL 或加载任意模块。
 
-自部署 DHAV 用 WebAudio + canvas 播放 PCM / I420；Vidu 已在这两个位置注册，复用 `useDualConnection` 与 `AvatarPlaybackController`，ARTC 实验模式的播完边界尚未解决。**不用改 Gateway，也不用把 RTC 媒体再转成 DHAV。** 具体接口和迁移对照见 [适配器契约](docs/provider-contract.zh.md)。
+自部署 DHAV 用 WebAudio + canvas 播放 PCM / I420；Vidu 已在这两个位置注册，复用 `useDualConnection`；DHAV 使用 `AvatarPlaybackController`，Vidu 的源音频播放器独立产生回执，ARTC 只负责延迟展示。**不用改 Gateway，也不用把 RTC 媒体再转成 DHAV。** 具体接口和迁移对照见 [适配器契约](docs/provider-contract.zh.md)。
 
 ## Vidu 与桌面浮窗
 
-同一 `.env.local` 设置 `DH_RENDERER_ADAPTER=vidu` 及 Vidu/ARTC 凭证；只有显式设置 `VIDU_EXPERIMENTAL=1` 才允许预览，步骤见 [Vidu 指南](docs/vidu.zh.md)。共用 `npm run build:client`、`npm start` 和同一浏览器页面。第一块助手音频到达才创建每回复独立的直播，连接页面本身不创建直播。
+同一 `.env.local` 设置 `DH_RENDERER_ADAPTER=vidu` 及 Vidu/ARTC 凭证；只有显式设置 `VIDU_EXPERIMENTAL=1` 才允许预览，步骤见 [Vidu 指南](docs/vidu.zh.md)。共用 `npm run build:client`、`npm start` 和同一浏览器页面。点击连接后创建并复用会话级 Vidu/ARTC 连接，待机持续显示数字人；待机也可能计费，点击“结束”才挂断。源音频静音调度并独立回执；已上传的数字人内容连续展示，不因源音频打断而硬切。
 
 可选浮窗只打开已运行的同一页面，安装 Electron 后在另一终端执行：
 
@@ -107,24 +107,24 @@ npm install --no-save --package-lock=false electron@43.7.9
 npm run desktop
 ```
 
-浮窗共用页面的对话、图片上传和播放控制，可拖动顶部；关闭浮窗不会关闭 Gateway 或示例服务。Shell 环境变量 `DH_DESKTOP_URL` 可设置其他本机 HTTP 地址。原悬浮球仍是独立 UI 选项；一次仅用一套 UI 采集麦克风。
+浮窗共用页面的对话、图片上传和播放控制，可拖动顶部，默认不置顶，顶部“置顶 / 取消置顶”可随时切换；关闭浮窗不会关闭 Gateway 或示例服务。Shell 环境变量 `DH_DESKTOP_URL` 可设置其他本机 HTTP 地址。原悬浮球仍是独立 UI 选项；一次仅用一套 UI 采集麦克风。
 
 要启用“切换悬浮球”按钮，可在启动浮窗的 Shell 设置 `DH_ORB_LAUNCH` 为本机操作者提供的 JSON argv 数组，如 `["npm","run","desktop","--prefix","/path/to/source-checkout"]`；不设时不执行外部启动命令。页面不能指定命令，启动不经过 Shell。
 
 ## 播放与打断
 
-- 收到第一块真实助手音频才创建渲染轮次；纯文本和工具调用不会产生假播放。
-- 使用现有 `audio.delta`、`audio.done` 和全量 `playback.clear`；`audio.done` 仅结束渲染输入，必须等数字人媒体和浏览器播放队列排空才发 `playback.ended`。
-- 播放回执由真实可听播放驱动，不使用静音音轨或定时器模拟已播放。
-- 用户打断、新会话、连接关闭会清理队列，隔离旧 response / generation 的迟到媒体。
-- 首次播放前渲染失败可回退原音频一次；已经开始数字人播放后失败，取消本轮而不是从头重播。
-- 麦克风静音只停止收音，不停止助手输出；队列与网络缓冲均有上限。
+- DHAV：`audio.done` 只结束渲染输入；实际媒体开始、排空和取消产生回执。首次起播前失败可回退原声一次，开始后不会从头重播。
+- Vidu：真实源 PCM 静音调度，源时间线产生 `playback.started/ended/cancelled`；返回音视频仅延迟展示，不参与 Agent 决策。
+- Vidu 的初始化、播放、结束或故障不会等待、取消或补造源音频回执；不做匹配及估算，也不逐轮发送远端 interrupt。
+- 用户打断按原始 Realtime / Gateway 判断处理。Vidu 已上传部分允许继续输出，未上传的旧回复块被丢弃；不承诺立即停止数字人。
+- 原声对照开关只交换源音量与 RTC 音量、隐藏人物画面；同一播放器保持原有调度与回执。
+- 麦克风静音只影响采集；结束和新会话会释放展示资源。输入与展示排队有界。
 
-普通 Gateway WebSocket 输出不提供精确的模型执行终态，`audio.done` 不能证明模型成功。通用 `error` 只用于提示，不从错误文案猜测某条回复失败或取消。本例不要求响应终态或定向清理扩展。
+普通 `audio.done` 不证明模型执行成功，通用错误也不用于猜测模型终态。此展示方案不提供听到位置反馈或模型上下文截断。
 
 ## 安全与范围
 
-Vidu 例外：起播只观察实际 ARTC 远端音轨的可听 WebAudio 路径；没有可靠的最后一帧信号，保持未完成状态，不用静音、固定延时、`audio.done`、断线或 Token 过期冒充播完。显式打断/新输入结束旧播放并发送取消回执，不回放原 PCM。详见[剩余阻塞项](docs/integration-architecture.zh.md)。
+Vidu 默认关闭。回执明确对应源音频时间线，不能称为用户已听完数字人；它与此前审核要求的实际 ARTC 回执、立即打断和旧媒体隔离存在范围差异，需维护者确认。详见[PR 说明](docs/pr-description.zh.md)与[完整音频流程图](docs/audio-processing-flow.zh.md)。
 
 本例默认仅监听回环地址，并校验 Host / WebSocket Origin。Gateway 访问令牌和厂商长期密钥只保留在本地 Node 进程；商业 RTC 必需的短期播放凭据可由适配器下发浏览器。不要把长期密钥放进 Vite 环境变量或前端代码。
 
@@ -143,7 +143,7 @@ npm run test:browser:vidu
 测试覆盖协议编解码、Mock / 真实本地 WebSocket、取消隔离、两轮独立时间线、播放回执、安全边界及不同媒体适配器。浏览器测试不使用真实模型或付费 API。
 
 Vidu 浏览器测试以假厂商 SDK 提供真实 MediaStream 音轨，经过浏览器实际 WebAudio 图，
-覆盖多轮、打断、静音、自动播放失败和重连；它不是商业 RTC 网络或音画同步的真实验收。
+覆盖源回执、原声对照、无关远端音频、数字人故障隔离、连续展示和重连；它不是商业 RTC 网络或音画同步的真实验收。
 
 真实服务验收清单见 [部署验证](docs/implementation-plan.zh.md)。自动化通过不等于已完成 FlashHead / 商业服务的部署验收。
 

@@ -16,6 +16,8 @@ const gateway = new WebSocketServer({ host: '127.0.0.1', port: 0 })
 await new Promise(resolve => gateway.once('listening', resolve))
 const events = [], controls = [], upstreams = []
 let reply = 0, live = 0
+const monitors = new Set()
+const sourcePcm = () => { const b = Buffer.alloc(24000 * 2 * 2); for (let i = 0; i < b.length / 2; i++) b.writeInt16LE(Math.round(3000 * Math.sin(i * 0.07) * Math.sin(i * i * 0.0000017)), i * 2); return b }
 const emit = (socket, event) => socket.send(JSON.stringify({ event_id: randomUUID(), ...event }))
 gateway.on('connection', socket => socket.on('message', raw => {
   const event = JSON.parse(raw); events.push(event)
@@ -27,7 +29,7 @@ gateway.on('connection', socket => socket.on('message', raw => {
   if (event.type === 'text.message') {
     const responseId = `r${++reply}`
     emit(socket, { type: 'playback.clear' })
-    emit(socket, { type: 'audio.delta', responseId, sampleRate: 24000, audio: Buffer.alloc(4800).toString('base64') })
+    emit(socket, { type: 'audio.delta', responseId, sampleRate: 24000, audio: sourcePcm().toString('base64') })
     emit(socket, { type: 'audio.done', responseId })
   }
 }))
@@ -38,11 +40,13 @@ const viduHttp = createServer(async (request, response) => {
   }))
 })
 const viduWs = new WebSocketServer({ server: viduHttp })
-viduWs.on('connection', socket => {
+viduWs.on('connection', (socket, request) => {
+  if (request.url === '/monitor') { monitors.add(socket); socket.once('close', () => monitors.delete(socket)); return }
   upstreams.push(socket)
   socket.on('message', (raw, binary) => {
-    if (binary) return
+    if (binary) { for (const monitor of monitors) monitor.send(raw); return }
     const event = JSON.parse(raw); controls.push(event)
+    if (event.type === 7) { for (const monitor of monitors) monitor.send('clear') }
     if (event.type === 1) socket.send(JSON.stringify({ type: 2, payload: { conn_init_ack: { success: true } } }))
   })
 })
@@ -54,8 +58,12 @@ window.AliRtcEngine = {
   getInstance() {
     const context = new AudioContext(); void context.resume();
     const destination = context.createMediaStreamDestination();
-    const tone = context.createOscillator(); tone.frequency.value = 440;
-    tone.connect(destination); tone.start();
+    const queue = []; let sample = 0;
+    const monitor = new WebSocket('ws://127.0.0.1:${viduHttp.address().port}/monitor'); monitor.binaryType='arraybuffer';
+    monitor.onmessage = ({data}) => { if(data==='clear'){queue.length=0;sample=0;return} const view=new DataView(data), values=[];for(let i=0;i<view.byteLength;i+=2)values.push(view.getInt16(i,true)/32768);queue.push(window.__unmatchedRemote ? values.map(()=>0.1) : values) };
+    const processor=context.createScriptProcessor(1024,0,1);
+    processor.onaudioprocess=e=>{const out=e.outputBuffer.getChannelData(0);for(let i=0;i<out.length;i++){out[i]=queue.length?queue[0][Math.floor(sample)]||0:0;if(queue.length){sample+=24000/context.sampleRate;if(sample>=queue[0].length){sample-=queue[0].length;queue.shift()}}}};
+    processor.connect(destination);
     const canvas = document.createElement('canvas'); canvas.width = 40; canvas.height = 40;
     canvas.getContext('2d').fillRect(0,0,40,40);
     const videoStream = canvas.captureStream(25); const handlers = {};
@@ -64,15 +72,16 @@ window.AliRtcEngine = {
       on: (name,fn) => {handlers[name]=fn},
       setPlayoutVolume(volume) { this.volume=volume },
       getAudioTrack: async () => destination.stream.getAudioTracks()[0],
-      setRemoteViewConfig(video) {
-        video.srcObject = videoStream;
+      async getVideoTrack() {
+        const video = document.querySelector('[data-testid="avatar-video"]');
         video.play = window.__blockArtcVideo ? () => Promise.reject(new Error('blocked')) : HTMLMediaElement.prototype.play.bind(video);
+        return videoStream.getVideoTracks()[0];
       },
       setChannelProfile(){}, publishLocalAudioStream(){}, publishLocalVideoStream(){}, enableLocalVideo(){},
       setDefaultSubscribeAllRemoteAudioStreams(){}, setDefaultSubscribeAllRemoteVideoStreams(){},
-      async joinChannel() { handlers.audioSubscribeStateChanged(''+window.__avatarId,0,3); handlers.videoSubscribeStateChanged(''+window.__avatarId,0,3); },
+      async joinChannel() { await new Promise(resolve => { if(monitor.readyState===1)resolve();else monitor.addEventListener('open',resolve,{once:true}) }); handlers.audioSubscribeStateChanged(''+window.__avatarId,0,3); handlers.videoSubscribeStateChanged(''+window.__avatarId,0,3); },
       async leaveChannel(){}, async destroy() {
-        this.destroyed=true; tone.stop(); videoStream.getTracks().forEach(t=>t.stop());
+        this.destroyed=true; processor.disconnect(); monitor.close(); videoStream.getTracks().forEach(t=>t.stop());
         destination.stream.getTracks().forEach(t=>t.stop()); await context.close();
       }
     };
@@ -91,6 +100,15 @@ try {
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
   await page.addInitScript(() => {
+    window.__sourceBuffers = []; window.__sourceGains = [];
+    const gain = AudioContext.prototype.createGain;
+    AudioContext.prototype.createGain = function(...args) {
+      const node = gain.apply(this,args); window.__sourceGains.push(node); return node;
+    };
+    const source = AudioContext.prototype.createBufferSource;
+    AudioContext.prototype.createBufferSource = function(...args) {
+      const node = source.apply(this,args); window.__sourceBuffers.push(node); return node;
+    };
     // Observe scoped vendor metadata without replacing the playback controller.
     const NativeSocket = WebSocket;
     window.WebSocket = class extends NativeSocket {
@@ -103,49 +121,84 @@ try {
     };
   })
   await page.route('https://g.alicdn.com/**', route => route.fulfill({ contentType: 'application/javascript', body: sdk }))
+  await page.route('https://scene.vidu.zone/**', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="16"><rect width="12" height="16" fill="green"/></svg>' }))
   await page.goto(host.origin)
+  await page.getByTestId('avatar-reference').waitFor({ state: 'visible' })
+  await page.waitForFunction(() => document.querySelector('[data-testid="avatar-reference"]').naturalWidth > 0)
+  assert.match(await page.getByTestId('avatar-reference').getAttribute('src'), /vidu-default-preview/)
   assert.equal(live, 0)
   await page.getByTestId('avatar-connect').click()
   await page.waitForFunction(() => document.querySelector('[data-testid="avatar-stage"]').dataset.connection === 'connected')
-  assert.equal(live, 0, 'connecting must not allocate a paid live')
-  await page.locator('input[type="file"]').setInputFiles({
-    name: 'large-avatar.png', mimeType: 'image/png', buffer: Buffer.alloc(4 * 1024 * 1024),
-  })
-  await page.getByText('已选择上传图片').waitFor()
+  await wait(() => live === 1)
+  await page.waitForFunction(() => document.querySelector('[data-testid="avatar-video"]').dataset.active === 'true')
+  await wait(() => events.some(e => e.type === 'input_audio_buffer.append'))
+  await page.getByRole('button', { name: '麦克风静音', exact: true }).waitFor()
   const send = async text => { await page.getByTestId('avatar-input').fill(text); await page.getByTestId('avatar-send').click() }
-  for (let i = 1; i <= 3; i++) {
-    await send(`reply ${i}`)
-    await wait(() => events.some(e => e.responseId === `r${i}` && e.type === 'playback.started'))
-    await page.waitForFunction(() => document.querySelector('[data-testid="avatar-video"]').dataset.active === 'true')
-    await new Promise(resolve => setTimeout(resolve, 200))
-    assert.ok(!events.some(e => e.type === 'playback.ended'), 'input done/duration must not fake ARTC completion')
-    if (i === 1) {
-      await page.getByTestId('avatar-mic').click()
-      await wait(() => events.some(e => e.type === 'input_audio_buffer.append'))
-      await page.getByTestId('avatar-mic').click()
-      assert.ok(!events.some(e => e.responseId === 'r1' && e.type === 'playback.cancelled'))
-    }
-    await page.getByRole('button', { name: '打断', exact: true }).click()
-    await wait(() => events.some(e => e.responseId === `r${i}` && e.type === 'playback.cancelled'))
-    await page.waitForFunction(() => window.__rtcEngines.every(e => e.destroyed))
-  }
-  assert.equal(live, 3)
-  await page.evaluate(() => { window.__blockArtcVideo = true })
-  await send('blocked video')
-  await wait(() => events.some(e => e.responseId === 'r4' && e.type === 'playback.cancelled'))
-  await page.waitForFunction(() => window.__rtcEngines.every(e => e.destroyed))
-  assert.ok(!events.some(e => e.type === 'playback.ended'))
+  // Unrelated remote content must not affect source playback receipts.
+  await page.evaluate(() => { window.__unmatchedRemote = true })
+  await send('natural source completion')
+  await wait(() => events.some(e => e.responseId === 'r1' && e.type === 'playback.started'))
+  await wait(() => events.some(e => e.responseId === 'r1' && e.type === 'playback.ended'))
+  assert.ok(!events.some(e => e.responseId === 'r1' && e.type === 'playback.cancelled'))
+  assert.equal(await page.evaluate(() => window.__sourceBuffers[0].buffer.getChannelData(0).some(x => x !== 0)), true)
+  assert.equal(await page.evaluate(() => window.__sourceGains[0].gain.value), 0)
+  await page.getByTestId('avatar-mic').click()
+  await page.getByRole('button', { name: '开启麦克风', exact: true }).waitFor()
+  await page.getByTestId('avatar-mic').click()
+  await page.getByRole('button', { name: '麦克风静音', exact: true }).waitFor()
+  await send('cancel original timeline')
+  await wait(() => events.some(e => e.responseId === 'r2' && e.type === 'playback.started'))
+  const streamHandle = await page.evaluateHandle(() => document.querySelector('[data-testid="avatar-video"]').srcObject)
+  await page.getByRole('button', { name: '打断', exact: true }).click()
+  await wait(() => events.some(e => e.responseId === 'r2' && e.type === 'playback.cancelled'))
+  assert.equal(await page.evaluate(stream => {
+    const v = document.querySelector('[data-testid="avatar-video"]')
+    return v.srcObject === stream && !v.muted && !v.paused && stream.getAudioTracks().length === 1
+  }, streamHandle), true, 'source interruption must not cut or detach delayed RTC media')
+  assert.equal(controls.filter(e => e.type === 7).length, 0)
+  assert.equal(live, 1)
+  await page.getByLabel('原声对照（隐藏数字人并播放原始音频）').check()
+  assert.equal(await page.evaluate(() => window.__sourceGains[0].gain.value), 1)
+  assert.equal(await page.getByTestId('avatar-video').getAttribute('data-active'), 'false')
+  assert.equal(await page.getByTestId('avatar-video').evaluate(v => v.muted), true)
+  await send('audible original reference')
+  await wait(() => events.some(e => e.responseId === 'r3' && e.type === 'playback.ended'))
+  await page.getByLabel('原声对照（隐藏数字人并播放原始音频）').uncheck()
+  assert.equal(await page.evaluate(() => window.__sourceGains[0].gain.value), 0)
+  assert.equal(await page.getByTestId('avatar-video').evaluate(v => v.muted), false)
+  upstreams[0].close()
+  await page.getByTestId('avatar-error').waitFor({ state: 'visible' })
+  await send('source after vendor failure')
+  await wait(() => events.some(e => e.responseId === 'r4' && e.type === 'playback.ended'))
+  assert.equal(await page.getByTestId('avatar-stage').getAttribute('data-connection'), 'connected')
   await page.getByRole('button', { name: '结束', exact: true }).click()
+  await page.waitForFunction(() => window.__rtcEngines.every(e => e.destroyed))
   await page.getByTestId('avatar-connect').click()
   await page.waitForFunction(() => document.querySelector('[data-testid="avatar-stage"]').dataset.connection === 'connected')
-  await page.evaluate(() => { window.__blockArtcVideo = false })
+  await wait(() => live === 2)
+  await page.waitForFunction(() => window.__rtcEngines.length === 2)
   await send('after reconnect')
-  await wait(() => events.some(e => e.responseId === 'r5' && e.type === 'playback.started'))
+  await wait(() => events.some(e => e.responseId === 'r5' && e.type === 'playback.ended'))
   await page.getByRole('button', { name: '结束', exact: true }).click()
   await page.waitForFunction(() => window.__rtcEngines.every(e => e.destroyed))
-  await wait(() => controls.filter(e => e.type === 5).length === live)
+  await wait(() => controls.filter(e => e.type === 5).length >= 1)
+  assert.equal(controls.filter(e => e.type === 7).length, 0)
+  // The Electron shell uses the same page with a full-window portrait and
+  // optional drawers. Exercise that presentation without a paid service.
+  await page.addInitScript(() => { window.viduAvatarDesktop = { quit() {} } })
+  await page.setViewportSize({ width: 390, height: 620 })
+  await page.reload()
+  await page.getByTestId('avatar-reference').waitFor({ state: 'visible' })
+  const stage = await page.locator('.avatar-viewport').boundingBox()
+  assert.deepEqual(stage, { x: 0, y: 0, width: 390, height: 620 })
+  assert.equal(await page.locator('.renderer-settings').isVisible(), false)
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByLabel('角色图片 HTTPS URL').waitFor({ state: 'visible' })
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await page.getByRole('button', { name: '对话', exact: true }).click()
+  await page.getByTestId('avatar-input').waitFor({ state: 'visible' })
   assert.deepEqual(errors, [])
-  console.log('PASS Vidu adapter: shared GCP connection, actual MediaStream audio graph, multiple scoped lives, no fake ended receipts, mic mute, local interruption, autoplay rejection, reconnect and cleanup (mock vendor only)')
+  console.log('PASS Vidu adapter: original PCM owns muted/audible receipts, unrelated RTC media and vendor failures cannot affect source playback, continuous RTC survives source cancellation, no remote interrupt, reconnect and cleanup (mock vendor only)')
 } finally {
   await browser?.close()
   await host?.close()

@@ -22,7 +22,7 @@ https://github.com/user-attachments/assets/5301ef5e-b674-4561-93bb-e0c7544cf696
 The example-local Node host proxies GCP unchanged and protects renderer credentials. It is not a custom Gateway.
 
 - Implemented: DHAV adapter, GPU-free synthetic Mock renderer, remote DHAV configuration.
-- Vidu preview: an opt-in native ARTC adapter uses the same connection and playback controller. It is disabled by default and **never emits `playback.ended`** because a reliable per-reply media-end marker is unavailable. Paid-service validation remains pending; this is not a completed commercial integration. See [Vidu setup and limits](docs/vidu.md).
+- Vidu preview: an opt-in delayed presentation mirror. Original PCM is scheduled through zero gain and owns Gateway receipts; native RTC media does not affect Agent scheduling. An original-audio comparison mode shares the same source player. Disabled by default; see [scope, setup and limits](docs/vidu.md).
 - Supported reply format: PCM16 little-endian, 24 kHz, mono. Other sample rates are rejected rather than misplayed.
 
 ## Run
@@ -74,13 +74,13 @@ Adapters live entirely in this example:
 - `client/renderers/`: vendor media transport/player and actual playback lifecycle.
 - Register the same adapter ID on both sides; select it with `DH_RENDERER_ADAPTER`.
 
-DHAV uses WebAudio + canvas. Vidu is registered in the same server/browser adapter locations and retains native ARTC media, using `useDualConnection` and `AvatarPlaybackController`. No DHAV conversion or Gateway change is required. See the [adapter contract](docs/provider-contract.zh.md) and [remaining Vidu blockers](docs/integration-architecture.zh.md).
+Vidu reuses `useDualConnection` with an independent source PCM timeline and native RTC presentation. See the [Vidu guide](docs/vidu.md).
 
 ## Vidu preview and optional overlay
 
-Set `DH_RENDERER_ADAPTER=vidu` and the server credentials in the same `.env.local`; see [Vidu setup](docs/vidu.md). The preview is disabled unless `VIDU_EXPERIMENTAL=1`. It creates a separate live/RTC channel per response on first audio, not on page connection. Calls can incur Vidu/ARTC charges.
+Set `DH_RENDERER_ADAPTER=vidu` and the server credentials in the same `.env.local`; see [Vidu setup](docs/vidu.md). The preview is disabled unless `VIDU_EXPERIMENTAL=1`. Connect creates one session-scoped live/RTC channel, reused across replies and idle video. Idle time can incur Vidu/ARTC charges; End hangs up. Original PCM owns Gateway receipts independently; uploaded RTC media continues across source interruptions.
 
-The public component protocol has no verified per-response final-media marker. This adapter never emits `playback.ended`, including on silence, `audio.done`, elapsed duration, disconnect or expiry. Actual start is observed on the audible remote-track WebAudio graph. Cancellation gates that graph synchronously before remote cancellation. Retired sessions/callbacks are isolated; no original-PCM fallback is enabled. Explicit interruption or new input retires preview responses. This is unsuitable for tasks requiring accurate completion receipts and remains a merge blocker.
+Vidu does not expose a per-response playback boundary to the Agent. Original PCM is scheduled through zero gain and owns all playback receipts; RTC media is presentation only. No content matching, completion timer or per-turn remote interrupt remains. See the [scope and tradeoffs](docs/vidu.md).
 
 The optional Electron shell opens the same running example page. In another terminal here:
 
@@ -89,17 +89,27 @@ npm install --no-save --package-lock=false electron@43.7.9
 npm run desktop
 ```
 
-Drag the top bar. Closing the window stops neither the example server nor the Gateway. Shell variable `DH_DESKTOP_URL` selects another loopback HTTP origin. The stock orb remains an independent UI option; use one microphone UI at a time. A switch button is enabled only by a trusted operator's `DH_ORB_LAUNCH` JSON argv array in the shell, e.g. `["npm","run","desktop","--prefix","/path/to/source-checkout"]`; it runs without a shell after local playback stops. The page cannot supply a command.
+Drag the top bar. The window is not always on top by default; the top-bar button toggles it. Closing the window stops neither the example server nor the Gateway. Shell variable `DH_DESKTOP_URL` selects another loopback HTTP origin. The stock orb remains an independent UI option; use one microphone UI at a time. A switch button is enabled only by a trusted operator's `DH_ORB_LAUNCH` JSON argv array in the shell, e.g. `["npm","run","desktop","--prefix","/path/to/source-checkout"]`; it runs without a shell after local playback stops. The page cannot supply a command.
 
 The [Vidu prototype video](assets/digital_human_demo_vidu.mp4) and [original digital-human footage](assets/digital-human-demo.mp4) remain available. They do not prove acceptance of the migrated integration.
 
 ## Delivery semantics
 
-The client uses existing Gateway `audio.delta`, `audio.done` and global `playback.clear` events. Only real assistant audio starts a render turn. `audio.done` ends renderer input, **not** browser playback. Actual audible start, drain and cancellation drive playback receipts; interruptions fence late output by response and generation.
+DHAV uses actual paired-media playback for start/drain/cancel receipts and may fall back to original
+PCM before its first playback. Its media lifecycle remains separate from source `audio.done`.
 
-Ordinary Gateway WebSocket output does not expose a precise model termination status. `audio.done` does not prove model success; generic `error` messages are displayed without guessing response failure or cancellation from their text. The example requires no response-status or targeted-clear extension.
+Vidu is a delayed presentation side branch. Original model PCM is scheduled through zero gain,
+and its own timeline produces Gateway playback receipts. Vidu initialization, returned content,
+playback end or failure does not control Agent scheduling. Native RTC audio/video continues
+across source completion and interruption; already uploaded content may still play. No per-turn
+Vidu interrupt, content matching, completion estimate, extra playback buffer or frame cache remains.
+The original-audio comparison checkbox unmutes the same source player and mutes/hides the avatar;
+it changes no source schedule or receipt logic. Input-only microphone mute preserves output.
 
-Before playback begins, renderer failure may fall back to original PCM once. After playback starts, failure cancels rather than replaying the reply. Input-only microphone mute preserves output. Both input and output queues are bounded.
+This explicitly differs from the previous review requirement for actual ARTC playback receipts and
+immediate stale-media cancellation. Maintainer agreement is required; Vidu stays experimental and
+disabled by default. The design does not solve listener/model context mismatch or heard-position
+truncation. See the [Vidu guide](docs/vidu.md) and [flow diagrams](docs/audio-processing-flow.zh.md).
 
 ## Security and scope
 

@@ -67,17 +67,19 @@ test('Vidu experimental gate and public metadata never create a paid session or 
   assert.equal(viduAvailability({ ...f.options, experimental: true, host: 'other' }).enabled, false)
 })
 
-test('Vidu retries init, forwards long PCM, seals input without fabricating drain, and isolates multiple live sessions', async t => {
+test('Vidu retries init, forwards long PCM, seals input without fabricating drain, and reuses one live without per-turn waits or remote interruption', async t => {
   const f = await fixture(t)
   const c = await f.connect()
   await wait(() => c.messages.some(m => m.type === 'session.ready'))
+  c.send({ type: 'session.open' })
+  await wait(() => c.messages.some(m => m.type === 'vidu.session'))
   for (let generation = 1; generation <= 2; generation++) {
     const turn = { responseId: `reply-${generation}`, generation }
     c.send({ type: 'turn.start', ...turn })
     for (let i = 0; i < 400; i++) c.send({ type: 'audio.append', ...turn, sampleRate: 24000, audio: Buffer.alloc(4800, 1).toString('base64') })
     c.send({ type: 'audio.end', ...turn })
     await wait(() => c.messages.some(m => m.type === 'vidu.input_ended' && m.responseId === turn.responseId))
-    const session = c.messages.find(m => m.type === 'vidu.session' && m.responseId === turn.responseId)
+    const session = c.messages.find(m => m.type === 'vidu.session')
     assert.ok(session.rtc.token)
     const token = JSON.parse(Buffer.from(session.rtc.token, 'base64'))
     assert.equal(token.appid, 'test-app')
@@ -86,11 +88,14 @@ test('Vidu retries init, forwards long PCM, seals input without fabricating drai
     c.send({ type: 'turn.cancel', ...turn, reason: 'user_interruption' })
     c.send({ type: 'audio.append', ...turn, sampleRate: 24000, audio: 'AAAA' }) // quarantined
   }
-  await wait(() => f.signals.filter(m => m.type === 5).length === 2)
+  assert.equal(f.signals.filter(m => m.type === 7).length, 0)
+  assert.equal(f.signals.filter(m => m.type === 5).length, 0)
+  c.send({ type: 'session.close' })
+  await wait(() => f.signals.some(m => m.type === 5))
   assert.equal(f.pcm.length, 800)
   assert.ok(f.posts.every(p => p.authorization === 'Token vda_private'))
-  assert.notEqual(f.posts[0].body.rtc_info.channel_id, f.posts[1].body.rtc_info.channel_id)
-  assert.equal(f.signals.filter(m => m.type === 1).length, 4)
+  assert.equal(f.posts.length, 1)
+  assert.equal(f.signals.filter(m => m.type === 1).length, 2)
 })
 
 test('cancel during session creation hangs up a late live without sending credentials or audio to the old response', async t => {
@@ -100,9 +105,9 @@ test('cancel during session creation hangs up a late live without sending creden
   const f = await fixture(t, { request: () => { postStarted = true; return late } })
   const c = await f.connect()
   await wait(() => c.messages.some(m => m.type === 'session.ready'))
-  c.send({ type: 'turn.start', responseId: 'old', generation: 1 })
+  c.send({ type: 'session.open' })
   await wait(() => postStarted)
-  c.send({ type: 'turn.cancel', responseId: 'old', generation: 1 })
+  c.send({ type: 'session.close' })
   await new Promise(resolve => setTimeout(resolve, 10))
   resolvePost({ ok: true, json: async () => ({ live: { id: 'late-live' }, client_secret: 'private-control-secret' }) })
   await wait(() => f.signals.some(m => m.type === 5))
@@ -114,13 +119,13 @@ test('Vidu expiry and reconnect produce fresh credentials; disconnect releases t
   const f = await fixture(t, { liveTimeoutMs: 300 })
   const c = await f.connect()
   await wait(() => c.messages.some(m => m.type === 'session.ready'))
-  c.send({ type: 'turn.start', responseId: 'r1', generation: 1 })
+  c.send({ type: 'session.open' })
   await wait(() => c.messages.some(m => m.type === 'renderer.error' && m.code === 'session_expired'))
   c.socket.close()
   await wait(() => c.socket.readyState === WebSocket.CLOSED)
   const second = await f.connect()
   await wait(() => second.messages.some(m => m.type === 'session.ready'))
-  second.send({ type: 'turn.start', responseId: 'r2', generation: 1 })
+  second.send({ type: 'session.open' })
   await wait(() => second.messages.some(m => m.type === 'vidu.session'))
   second.socket.close()
   await wait(() => f.signals.filter(m => m.type === 5).length === 2)
@@ -131,6 +136,7 @@ test('invalid PCM closes the turn with a redacted error, and image inputs are co
   const f = await fixture(t)
   const c = await f.connect()
   await wait(() => c.messages.length)
+  c.send({ type: 'session.open' })
   c.send({ type: 'turn.start', responseId: 'r', generation: 1 })
   c.send({ type: 'audio.append', responseId: 'r', generation: 1, sampleRate: 16000, audio: 'AAAA' })
   await wait(() => c.messages.some(m => m.type === 'renderer.error'))
@@ -140,4 +146,43 @@ test('invalid PCM closes the turn with a redacted error, and image inputs are co
   assert.ok(validateViduImage('data:image/png;base64,AAAA'))
   const token = createArtcToken({ appId: 'id', appKey: 'secret', channelId: 'channel', userId: 'viewer', expiresAt: Math.floor(Date.now() / 1000) + 60 })
   assert.ok(!Buffer.from(token, 'base64').toString().includes('secret'))
+})
+
+
+test('source cancellation fences later uploads without hard-cutting media already sent to Vidu', async t => {
+  const f = await fixture(t), c = await f.connect()
+  await wait(() => c.messages.length)
+  c.send({ type: 'session.open' })
+  const old = { responseId: 'old', generation: 1 }, next = { responseId: 'next', generation: 2 }
+  c.send({ type: 'turn.start', ...old })
+  c.send({ type: 'audio.append', ...old, sampleRate: 24000, audio: 'AQABAA==' })
+  await wait(() => f.pcm.length === 1)
+  c.send({ type: 'turn.cancel', ...old })
+  c.send({ type: 'audio.append', ...old, sampleRate: 24000, audio: 'AwADAA==' })
+  c.send({ type: 'turn.start', ...next })
+  c.send({ type: 'audio.append', ...next, sampleRate: 24000, audio: 'AgACAA==' })
+  c.send({ type: 'audio.end', ...next })
+  await wait(() => c.messages.some(m => m.type === 'vidu.input_ended' && m.responseId === 'next'))
+  await wait(() => f.pcm.length === 2)
+  c.send({ type: 'turn.finish', ...next })
+  assert.deepEqual(f.pcm, [Buffer.from('AQABAA==', 'base64'), Buffer.from('AgACAA==', 'base64')])
+  assert.equal(f.signals.filter(m => m.type === 7).length, 0)
+  assert.equal(f.posts.length, 1)
+  assert.equal(f.signals.filter(m => m.type === 5).length, 0)
+})
+
+test('PCM packets remain ordered across rapid normal response boundaries, with no padding or interrupt', async t => {
+  const f = await fixture(t), c = await f.connect()
+  await wait(() => c.messages.length)
+  c.send({ type: 'session.open' })
+  const packets = [Buffer.from([0, 0, 1, 128, 255, 127, 4, 0]), Buffer.alloc(960, 37), Buffer.from([0, 0, 5, 0])]
+  for (let i = 0; i < packets.length; i++) {
+    const turn = { responseId: `bytes-${i}`, generation: i + 1 }
+    c.send({ type: 'turn.start', ...turn })
+    c.send({ type: 'audio.append', ...turn, sampleRate: 24000, audio: packets[i].toString('base64') })
+    c.send({ type: 'audio.end', ...turn })
+  }
+  await wait(() => f.pcm.length === 3)
+  assert.deepEqual(f.pcm, packets)
+  assert.deepEqual(f.signals.map(m => m.type), [1, 1])
 })

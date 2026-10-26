@@ -28,9 +28,9 @@ app.whenReady().then(async () => {
   const area = screen.getPrimaryDisplay().workArea
   const width = Math.min(390, area.width), height = Math.min(620, area.height)
   window = new BrowserWindow({ width, height, x: area.x + area.width - width, y: area.y + area.height - height,
-    frame: false, resizable: false, alwaysOnTop: true, backgroundColor: '#0c0d14',
+    frame: false, resizable: false, alwaysOnTop: false, backgroundColor: '#0c0d14',
     webPreferences: { preload: fileURLToPath(new URL('./preload.cjs', import.meta.url)),
-      contextIsolation: true, sandbox: true, nodeIntegration: false,
+      contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false,
       additionalArguments: orbCommand ? ['--digital-human-orb-switch'] : [] },
   })
   const drag = bindWindowDrag({ ipc: ipcMain, getWindow: () => window })
@@ -38,6 +38,11 @@ app.whenReady().then(async () => {
   window.on('closed', () => { drag.dispose(); window = null; app.quit() })
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', (event, url) => { if (new URL(url).origin !== page.origin) event.preventDefault() })
+  ipcMain.handle('vidu-avatar:set-always-on-top', (event, value) => {
+    if (!owned(event) || typeof value !== 'boolean') return false
+    window.setAlwaysOnTop(value)
+    return window.isAlwaysOnTop()
+  })
   ipcMain.on('vidu-avatar:quit', event => { if (owned(event)) app.quit() })
   ipcMain.on('vidu-avatar:switch-to-orb', event => {
     if (!owned(event) || !orbCommand) return

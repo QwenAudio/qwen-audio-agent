@@ -26,7 +26,7 @@ function stopCapture(runtime) {
   runtime.capture = null
 }
 
-export function useDualConnection({ sessionId, config, image }) {
+export function useDualConnection({ sessionId, config, image, autoMic = false }) {
   const runtimeRef = useRef(null)
   const imageRef = useRef(image)
   imageRef.current = image
@@ -41,6 +41,7 @@ export function useDualConnection({ sessionId, config, image }) {
   const [micEnabled, setMicEnabled] = useState(false)
   const [rendererAvailable, setRendererAvailable] = useState(false)
   const [error, setError] = useState(null)
+  const [sourceAudible, setSourceAudible] = useState(false)
 
   const commitMessages = useCallback(() => {
     messagesRef.current = messagesRef.current.slice(-200)
@@ -100,6 +101,7 @@ export function useDualConnection({ sessionId, config, image }) {
     setRendererAvailable(false)
     setAvatarState(null)
     setFrameCount(0)
+    setSourceAudible(false)
   }, [])
 
   useEffect(() => {
@@ -114,140 +116,6 @@ export function useDualConnection({ sessionId, config, image }) {
     setError(null)
     return () => disconnect('session_changed')
   }, [sessionId, disconnect])
-
-  const start = useCallback(async () => {
-    if (!config || config.renderer?.enabled === false || runtimeRef.current?.connecting
-      || (runtimeRef.current?.gateway?.ready && !runtimeRef.current?.rendererLost)) return
-    disconnect('reconnect')
-    setError(null)
-    setState('connecting')
-    setAvatarState(null)
-    setPlayback('idle')
-    setFrameCount(0)
-    setMicEnabled(false)
-    setRendererAvailable(false)
-    // Both construction and resume happen directly inside the click gesture.
-    // No autoplay override, silent oscillator or pretend playback receipt.
-    let context, resume
-    try {
-      context = new AudioContext()
-      resume = context.resume()
-    } catch (cause) {
-      setState('error')
-      setError(cause?.message || '当前浏览器不支持音频播放。')
-      return
-    }
-    const runtime = { context, closed: false, connecting: true, micEpoch: 0 }
-    runtimeRef.current = runtime
-    const current = () => runtimeRef.current === runtime && !runtime.closed
-    const fail = message => {
-      if (!current()) return
-      disconnect('connection_lost')
-      setMicEnabled(false)
-      setRendererAvailable(false)
-      setPlayback('idle')
-      setAvatarState(null)
-      setState('error')
-      setError(message)
-    }
-    try {
-      await resume
-      if (!current()) return
-      if (context.state !== 'running') throw new Error('请点击连接以启用浏览器音频。')
-      const adapter = getRendererAdapter(config.renderer?.id || 'dhav')
-      const player = await adapter.createPlayer({
-        audioContext: context,
-        canvas: canvasRef.current,
-        video: videoRef.current,
-        onFrame: () => { if (current()) setFrameCount(value => value + 1) },
-      })
-      if (!current()) { player.close?.(); return }
-      const renderer = new WebSocket(socketUrl(config.rendererPath))
-      renderer.binaryType = 'arraybuffer'
-      runtime.renderer = renderer
-      const controller = adapter.createController({
-        player,
-        image: () => imageRef.current,
-        sendRenderer: event => {
-          if (renderer.readyState !== WebSocket.OPEN || renderer.bufferedAmount > (adapter.maxBufferedBytes || 4 * 1024 * 1024)) return false
-          renderer.send(JSON.stringify(event))
-          return true
-        },
-        sendGateway: event => runtime.gateway?.send(event) || false,
-        onStatus: status => {
-          if (!current()) return
-          setAvatarState(status.state === 'idle' ? null : status)
-          setPlayback(status.state === 'speaking' ? 'speaking' : 'idle')
-          if (status.state === 'error') setError(status.reason || '数字人播放失败，请重试。')
-        },
-      })
-      runtime.controller = controller
-      runtime.connectTimeout = setTimeout(() => fail('数字人服务连接超时，请重试。'), 12_000)
-      renderer.onmessage = event => {
-        if (!current()) return
-        try {
-          controller.handleRenderer(event.data)
-          // All adapters expose a bridge-ready notification; renderer-specific
-          // session IDs/credentials and DHAV records stay inside the adapter.
-          const message = typeof event.data === 'string' ? JSON.parse(event.data) : null
-          if (message?.type !== 'session.ready' || runtime.gateway) return
-          setRendererAvailable(true)
-          clearTimeout(runtime.connectTimeout)
-          const gateway = new GatewayClient({
-            url: socketUrl(config.gatewayPath, sessionId),
-            createSocket: url => new WebSocket(url),
-            clientType: 'web',
-            clientLabel: 'Digital human example',
-            capabilities: ['input.audio', 'input.text', 'playback.receipts'],
-            configure: { voiceEnabled: true, inputEnabled: false, outputEnabled: true },
-            reconnect: false,
-            onEvent: event => {
-              if (!current()) return
-              if (event.type === 'turn.started') runtime.currentTurnId = event.turnId || ''
-              controller.handleGateway(event)
-              transcript(event)
-              if (event.type === 'playback.clear'
-                || (event.type === 'voice.state' && event.state === 'listening'
-                  && acceptsGatewayVoiceState(event, runtime.currentTurnId))) interruptMessages()
-              if (event.type === 'response.interrupted') interruptMessages(event.responseId)
-              if (event.type === 'error') setError(event.message || event.error?.message)
-              if (event.type === 'input.suspend') {
-                stopCapture(runtime)
-                setMicEnabled(false)
-                gateway.send({ type: 'input.suspend.ack', owner: event.owner })
-              }
-              if (event.type === 'voice.deactivated') fail('当前会话的语音控制权已转移，请重新连接。')
-            },
-            onStatus: status => {
-              if (!current()) return
-              if (status.state === 'ready') {
-                runtime.connecting = false
-                setState('connected')
-              } else if (['disconnected', 'unavailable', 'occupied', 'replaced', 'revoked'].includes(status.state)) {
-                fail(status.state === 'occupied' ? '会话已被其他客户端使用，请选择新会话。' : 'Gateway 连接已断开，请重新连接。')
-              }
-            },
-          })
-          runtime.gateway = gateway
-          gateway.start()
-        } catch (cause) {
-          fail(cause?.message || String(cause))
-        }
-      }
-      const rendererLost = () => {
-        if (!current() || runtime.rendererLost) return
-        runtime.rendererLost = true
-        controller.rendererDisconnected('renderer_disconnected')
-        setRendererAvailable(false)
-        if (!runtime.gateway?.ready) fail('数字人服务连接失败，请重试。')
-        else setError('数字人服务已断开，请点击重新连接。')
-      }
-      renderer.onclose = rendererLost
-      renderer.onerror = rendererLost
-    } catch (cause) {
-      fail(cause?.message || String(cause))
-    }
-  }, [config, sessionId, disconnect, transcript, interruptMessages])
 
   const toggleMic = useCallback(async () => {
     const runtime = runtimeRef.current
@@ -308,6 +176,164 @@ export function useDualConnection({ sessionId, config, image }) {
     }
   }, [])
 
+  const start = useCallback(async () => {
+    if (!config || config.renderer?.enabled === false || runtimeRef.current?.connecting
+      || (runtimeRef.current?.gateway?.ready && !runtimeRef.current?.rendererLost)) return
+    disconnect('reconnect')
+    setError(null)
+    setState('connecting')
+    setAvatarState(null)
+    setPlayback('idle')
+    setFrameCount(0)
+    setMicEnabled(false)
+    setRendererAvailable(false)
+    // Both construction and resume happen directly inside the click gesture.
+    // No autoplay override, silent oscillator or pretend playback receipt.
+    let context, resume
+    try {
+      context = new AudioContext()
+      resume = context.resume()
+    } catch (cause) {
+      setState('error')
+      setError(cause?.message || '当前浏览器不支持音频播放。')
+      return
+    }
+    const runtime = { context, closed: false, connecting: true, micEpoch: 0 }
+    runtimeRef.current = runtime
+    const current = () => runtimeRef.current === runtime && !runtime.closed
+    const fail = message => {
+      if (!current()) return
+      disconnect('connection_lost')
+      setMicEnabled(false)
+      setRendererAvailable(false)
+      setPlayback('idle')
+      setAvatarState(null)
+      setState('error')
+      setError(message)
+    }
+    try {
+      await resume
+      if (!current()) return
+      if (context.state !== 'running') throw new Error('请点击连接以启用浏览器音频。')
+      const adapter = getRendererAdapter(config.renderer?.id || 'dhav')
+      const player = await adapter.createPlayer({
+        audioContext: context,
+        canvas: canvasRef.current,
+        video: videoRef.current,
+        onFrame: () => { if (current()) setFrameCount(value => value + 1) },
+      })
+      if (!current()) { player.close?.(); return }
+      const renderer = new WebSocket(socketUrl(config.rendererPath))
+      renderer.binaryType = 'arraybuffer'
+      runtime.renderer = renderer
+      const controller = adapter.createController({
+        player,
+        audioContext: context,
+        image: () => imageRef.current,
+        sendRenderer: event => {
+          if (renderer.readyState !== WebSocket.OPEN || renderer.bufferedAmount > (adapter.maxBufferedBytes || 4 * 1024 * 1024)) return false
+          renderer.send(JSON.stringify(event))
+          return true
+        },
+        sendGateway: event => runtime.gateway?.send(event) || false,
+        onError: error => {
+          if (!current()) return
+          setError(error?.message || '数字人本轮播放失败，请重试。')
+          if (adapter.presentationOnly) {
+            setRendererAvailable(false)
+            runtime.renderer?.close()
+          }
+        },
+        onStatus: status => {
+          if (!current()) return
+          if (status.state === 'rendering') setError(null)
+          setAvatarState(status.state === 'idle' ? null : status)
+          setPlayback(status.state === 'speaking' ? 'speaking' : 'idle')
+          if (status.state === 'error') setError(status.reason || '数字人播放失败，请重试。')
+        },
+      })
+      runtime.controller = controller
+      runtime.connectTimeout = setTimeout(() => {
+        if (adapter.presentationOnly) {
+          controller.rendererDisconnected('数字人服务连接超时；原始对话继续。')
+          setRendererAvailable(false)
+        } else fail('数字人服务连接超时，请重试。')
+      }, adapter.connectTimeoutMs || 12_000)
+      const connectGateway = () => {
+        if (!current() || runtime.gateway) return
+          const gateway = new GatewayClient({
+            url: socketUrl(config.gatewayPath, sessionId),
+            createSocket: url => new WebSocket(url),
+            clientType: 'web',
+            clientLabel: 'Digital human example',
+            capabilities: ['input.audio', 'input.text', 'playback.receipts'],
+            configure: { voiceEnabled: true, inputEnabled: false, outputEnabled: true },
+            reconnect: false,
+            onEvent: event => {
+              if (!current()) return
+              if (event.type === 'turn.started') runtime.currentTurnId = event.turnId || ''
+              controller.handleGateway(event)
+              transcript(event)
+              if (event.type === 'playback.clear'
+                || (event.type === 'voice.state' && event.state === 'listening'
+                  && acceptsGatewayVoiceState(event, runtime.currentTurnId))) interruptMessages()
+              if (event.type === 'response.interrupted') interruptMessages(event.responseId)
+              if (event.type === 'error') setError(event.message || event.error?.message)
+              if (event.type === 'input.suspend') {
+                stopCapture(runtime)
+                setMicEnabled(false)
+                gateway.send({ type: 'input.suspend.ack', owner: event.owner })
+              }
+              if (event.type === 'voice.deactivated') fail('当前会话的语音控制权已转移，请重新连接。')
+            },
+            onStatus: status => {
+              if (!current()) return
+              if (status.state === 'ready') {
+                runtime.connecting = false
+                setState('connected')
+                if (autoMic && !runtime.autoMicStarted) {
+                  runtime.autoMicStarted = true
+                  void toggleMic()
+                }
+              } else if (['disconnected', 'unavailable', 'occupied', 'replaced', 'revoked'].includes(status.state)) {
+                fail(status.state === 'occupied' ? '会话已被其他客户端使用，请选择新会话。' : 'Gateway 连接已断开，请重新连接。')
+              }
+            },
+          })
+          runtime.gateway = gateway
+          gateway.start()
+      }
+      renderer.onmessage = event => {
+        if (!current()) return
+        try {
+          controller.handleRenderer(event.data)
+          const message = typeof event.data === 'string' ? JSON.parse(event.data) : null
+          if (message?.type === 'session.ready') {
+            setRendererAvailable(true)
+            clearTimeout(runtime.connectTimeout)
+            if (!adapter.presentationOnly) connectGateway()
+          }
+        } catch (cause) {
+          if (adapter.presentationOnly) controller.rendererDisconnected(cause?.message || String(cause))
+          else fail(cause?.message || String(cause))
+        }
+      }
+      const rendererLost = () => {
+        if (!current() || runtime.rendererLost) return
+        runtime.rendererLost = true
+        controller.rendererDisconnected('renderer_disconnected')
+        setRendererAvailable(false)
+        if (!runtime.gateway?.ready && !adapter.presentationOnly) fail('数字人服务连接失败，请重试。')
+        else setError('数字人服务已断开，请点击重新连接。')
+      }
+      renderer.onclose = rendererLost
+      renderer.onerror = rendererLost
+      if (adapter.presentationOnly) connectGateway()
+    } catch (cause) {
+      fail(cause?.message || String(cause))
+    }
+  }, [config, sessionId, disconnect, transcript, interruptMessages, autoMic, toggleMic])
+
   const send = useCallback(text => {
     const value = String(text || '').trim()
     const runtime = runtimeRef.current
@@ -325,7 +351,12 @@ export function useDualConnection({ sessionId, config, image }) {
 
   return {
     state, playback, avatarState, frameCount, messages, micEnabled, rendererAvailable, error,
-    canvasRef, videoRef, start, toggleMic, send, disconnect,
+    canvasRef, videoRef, start, toggleMic, send, disconnect, sourceAudible,
+    toggleSourceAudio: () => {
+      const next = !sourceAudible
+      runtimeRef.current?.controller?.setSourceAudible?.(next)
+      setSourceAudible(next)
+    },
     interrupt: () => {
       const runtime = runtimeRef.current
       runtime?.controller?.handleGateway({ type: 'playback.clear', reason: 'user_interruption' })

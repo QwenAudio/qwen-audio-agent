@@ -31,7 +31,13 @@ const renderer = {
 - 适配器的同步异常、返回 false、Promise 拒绝或 `onError` 表示渲染 / 播放失败，不代表模型执行终态；队列必须有界。
 - 异步服务初始化由适配器完成后，桥接发送通用的 `session.ready`。厂商 session 字段不进入公共控制器。
 
-浏览器播放器可以是 WebAudio + canvas，也可以是厂商 RTC `<video>`。商业适配器不能用另一条静音 PCM 轨的播放时钟代替真正的 RTC 播放。
+上述 renderer 契约描述实际媒体交付路径，DHAV 继续遵守。Vidu 则明确作为展示旁路：
+`createController` 接收 `audioContext`，创建独立的源 PCM 播放器，默认 gain=0，其回执只代表源时间线；
+RTC 生命周期不接入这些回调。它不声称以静音源时间线证明 RTC 实际播放。
+
+注册项 `presentationOnly: true` 表示 Gateway 无须等待展示 `session.ready` 或 RTC 入会，展示断线不关闭 Gateway。
+Vidu 的 `handleGateway` 先交给源播放器，再尽力转交展示；`rendererDisconnected` 只关闭展示并提示。
+`setSourceAudible` 仅用于原声对照，交换音量和画面，不重建音频源。
 
 注册项可选 `maxBufferedBytes`，供公共发送器限制待发字节；例如图片的 Base64 编码可能
 大于 PCM 的默认限额。该值来自可信适配器代码，浏览器请求不能任意修改。
@@ -72,19 +78,13 @@ const adapter = {
 
 浏览器接收原 DHAV 二进制帧。provider 的 avatarSessionId 只存在于 DHAV 适配器内部；公共控制器不要求此字段。原 DHAV v1 编解码、Mock 和服务端协议保持可复用。
 
-## #570 商业实现如何迁入
+## Vidu 延迟展示的明确例外
 
-| 原实现责任 | 在此示例的位置 |
-| --- | --- |
-| 商业组件鉴权、创建 / 关闭、音频提交 | 新的 server/renderers/vidu.mjs |
-| ARTC 入会、音视频订阅、SDK 清理 | 新的 client/renderers/vidu.mjs |
-| 原 GatewayClient 对话连接 | 复用 useDualConnection，无须再实现 |
-| 静音音轨模拟播放回执 | 移除；改由实际 RTC 播放生命周期驱动 |
-| 旧响应 / 旧媒体回调 | 映射 responseId / generation 并在打断后隔离 |
+- Gateway 回执全部来自 `source-playback.mjs`，是原始 PCM 时间线状态；不代表 Vidu 媒体排空。
+- `audio.append` 转交源 PCM；`audio.end` 仅封口本轮输入，无逐轮媒体停止。
+- `turn.cancel` 只拒绝后续旧输入，不发送 Vidu interrupt。正常结束与新回复也不发送 interrupt。
+- 无在线匹配、无估算时间、无远端音频等待；持续 RTC 媒体不因源回合而摘轨或静音。
+- 结束会话才挂断。展示创建、断线或播放错误只处理展示资源，不能取消源播放器或模型。
 
-如果厂商只提供“生成结束”而不提供可验证的播放边界，适配器必须补足媒体队列 / 播放观测，或明确声明不支持准确播完回执。不能把生成结束当作播放结束。
-
-DHAV 实现和非 DHAV 测试替身继续保留。Vidu 已按上表迁入示例内的服务端/浏览器注册点，
-但公开 API 缺少可验证的逐回复播完信号；默认关闭的实验预览不发送 `playback.ended`，
-不能视为完成本契约的商业实现。配置、取消隔离和剩余阻塞见 [Vidu 指南](vidu.zh.md)。
-尚未执行真实 Vidu/ARTC 部署验收。
+该范围与原审查的实际 RTC 回执和立即媒体取消契约不同，需要维护者确认。
+详见 [Vidu 指南](vidu.zh.md)及 [PR 说明](pr-description.zh.md)。

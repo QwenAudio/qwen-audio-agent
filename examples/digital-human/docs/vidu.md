@@ -1,46 +1,50 @@
-# Vidu / ARTC experimental preview
+# Vidu / ARTC delayed presentation preview
 
 [中文](vidu.zh.md) · [Overview](../README.md)
 
-This adapter uses #573's ordinary Gateway, shared `useDualConnection` and
-`AvatarPlaybackController`. Vendor control/credentials live in
-`server/renderers/vidu.mjs`; `client/renderers/vidu.mjs` and `artc-player.mjs` own
-native ARTC playback. There is no separate Vidu GCP client or silent reply clock.
+Vidu is a presentation side branch. Original model PCM is scheduled locally through a zero-gain
+output; that source timeline alone owns Gateway `playback.started`, `playback.ended`, and
+`playback.cancelled`. These are explicitly source-timeline receipts, not acknowledgements that
+Vidu output has reached the listener. Vidu returns original RTC audio/video to one native media
+element, preserving its native synchronization.
 
-## Merge blocker: response completion
+Gateway connects independently of Vidu initialization and RTC join. Vendor failures, unrelated
+or delayed media, missing end markers and autoplay failure cannot cancel source playback, alter
+its receipts, or cancel a model response. No waveform matching, estimated completion, extra
+startup reserve, frame cache or quiet gate remains. Source PCM is forwarded unchanged; no PCM
+chunk means no upload, with no inserted silence.
 
-The [public Vidu component protocol](https://platform.vidu.com/vidu-stream/doc/s2-avatar/component/parameters)
-does not document a per-response last-media/drain marker. Gateway `audio.done`
-only seals input. Subscription, video playback, RTC stats, silence, disconnect and
-token expiry do not prove that no further reply media can arrive. The adapter
-is disabled by default. Opt-in preview **never sends `playback.ended`** and is
-unsuitable for tasks requiring accurate completion receipts; this is not a
-merge-ready commercial integration.
+Interruption follows the original Realtime/Gateway input handling and stops original PCM.
+Subsequent cancelled source chunks are fenced, but already uploaded media may continue.
+There is no Vidu interrupt on response completion, user interruption, or the next response.
+Only ending the session hangs up the live. This deliberately favors continuous delayed
+presentation over immediate media cancellation.
 
-Start is observed on the audible WebAudio graph using the SDK's remote audio
-track; SDK automatic audio is muted to avoid double playback. This still needs
-real ARTC validation and cannot confirm physical speaker output. Silent output
-may not generate a started receipt.
+The original-audio comparison checkbox mutes/hides the avatar and unmutes the same source
+player. Switching does not recreate sources, reschedule PCM or change receipts. Both modes
+share the ordinary local Web client's 20 ms scheduling lead. This verifies these two example
+modes; it does not prove equivalence to every WebUI feature or remote playback transport.
 
-Responses remain incomplete until explicit interruption/new input, error,
-disconnect or a resource cap cancels them. New input is not natural completion.
-Queued automatic replies cannot naturally advance while the boundary is missing;
-tool announcements can remain pending. Each preview live is capped at 120 seconds;
-expiry cancels rather than completes playback. Source PCM is limited to 4.8 MB
-(100 seconds) per reply, with bounded pending input.
+## Tradeoff and review status
 
-## API access and setup
+A three-second avatar delay means that at local second eight, the user hears approximately
+source second five. The model may already have generated through second eight or beyond.
+Keeping source-timeline control prevents display delay from changing Agent scheduling, but
+does not resolve the listener/model context mismatch or provide heard-position truncation.
 
-1. Create a `vda_...` key in [Vidu China](https://platform.vidu.cn/), under API Key
-   management; see the [account/credits guide](https://platform.vidu.cn/docs/quick-start).
-   Confirm Component Edition access/credits. China keys use `api.vidu.cn`;
-   [international platform](https://platform.vidu.com/) keys use `api.vidu.com`.
-2. Create an Alibaba Cloud real-time audio/video application using the
-   [official guide](https://help.aliyun.com/zh/live/activate-application), then copy
-   AppID/AppKey from the same application's basic information. These are not
-   account AccessKey credentials. The local server signs short-lived tokens with
-   [ARTC token authentication](https://help.aliyun.com/en/ims/developer-reference/token-based-authentication).
-3. Start an ordinary Gateway first, then edit `examples/digital-human/.env.local`:
+This design explicitly differs from the earlier review's requirement for actual ARTC playback
+receipts and immediate cancellation/stale-media isolation. Maintainer agreement is still needed;
+the adapter stays experimental and disabled by default. Historical alignment/live recordings
+are not acceptance evidence for this design.
+
+## Setup
+
+Create a key at the [Vidu API platform](https://platform.vidu.cn/) using the
+[quick start](https://platform.vidu.cn/vidu-stream/doc/s2-avatar/realtime/quick-start).
+Use credentials with S2 Avatar component access. Create an ARTC application in the
+[Alibaba Cloud Live console](https://help.aliyun.com/zh/live/activate-application) and copy
+its AppID/AppKey (not your account AccessKey). Start your ordinary Gateway, then configure
+`examples/digital-human/.env.local`:
 
 ```dotenv
 DH_GATEWAY_URL=ws://127.0.0.1:18888/api/realtime
@@ -53,10 +57,9 @@ ARTC_APP_KEY=your_app_key
 VIDU_HOST=api.vidu.cn
 ```
 
-Enable `VIDU_EXPERIMENTAL=1` only after accepting the above limits (template: 0).
-Use the plain key without a `Token` prefix. Shell variables override the local
-file; restart `npm start` after changes. Keep keys out of frontend/Vite variables.
-You do not need to configure a manual RTC token.
+Use `api.vidu.com` for international platform keys. The key has no `Token` prefix.
+Environment variables override `.env.local`; restart after changes. Keep long-term credentials
+server-side; temporary RTC credentials are generated automatically.
 
 ```sh
 npm ci
@@ -64,37 +67,17 @@ npm run build:client
 npm start
 ```
 
-Open the printed URL and read the experimental notice. Connect, choose the
-default character, an HTTPS image or a PNG/JPEG/WebP upload up to 4 MB, then enable
-the microphone or send text. First assistant audio creates a paid live. Vidu/ARTC
-charges may apply even if playback fails. Use Interrupt/End to stop local media
-and hang up; microphone mute alone does not end output or a paid session.
+Choose the default image, an HTTPS URL, or a PNG/JPEG/WebP upload up to 4 MB before connecting.
+The bundled preview works independently of access to the remote reference URL. Connecting
+starts continuous microphone capture and a persistent live; idle time may incur charges.
+Mic mute affects input only. Interrupt affects the original conversation; End closes both paths.
+The desktop floating window and optional original orb remain available.
 
-If creation times out before a live ID is obtained, remote creation cannot be
-ruled out; check the platform's live state.
+The SDK is pinned to ARTC Web SDK 7.1.9. Source uploads are bounded to 4.8 MB per response;
+queued mirror input is bounded, and live duration is capped at 30 minutes. Presentation errors
+release presentation resources only. If creation times out without a live ID, check remote billing
+and session status. Prompt, search and other tools remain configured in your normal Gateway.
 
-The browser loads official ARTC Web SDK 7.1.9 from its CDN. Only scoped RTC
-credentials reach the browser; Vidu control secrets and long-lived keys stay in
-the server. Separate live/channel state per response/generation isolates late
-callbacks. Cancellation gates local audio/video before best-effort remote
-interrupt/hangup, including late session-creation results. No original-PCM replay
-is allowed after renderer failures.
-
-## Remaining work and troubleshooting
-
-Completion needs a verifiable vendor last-media marker correlated to the live,
-response and generation, plus local queue-drain observation; alternatively an
-explicitly agreed degraded receipt capability contract. Do not add model-terminal
-or targeted-clear GCP messages or substitute fixed delays. Real paid multi-turn,
-long-sentence, synchronization and post-cancel isolation acceptance is pending.
-
-- Disabled connection: inspect `/api/config` renderer `enabled/reason`, preview flag and credentials.
-- 401/403: check key environment, entitlement and credits.
-- RTC authentication: verify matching AppID/AppKey, clock, network and SDK CDN.
-- Autoplay blocked/suspended context: the reply is cancelled, never completed; reconnect through a user gesture.
-- `session_expired`: preview resource cap, not successful completion; new input creates a fresh live.
-
-Environment and overlay `.desktop/` state are ignored. Local deletion does not
-delete remote data, whose retention follows service policies. The
-[historical Vidu footage](../assets/digital_human_demo_vidu.mp4) illustrates the old
-UI, not acceptance of this integration's playback lifecycle.
+[Historical demo](../assets/digital_human_demo_vidu.mp4) ·
+[Audio flow diagrams (Chinese)](audio-processing-flow.zh.md) ·
+[Proposed PR description (Chinese)](pr-description.zh.md)

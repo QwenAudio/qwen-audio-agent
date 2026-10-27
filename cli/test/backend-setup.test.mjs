@@ -64,7 +64,7 @@ test('reports an incompatible installed OpenCode version', () => {
 })
 
 test('discovers an installed adapter independently of a missing host', () => {
-  for (const [backend, adapter] of [['codex', 'codex-acp'], ['claude', 'claude-code-acp'], ['pi', 'pi-acp']]) {
+  for (const [backend, adapter] of [['codex', 'codex-acp'], ['claude', 'claude-agent-acp'], ['pi', 'pi-acp']]) {
     const item = inspector({
       backend,
       commands: { [adapter]: `/user/bin/${adapter}` },
@@ -483,7 +483,7 @@ test('desktop installed-only mode disables every npx fallback', () => {
     env,
     commands: {
       claude: '/bin/claude',
-      'claude-code-acp': '/bin/claude-code-acp',
+      'claude-agent-acp': '/bin/claude-agent-acp',
     },
   }).backends[0]
   assert.equal(installed.ready, true)

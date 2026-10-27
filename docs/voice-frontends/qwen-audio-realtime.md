@@ -54,8 +54,8 @@ WebUI and TUI only display the active model; they never override it.
   over the environment default. At runtime, call
   `GatewayClient.updateOutputVoice(voice)`; the Gateway rebuilds the upstream
   Realtime Session while preserving the Client connection and Gateway session.
-- Turn detection: `smart_turn` (semantic end-of-turn), configured by the
-  runtime; no manual VAD tuning is exposed.
+- Turn detection: `smart_turn_v2` for 3.1 Plus; `smart_turn` for 3.0 Plus / Flash.
+  The runtime selects the model default; no manual VAD tuning is exposed.
 
 ## Endpoint overrides
 

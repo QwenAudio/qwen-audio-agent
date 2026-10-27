@@ -1,0 +1,41 @@
+{
+  "name": "qwen-audio-agent-digital-human-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Dual-connection digital-human client with example-local replaceable renderer adapters.",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "start": "node bootstrap/start.mjs",
+    "renderer:mock": "node providers/mock/mock-renderer-server.mjs",
+    "build:client": "vite build",
+    "test:browser": "node test/browser-smoke.mjs",
+    "desktop": "electron desktop/main.mjs",
+    "test:browser:vidu": "node test/vidu-browser-smoke.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.21.3",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "vite": "^7.3.7",
+    "playwright": "^1.63.0"
+  },
+  "peerDependencies": {
+    "qwen-audio-agent": "^2.0.1",
+    "electron": "^43.8.1"
+  },
+  "peerDependenciesMeta": {
+    "qwen-audio-agent": {
+      "optional": true
+    },
+    "electron": {
+      "optional": true
+    }
+  }
+}

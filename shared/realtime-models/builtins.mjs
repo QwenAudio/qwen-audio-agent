@@ -35,6 +35,7 @@ export const REALTIME_MODEL_BUILTINS = Object.freeze({
     },
     [DASHSCOPE_AUDIO_31_REALTIME_MODEL]: {
       label: 'Qwen Audio 3.1 Realtime Plus', api: 'audio', voice: 'longanqian_v3.1',
+      turnDetection: 'smart_turn_v2',
     },
     [DASHSCOPE_AUDIO_30_REALTIME_MODEL]: {
       label: 'Qwen Audio 3.0 Realtime Plus', api: 'audio', voice: 'longanqian',

@@ -49,6 +49,7 @@ jobs:
           # Do not retry or change the exit status of a failing test run.
           NODE_OPTIONS: ${{ runner.os == 'Windows' && '--test-reporter=tap' || '' }}
       - run: npm run test:x-omni
+      - run: npm test --prefix examples/digital-human
       - run: npm run build
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
         run: npm run example:x-omni:build
@@ -58,6 +59,17 @@ jobs:
         run: npm run test:web-browser
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
         run: npm run test:x-omni-browser
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npm ci --prefix examples/digital-human --ignore-scripts
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npx playwright install --with-deps chromium
+        working-directory: examples/digital-human
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npm run build:client --prefix examples/digital-human
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npm run test:browser --prefix examples/digital-human
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npm run test:browser:vidu --prefix examples/digital-human
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
         run: npm run example:webrtc:install
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}

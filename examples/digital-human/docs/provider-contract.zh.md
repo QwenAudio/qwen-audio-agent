@@ -1,193 +1,91 @@
-# DigitalHumanProvider 契约草案
+# 示例内的数字人适配器契约
 
-状态：待评审，接口尚未实现。与 [架构设计](design.zh.md) 一起阅读。本文是框架契约，不是某一家厂商的 SDK 镜像。
+这是本示例的代码扩展点，不是主框架协议。目标是让自部署 DHAV 和商业 RTC 服务复用同一客户端调度，不强迫它们共享媒体格式。
 
-## 1. 用两个具体实现校验边界
+官方 Client SDK 提供现有 `audio.delta` / `audio.done` 和全量 `playback.clear`；适配器补充渲染和媒体能力，不要求新的 GCP 事件或模型终态。Gateway 的唯一相关运行时变动是显式协商无 `playback.receipts` 时的通用降级，不包含供应商实现或 SDK 依赖。普通 WebSocket 的通用 `error` 不用于按文案推断某条回复失败或取消。
 
-| 项目 | OpenAvatarChat / FlashHead Avatar | LiveAvatar Avatar Only / LITE |
-| --- | --- | --- |
-| 接入对象 | Python Avatar 组件，需要薄服务适配 | 已有音频驱动的云服务 API |
-| 输入语义 | 已生成的助手回复音频 | 已生成的助手回复音频 |
-| 输入传输 | example 的私有协议 | 厂商 WebSocket 事件 |
-| 文本 | 当前 FlashHead 路径不要求文本 | 此处采用的 LITE 音频事件不要求文本 |
-| 媒体输出 | 视频帧及配对的原始音频 | 经其实时媒体基础设施接收 |
-| 对话能力 | 不加载 ASR/LLM/TTS 链路 | 不选择 FULL 模式或托管对话 connector |
+## 浏览器适配器
 
-上述差异意味着：控制 SPI 与媒体连接适配要分开；不把 `RTCPeerConnection`、LiveKit Room、NumPy 或厂商事件字段塞进核心接口。
+`client/renderer-adapters.mjs` 注册 `createPlayer(options)` 和 `createController(options)`。DHAV 实现在 `client/renderers/dhav.mjs`。
 
-## 2. 输入和能力
+公共控制器依赖的 renderer 接口：
 
-公共输入采用带描述的音频块，不能由变量名猜采样率。首版适配器统一支持 PCM16 little-endian、24 kHz、单声道。网关输出不同格式时由有状态转换器适配，不能每个 chunk 独立重采样。
-
-```ts
-type AudioFormat = {
-  encoding: 'pcm_s16le';
-  sampleRate: number;
-  channels: 1;
-};
-
-type TurnRef = {
-  avatarSessionId: string;
-  responseId: string;
-  generation: number;
-};
-
-type Capabilities = {
-  version: 1;
-  streamingAudio: true;
-  inputAudioFormats: AudioFormat[];
-  textInput: 'none' | 'optional';
-  interrupt: boolean;
-  idle: boolean;
-  outputModes: Array<'paired_av' | 'video_with_audio_timeline'>;
-};
-```
-
-`sampleOffset` 以协商后的输入采样率计，是本轮已提交的每声道样本位置；首块为 0。PCM 长度必须对齐整帧。文本序号与音频序号独立，不假设一段文本恰好对应一个音频块。
-
-只接收完整文本而无法消费流式回复音频的服务不满足首版契约，应使用另一类适配，而不是悄悄等整句生成完。
-
-## 3. 拟议 SPI
-
-```ts
-interface DigitalHumanProvider {
-  capabilities(): Promise<Capabilities>;
-  openSession(input: {
-    persona: TrustedPersona;
-    format: AudioFormat;
-    signal: AbortSignal;
-  }): Promise<DigitalHumanSession>;
-}
-
-interface DigitalHumanSession {
-  readonly avatarSessionId: string;
-  readonly mediaBinding: MediaBinding;
-
-  startTurn(ref: TurnRef): Promise<void>;
-  appendAudio(input: TurnRef & {
-    sequence: number;
-    sampleOffset: number;
-    data: Uint8Array;
-  }): Promise<void>;
-  appendText?(input: TurnRef & {
-    sequence: number;
-    delta: string;
-  }): Promise<void>;
-  finishTurn(input: TurnRef & {
-    lastAudioSequence: number;
-    totalSamples: number;
-  }): Promise<void>;
-  interruptTurn(input: TurnRef & {
-    reason: CancelReason;
-  }): Promise<void>;
-  events(): AsyncIterable<DigitalHumanEvent>;
-  close(): Promise<void>;
+```js
+const renderer = {
+  startTurn({ responseId, generation }, { onStarted, onDrained, onError }) {},
+  appendAudio(turn, base64Pcm24k) {},
+  endTurn(turn) {},
+  cancelTurn(turn, reason) {},
+  handleMessage(message) {}, // 可选：处理服务端消息
+  disconnected(reason) {},  // 可选
+  close() {},
 }
 ```
 
-`TrustedPersona` 是启动配置解析后的只读配置，不是客户端提交的任意对象；只包含渲染配置，不包含对话提示词。`MediaBinding` 和事件结构在下文定义。以上类型是说明性伪代码，不是可直接导入的 SDK。
+- `startTurn` 只在真实 PCM 到达后调用。输入为 PCM16LE / 24 kHz / mono。
+- `endTurn` 表示输入完整，不是已经播完。
+- `onStarted` 必须依据实际可听播放，不是连接成功、首帧下载或输入结束。
+- `onDrained` 必须同时满足：该响应不会再产生媒体，播放器已排空。
+- `cancelTurn` 同步停止本地媒体并隔离旧回调；远端取消可以异步完成。
+- 若音频已实际起播但 JS 回调延迟，取消时需先补报真实起播，再返回，避免公共控制器误以为可以从头回退。
+- 适配器的同步异常、返回 false、Promise 拒绝或 `onError` 表示渲染 / 播放失败，不代表模型执行终态；队列必须有界。
+- 异步服务初始化由适配器完成后，桥接发送通用的 `session.ready`。厂商 session 字段不进入公共控制器。
 
-约束：
+上述 renderer 契约描述真实媒体交付路径，DHAV 继续遵守。Vidu 目前缺少可验证的逐回复媒体完成边界，
+不能接入该完成回调并宣称已满足契约。其原生媒体控制器仍留在示例内，但不协商 `playback.receipts`，
+也不发送 `playback.started/ended/cancelled`。已经移除静音源播放器和原声对照接口。
 
-- 一次 session 首版只允许一个非终态 turn，音频按顺序追加。
-- `appendAudio` resolve 表示进入有界接收队列，不表示已推理或已播放。
-- 编排器也必须有界，不能把无穷多个 pending Promise 当成背压。
-- 完成输入后不得再追加；没有音频的响应不应创建一个假说话片段。
-- 重复 finish/cancel/close 幂等；相同序号不同内容报协议错，重复相同内容可以忽略，序号缺口失败。
-- close 和 cancel 优先于积压的音频输入，不能排在慢推理之后永久等待。
-- `generation` 由网关控制，Provider 输出必须保留它；内部厂商 ID 不能代替它。
-- 不支持 interrupt 的实现不得在首版中伪装成支持实时打断的 Provider。
+回执能力由可信适配器声明，公共连接代码据此选择 GCP 能力；不能让浏览器请求自行伪造供应商能力。
+不声明回执并不等于交付完成。配套 Gateway 可以推进生成字幕和普通对话、在生成完成后释放调度，但不领取自动后台结果通知，不伪造播放成功；框架任务记录、查询、权限和取消接口保留。本例不包含完整任务管理 UI。Vidu 是默认关闭的可选实验接入，不适合依赖自动播报确认的生产流程。
 
-## 4. 生命周期事件与终态
+Vidu 播放器内部将输入与媒体就绪分开：完成入会和接收配置后调用 `onInputReady` 放行首包 PCM，不等远端轨；`onReady` 只更新实际媒体可用状态。两者都不是逐回复完成回执，不应混入 GCP。
 
-| 事件 | 意义 |
+注册项可选 `maxBufferedBytes`，供公共发送器限制待发字节；例如图片的 Base64 编码可能
+大于 PCM 的默认限额。该值来自可信适配器代码，浏览器请求不能任意修改。
+
+## 服务端适配器
+
+在 `server/renderers/index.mjs` 注册同名项：
+
+```js
+const adapter = {
+  async attach(browserSocket, {
+    rendererUrl, rendererToken, persona,
+  }) {
+    // 创建厂商会话，完成媒体入口初始化。
+    // 长期密钥仅在这里使用。
+    // 接收助手音频，转为厂商 API；媒体可直接走厂商 RTC。
+    browserSocket.send(JSON.stringify({ type: 'session.ready' }))
+    return async function close() {
+      // 关闭自有会话，幂等释放资源。
+    }
+  },
+}
+```
+
+服务器与浏览器之间的厂商消息属于对应适配器；既不是 GCP 扩展，也不要求使用 DHAV。长期密钥不下发；限时、限会话的 RTC 凭据可以下发。服务入口、人设等由可信服务端配置控制。
+
+服务端注册项可选 `config({ providerOptions })` 返回安全的公共能力/不可用原因，不能
+包含密钥；可选 `maxMessageBytes` 为对应媒体/图片消息设置有界帧限制。
+
+## DHAV 的现有映射
+
+| 客户端消息 | DHAV 操作 |
 | --- | --- |
-| `session.ready` | 控制和媒体入口均可用，允许开始 turn |
-| `turn.first_media` | 可发布的首个媒体单元已产生，不表示用户已经看到/听到 |
-| `turn.completed` | Provider 不会再产生本轮媒体；媒体队列仍可能未播放完 |
-| `turn.cancelled` | Provider 接受取消或本地适配器已隔离旧代次 |
-| `provider.error` | 会话或 turn 失败，包含错误类别和是否允许重建 |
+| `turn.start` + responseId / generation | provider.startTurn |
+| `audio.append` + audio / sampleRate | provider.appendAudio，适配器计数 sequence / sampleOffset |
+| `audio.end` | provider.finishTurn |
+| `turn.cancel` | 本地立即隔离 + provider.interruptTurn |
 
-所有 turn 事件都带 `TurnRef`。输出流失效、协议错误、容量不足、首帧超时、媒体停滞应能区分；对外日志不能包含音频正文、密钥或整个私有 URL。
+浏览器接收原 DHAV 二进制帧。provider 的 avatarSessionId 只存在于 DHAV 适配器内部；公共控制器不要求此字段。原 DHAV v1 编解码、Mock 和服务端协议保持可复用。
 
-建议错误码：`unavailable`、`capacity_exhausted`、`invalid_media`、`first_media_timeout`、`media_stalled`、`protocol_error`。供应商原始错误保留在脱敏诊断，不成为公共稳定契约。
+## Vidu 的当前能力边界
 
-建议取消原因：`user_interruption`、`content_safety`、`permission_revoked`、`owner_replaced`、`provider_failure`、`transport_lost`、`session_closed`。
+- `audio.append` 转交源 PCM；`audio.end` 只封口输入，不证明媒体结束或用户听完。
+- 取消先立即停止本地 RTC，再尽力发送供应商 interrupt 和 hangup；不得等待远端响应才停播。
+- 下一条有效回复使用新 epoch/live/channel，隔离旧输入、迟到凭据、回调及媒体。
+- 不做在线匹配、结束估算或静音时钟回执；正常源输入结束也不触发估算挂断。
+- 原生声音与画面由同一媒体元素播放；故障报错停麦并要求重连，不自动重播。
 
-用户打断与 Provider 故障不能都映射成 `user_interruption`。前者可能确认用户主动略过播报，后者不等价；映射到现有历史/任务播报状态时必须保留原因。
-
-## 5. 媒体接口与时间轴
-
-### 5.1 媒体连接不是客户端响应
-
-`MediaBinding` 是内部描述：媒体适配器 ID、作用域有限的连接句柄、协商后的格式和协议版本。私有 URL/token 不放入公共 `session.created` 或浏览器日志。
-
-媒体适配器由可信启动注册表选择，加载在 Media Worker 中，提供 open/read/clear/close 语义，并将厂商输出归一化为媒体单元。其依赖从 example 包解析，不依赖主框架的偶然 hoisting。
-
-首版采用 `paired_av`：Provider 返回配对的音频和视频。`video_with_audio_timeline` 仅为未来能力，必须明确如何关联网关保留的原音频，不能宣称它已实现。
-
-### 5.2 规范化媒体单元
-
-一个 `MediaUnit` 至少包含 `TurnRef`、递增 `sequence`、`ptsUs`、`durationUs`、音频格式和样本范围、视频格式/尺寸及二进制负载。对应静默段和 idle 要显式标记，不能冒充回复音频。
-
-- turn-local 时间从输入采样位置派生，不能用消息到达时间充当唇形时间戳。
-- 一个样本范围只能播放一次；padding 要标识，不能计入真实输入覆盖范围。
-- 网关发布时把 turn-local 时间映射到持续的 session 媒体时钟；新回复不能重置 RTP 时间轴。
-- 音频和视频必须在同一个受控播放时间基准上调度，不能各自按收到时间立即发出。
-- idle 视频不占用某轮回复的语义，但底层媒体时钟继续推进。
-- 取消后尚未提交的媒体丢弃；下一轮使用新代次，不允许旧 mouth motion 回流。
-
-当前原生 WebRTC API 是否允许足够精确的时间控制，应先用确定性媒体验证。DataChannel 消息顺序不等于 RTP 播放顺序；不得仅靠收到 `turn.first_media` 就发送用户端播放回执。
-
-### 5.3 三层完成与取消状态
-
-| 状态 | 负责方 |
-| --- | --- |
-| 输入封口、模型生成完成 | 对话运行时 / Provider 输入适配 |
-| 媒体生成结束、发送队列排空 | Provider / Media Worker |
-| 播放开始、结束或取消 | 客户端观测，经网关校验 |
-
-输出选择器状态建议为 `BUFFERING -> COMMITTED_AVATAR | COMMITTED_AUDIO -> DRAINING -> TERMINAL`，任一非终态可进入 `CANCELLED`。`finishTurn` 不会直接把状态变成 `TERMINAL`。
-
-首包发布是不可回退的 commit 点。只有在 commit 前的基础设施失败可转 `COMMITTED_AUDIO`；同轮不能先 commit avatar 再从头播 fallback。取消和切换输出的代次在主进程与 Media Worker 间需要显式 ACK/隔离，禁止两个出口竞争。
-
-## 6. OpenAvatarChat 的具体映射
-
-基于 [FlashHead Handler](https://github.com/HumanAIGC-Engineering/OpenAvatarChat/blob/main/src/handlers/avatar/flashhead/avatar_handler_flashhead.py) 和 [Processor](https://github.com/HumanAIGC-Engineering/OpenAvatarChat/blob/main/src/handlers/avatar/flashhead/flashhead_processor.py) 的现有职责，建议映射如下：
-
-| SPI | 适配行为 |
-| --- | --- |
-| openSession | 加载白名单头像，创建隔离的 Processor 和媒体回调 |
-| startTurn | 创建新的推理作业上下文，绑定 response/generation 与 speech ID |
-| appendAudio | 24 kHz PCM 解码，保留原音频；有状态重采样为推理输入后送 `add_audio` |
-| finishTurn | 封口输入并 flush；处理补齐帧和没有残留数据的终止标记 |
-| interruptTurn | 调用 interrupt，失效当前作业和待发布媒体 |
-| 媒体回调 | 将图像及配对音频转为带时间和样本范围的媒体单元 |
-
-这不是现成的稳定远程 API，必须封装 Renderer。Python 适配器应复用上游推理、窗口和收集器逻辑，不复制一份 FlashHead 算法。
-
-## 7. LiveAvatar LITE 的具体映射
-
-参考 [官方 LITE 事件](https://docs.liveavatar.com/docs/lite-mode/events)。其命令通过会话 WebSocket 发送，输入为 Base64 PCM16/24 kHz/mono。
-
-| SPI | LITE 适配行为 |
-| --- | --- |
-| openSession | 通过服务端 API 建立 LITE 会话，等待连接就绪并建立媒体订阅 |
-| startTurn | 本地分配本轮 UUID，准备与网关 response/generation 的映射 |
-| appendAudio | 编码为 `agent.speak`，首块 event ID 用作本轮厂商 utterance ID |
-| finishTurn | 发送 `agent.speak_end`，封口，不当作客户端已播完 |
-| interruptTurn | 发送 `agent.interrupt`，立即在本地隔离旧代次 |
-| 事件关联 | 将 `source_event_id` 还原为 TurnRef；取消命令的 ID 单独关联 ACK |
-
-Provider 的 speak 状态只描述厂商侧状态，不能直接作为网关客户端播放证明。厂商媒体轨道通常不逐帧携带网关的 generation，媒体适配器需要安全的刷新/重订阅边界；无法证明旧缓冲已隔离时应重建流，而非给残留帧贴新 ID。
-
-LiveAvatar 接入现有 LiveKit/Agora 等媒体设施，不意味着可以把一个通用 SDP 地址直接交给现有网关。未来实接需要单独的媒体 Adapter 和契约验收，不承诺只换 API Key 即可工作。本轮只做映射和模拟契约测试，不安装 SDK、不创建收费会话。
-
-## 8. 接口兼容性验收
-
-- Mock、OpenAvatarChat 以及模拟的 LITE 事件适配，使用相同的输入生命周期测试向量。
-- 改变 Provider 不改变客户端协议、owner/session 或 Realtime 适配器。
-- 不要求 Provider 接收用户麦克风，不要求 Provider 返回对话文本。
-- 音频核心接口不以 WebSocket、WebRTC 或 Python 类型命名。
-- 未声明 text 能力时不调用文本输入，也不等待文本。
-- 声称支持的媒体模式、格式和取消语义必须经过测试，不能只通过类型检查。
+这些措施修复本地停止和隔离，不补造供应商缺失的逐回复完成或 interrupt 排空确认。
+真实播放确认是当前已知能力限制，不以普通对话生成完成代替。本版真实 Vidu 验收尚未完成；使用时必须连接含通用无回执降级的 Gateway。详见 [Vidu 指南](vidu.zh.md)及 [PR 说明](pr-description.zh.md)。

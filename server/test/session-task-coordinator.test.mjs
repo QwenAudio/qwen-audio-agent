@@ -276,6 +276,101 @@ test('output-disabled sessions leave results claimable and never cancel accepted
   assert.equal(next.injectCalls.length, 1, 'reconnecting to the same session restores its result')
 })
 
+test('unconfirmable result notifications stay pending without suppressing Task projection or lookup', async t => {
+  const h = harness(t)
+  h.state.notificationDeliverySupported = false
+  const claim = h.taskManager.claimNotifications.bind(h.taskManager)
+  let claims = 0
+  h.taskManager.claimNotifications = options => { claims++; return claim(options) }
+  const run = await startTask(h)
+  run.complete({ content: 'available from the Task record' })
+  await h.taskManager.wait(run.task.id)
+  h.coordinator.claimPendingNotifications()
+  h.coordinator.claimPendingNotifications([run.task.id], { includeOtherSessions: true })
+  await flush()
+
+  const task = h.taskManager.get(run.task.id)
+  assert.equal(task.status, 'completed')
+  assert.equal(task.result, 'available from the Task record')
+  assert.equal(task.notificationStatus, 'pending')
+  assert.ok(h.events.some(event => event.type === 'task.completed' && event.task.id === task.id))
+  assert.ok(h.taskManager.list({ ownerId: h.ownerId, sessionId: h.sessionId })
+    .some(item => item.id === task.id && item.result === task.result))
+  assert.equal(claims, 0)
+  assert.equal(h.injectCalls.length, 0)
+  assert.equal(h.announcements.pending.size, 0)
+  assert.equal(h.announcements.activeBatch, null)
+  assert.equal(h.announcements.acknowledgementTimer, null)
+  assert.equal(h.announcements.retryTimer, null)
+  assert.equal(h.announcements.leaseRenewTimer, null)
+  // The durable Task exists above; the optional conversation projection is
+  // still made when a capable presentation claims its notification.
+  assert.equal(h.records.length, 0)
+
+  h.state.notificationDeliverySupported = true
+  h.coordinator.claimPendingNotifications()
+  await flush()
+  assert.equal(claims, 1)
+  assert.equal(h.injectCalls.length, 1)
+  assert.equal(h.records.length, 1)
+  assert.equal(h.taskManager.get(task.id).notificationStatus, 'delivering')
+  h.announcements.confirmMany([task.id])
+  assert.equal(h.taskManager.get(task.id).notificationStatus, 'delivered')
+})
+
+test('unconfirmable failed-task notifications remain queryable without retries', async t => {
+  const h = harness(t)
+  h.state.notificationDeliverySupported = false
+  const task = h.taskManager.create({
+    ownerId: h.ownerId, sessionId: h.sessionId, objective: 'fails once',
+    runner: async () => { throw new Error('backend unavailable') },
+  })
+  await h.taskManager.wait(task.id)
+  h.coordinator.claimPendingNotifications([task.id])
+  await flush()
+  assert.equal(h.taskManager.get(task.id).status, 'failed')
+  assert.match(h.taskManager.get(task.id).error, /backend unavailable/u)
+  assert.equal(h.taskManager.get(task.id).notificationStatus, 'pending')
+  assert.ok(h.events.some(event => event.type === 'task.failed' && event.task.id === task.id))
+  assert.equal(h.injectCalls.length, 0)
+  assert.equal(h.announcements.activeBatch, null)
+  assert.equal(h.announcements.retryTimer, null)
+  assert.equal(h.announcements.leaseRenewTimer, null)
+})
+
+test('an unconfirmable result does not wake a sleeping client', async t => {
+  const h = harness(t)
+  h.state.notificationDeliverySupported = false
+  const run = await startTask(h)
+  h.state.sleeping = true
+  run.complete({ content: 'await a capable client' })
+  await h.taskManager.wait(run.task.id)
+  await flush()
+  assert.equal(h.state.sleeping, true)
+  assert.equal(h.order.includes('wake'), false)
+  assert.equal(h.injectCalls.length, 0)
+  assert.equal(h.taskManager.get(run.task.id).notificationStatus, 'pending')
+  assert.ok(h.events.some(event => event.type === 'task.completed' && event.task.id === run.task.id))
+})
+
+test('notification delivery capability does not disable permission, requested input or cancellation', async t => {
+  const h = harness(t)
+  h.state.notificationDeliverySupported = false
+  const run = await startTask(h)
+  permission(run)
+  input(run)
+  await flush()
+  assert.deepEqual(h.injectCalls.map(call => call.origin), ['permission', 'backend-input'])
+  assert.equal(h.coordinator.hasPendingPermission(), true)
+  assert.equal(h.coordinator.hasPendingInput(), true)
+  await h.taskManager.cancel(run.task.id)
+  await h.taskManager.wait(run.task.id)
+  await flush()
+  assert.equal(h.taskManager.get(run.task.id).status, 'cancelled')
+  assert.ok(h.events.some(event => event.type === 'task.cancelled' && event.task.id === run.task.id))
+  assert.equal(h.injectCalls.length, 2)
+})
+
 test('explicit cancellation clears queued progress and never announces a completion', async t => {
   const h = harness(t)
   const run = await startTask(h)

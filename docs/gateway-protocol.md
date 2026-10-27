@@ -527,6 +527,10 @@ Task replay or the Session Journal.
 
 `response.done` means generation finished, not that the user heard the response. Delivery workflows that require audible confirmation use playback receipts.
 
+When a Client explicitly negotiates capabilities without `playback.receipts`, Gateway provides a generation-only fallback: assistant transcripts are displayed and ordinary conversation records are retained without waiting for playback acknowledgements. Generation completion releases generation-side scheduling; it never creates a synthetic `playback.ended` or confirms audible delivery. Automatic background-result notifications are not claimed for announcement and remain pending. Clients can still display task cards, query results, respond to permissions and cancel tasks. Workflows that require automatic spoken-delivery confirmation must use a Client with playback receipts.
+
+The notification restriction applies to audio Clients; explicitly text-only Clients retain their existing text-delivery confirmation. This fallback applies only to explicit capability negotiation. Legacy Clients retain their existing behavior; no new public field or event is introduced. Use a Gateway revision containing this fallback, since older implementations may still wait for receipts before advancing transcripts or scheduling.
+
 ### 5.7 Local mute and external capture ownership
 
 Local mute stops microphone input at the Client and does not disconnect, cancel Tasks, or suppress output. It does not need a Gateway event.

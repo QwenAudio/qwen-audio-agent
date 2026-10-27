@@ -96,7 +96,8 @@ test('closing a pending start cancels its deadline and ignores late status repli
   assert.deepEqual(publisher.status(), { state: 'stopped', endpoint: null, error: null })
 })
 
-test('timeout preserves the original error and terminates an unresponsive Serve child', async () => {
+test('timeout preserves the original error and terminates an unresponsive Serve child', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
   const child = fakeChild()
   const signals = []
   child.kill = signal => {
@@ -110,7 +111,14 @@ test('timeout preserves the original error and terminates an unresponsive Serve 
   })
   const rejected = assert.rejects(publisher.start('http://127.0.0.1:3101'), { code: 'tailscale_serve_timeout' })
   child.stdout.write('https://voice.example.ts.net\n')
-  await Promise.all([rejected, delay(40)])
+  // Advance each deadline separately: CI load must not decide whether the
+  // shutdown grace timer has fired when we assert the signal sequence.
+  t.mock.timers.tick(10)
+  await rejected
+  assert.deepEqual(signals, ['SIGTERM'])
+  t.mock.timers.tick(9)
+  assert.deepEqual(signals, ['SIGTERM'])
+  t.mock.timers.tick(1)
   assert.deepEqual(signals, ['SIGTERM', 'SIGKILL'])
   assert.equal(publisher.status().error.code, 'tailscale_serve_timeout')
   await publisher.close()

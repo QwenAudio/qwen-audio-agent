@@ -9,6 +9,7 @@ function fixture(options = {}) {
   const receipts = [], statuses = [], sent = [], failures = [], order = [], connections = []
   const player = {
     connect(rtc, callbacks) { connections.push({ rtc, callbacks }); return true },
+    expectMedia() { this.expectedMedia = (this.expectedMedia || 0) + 1 },
     disconnect() { order.push('stop'); this.stopped = true },
     close() { this.closed = true },
   }
@@ -22,6 +23,7 @@ function fixture(options = {}) {
   const ready = (epoch = 0) => {
     if (epoch === 0) message({ type: 'session.ready' })
     message({ type: 'vidu.session', epoch, rtc: {} })
+    connections.at(-1).callbacks.onInputReady()
     connections.at(-1).callbacks.onReady()
   }
   return { controller, receipts, statuses, sent, failures, player, audio, done, message, order, connections, ready }
@@ -31,6 +33,7 @@ test('Vidu does not advertise or manufacture source-clock playback receipts', ()
   const f = fixture(); f.audio('a'); f.done('a')
   f.message({ type: 'session.ready' })
   f.message({ type: 'vidu.session', epoch: 0, rtc: {} })
+  f.connections[0].callbacks.onInputReady()
   f.connections[0].callbacks.onReady()
   f.controller.handleGateway({ type: 'playback.clear' })
   f.controller.close()
@@ -64,6 +67,7 @@ test('late old readiness, errors and callbacks cannot attach media to a new epoc
   f.message({ type: 'vidu.session', epoch: 0, rtc: { name: 'stale' } })
   f.message({ type: 'renderer.error', epoch: 0, message: 'stale failure' })
   f.connections[0].callbacks.onError(Error('stale player'))
+  f.connections[0].callbacks.onInputReady()
   f.connections[0].callbacks.onReady()
   assert.ok(!f.sent.some(e => e.type === 'audio.append'), 'stale readiness must not release pending audio')
   f.message({ type: 'vidu.session', epoch: 1, rtc: { name: 'new' } })
@@ -79,7 +83,7 @@ test('queued cancelled input never allocates a stale live when bridge becomes re
   f.controller.handleGateway({ type: 'playback.clear' })
   f.audio('b'); f.done('b')
   f.message({ type: 'session.ready' })
-  assert.deepEqual(f.sent.map(e => e.type), ['session.open'], 'source PCM must wait for the native player')
+  assert.deepEqual(f.sent.map(e => e.type), ['session.open'], 'source PCM must wait for RTC room membership')
   f.ready(1)
   assert.deepEqual(f.sent.map(e => e.type), ['session.open', 'turn.start', 'audio.append', 'audio.end'])
   assert.ok(f.sent.every(e => e.epoch === 1))
@@ -130,9 +134,26 @@ test('a throwing transport fails once and close remains idempotent', () => {
   assert.doesNotThrow(() => { f.controller.close(); f.controller.close() })
 })
 
+test('RTC input readiness releases queued PCM without claiming that returned media is playing', () => {
+  const f = fixture(); f.audio('first'); f.done('first')
+  f.message({ type: 'session.ready' })
+  f.message({ type: 'vidu.session', epoch: 0, rtc: {} })
+  assert.deepEqual(f.sent.map(event => event.type), ['session.open'])
+  f.connections[0].callbacks.onInputReady()
+  assert.deepEqual(f.sent.map(event => event.type), ['session.open', 'turn.start', 'audio.append', 'audio.end'])
+  assert.equal(f.player.expectedMedia, 1)
+  assert.ok(!f.statuses.some(status => status.state === 'idle'))
+  f.connections[0].callbacks.onInputReady()
+  assert.equal(f.sent.filter(event => event.type === 'audio.append').length, 1)
+  f.connections[0].callbacks.onReady()
+  assert.equal(f.statuses.at(-1).state, 'idle')
+  assert.deepEqual(f.receipts, [])
+  f.controller.close()
+})
+
 function nativeFixture(t, { blocked = false, delayedTrack = false, hangingJoin = false,
-  delayedJoin = false, delayedPlay = false } = {}) {
-  const engines = [], errors = [], ready = [], timers = []
+  delayedJoin = false, delayedPlay = false, connect = true } = {}) {
+  const engines = [], errors = [], ready = [], inputReady = [], timers = []
   let resolveTrack, resolveJoin, resolvePlay, rejectPlay
   const video = { srcObject: null, muted: true, paused: true, readyState: 2,
     pause() { this.paused = true }, async play() {
@@ -155,11 +176,11 @@ function nativeFixture(t, { blocked = false, delayedTrack = false, hangingJoin =
   const player = createArtcPlayer({ video, loadSdk: async () => sdk, makeStream: stream, now: () => 1000,
     setTimer(callback, delay) { const timer = { callback, delay, cleared: false }; timers.push(timer); return timer },
     clearTimer(timer) { if (timer) timer.cleared = true } })
-  player.connect({ user_id: 'viewer', avatar_user_id: 'avatar', token: 'scoped', expires_at: 100 }, {
-    onError: e => errors.push(e.message), onReady: () => ready.push(video.srcObject),
+  if (connect) player.connect({ user_id: 'viewer', avatar_user_id: 'avatar', token: 'scoped', expires_at: 100 }, {
+    onError: e => errors.push(e.message), onReady: () => ready.push(video.srcObject), onInputReady: () => inputReady.push(video.srcObject),
   })
   t.after(() => player.close())
-  return { player, video, engines, errors, ready, timers, resolveTrack: () => resolveTrack?.({ kind: 'audio' }),
+  return { player, video, engines, errors, ready, inputReady, timers, resolveTrack: () => resolveTrack?.({ kind: 'audio' }),
     resolveJoin: () => resolveJoin?.(), resolvePlay: () => resolvePlay?.(), rejectPlay: () => rejectPlay?.(Error('blocked')) }
 }
 
@@ -233,7 +254,9 @@ test('RTC readiness also waits for join completion if media callbacks arrive fir
   await tick()
   assert.equal(f.video.paused, false)
   assert.equal(f.ready.length, 0)
+  assert.deepEqual(f.inputReady, [])
   f.resolveJoin(); await tick()
+  assert.equal(f.inputReady.length, 1)
   assert.deepEqual(f.ready, [f.video.srcObject])
 })
 
@@ -261,6 +284,8 @@ test('a cancelled or failed pending play cannot report ready after cleanup', asy
 
 test('RTC media readiness is bounded and its deadline is cleared on ready or disconnect', async t => {
   const stalled = nativeFixture(t); await tick()
+  assert.equal(stalled.timers.some(timer => timer.delay === 15000), false, 'idle membership must not start a media deadline')
+  stalled.player.expectMedia()
   const deadline = stalled.timers.find(timer => timer.delay === 15000)
   assert.ok(deadline)
   deadline.callback(); await tick()
@@ -272,6 +297,7 @@ test('RTC media readiness is bounded and its deadline is cleared on ready or dis
   await stalled.player.close()
 
   const playing = nativeFixture(t); await tick()
+  playing.player.expectMedia()
   const playingDeadline = playing.timers.find(timer => timer.delay === 15000)
   await playing.engines[0].handlers.audioSubscribeStateChanged('avatar', 0, 3)
   await playing.engines[0].handlers.videoSubscribeStateChanged('avatar', 0, 3)
@@ -283,10 +309,45 @@ test('RTC media readiness is bounded and its deadline is cleared on ready or dis
   await playing.player.close()
 
   const cancelled = nativeFixture(t); await tick()
+  cancelled.player.expectMedia()
   const cancelledDeadline = cancelled.timers.find(timer => timer.delay === 15000)
   await cancelled.player.disconnect()
   assert.equal(cancelledDeadline.cleared, true)
   cancelledDeadline.callback()
   assert.deepEqual(cancelled.ready, [])
   assert.deepEqual(cancelled.errors, [])
+})
+
+test('a renderer that publishes tracks only after the first PCM cannot deadlock input delivery', async t => {
+  const native = nativeFixture(t, { connect: false })
+  const f = fixture({ player: native.player })
+  f.audio('first'); f.done('first')
+  f.message({ type: 'session.ready' })
+  f.message({ type: 'vidu.session', epoch: 0, rtc: {
+    user_id: 'viewer', avatar_user_id: 'avatar', token: 'scoped', expires_at: 100,
+  } })
+  await tick()
+  assert.equal(native.video.srcObject, null, 'the vendor has not published tracks yet')
+  assert.deepEqual(f.sent.map(event => event.type), ['session.open', 'turn.start', 'audio.append', 'audio.end'])
+  assert.equal(native.timers.filter(timer => timer.delay === 15000 && !timer.cleared).length, 1)
+  // Only now does the vendor react to input by publishing audio/video.
+  await native.engines[0].handlers.audioSubscribeStateChanged('avatar', 0, 3)
+  await native.engines[0].handlers.videoSubscribeStateChanged('avatar', 0, 3)
+  await tick()
+  assert.equal(native.video.paused, false)
+  assert.equal(f.statuses.at(-1).state, 'idle')
+  assert.ok(native.timers.find(timer => timer.delay === 15000).cleared)
+  assert.deepEqual(f.receipts, [])
+  assert.deepEqual(f.failures, [])
+  f.controller.close()
+})
+
+test('cancelled join cannot announce input readiness or reopen a retired channel', async t => {
+  const f = nativeFixture(t, { delayedJoin: true }); await tick()
+  const stopped = f.player.disconnect()
+  f.resolveJoin(); await stopped; await tick()
+  assert.deepEqual(f.inputReady, [])
+  assert.deepEqual(f.ready, [])
+  assert.equal(f.video.srcObject, null)
+  assert.ok(f.engines[0].destroyed)
 })

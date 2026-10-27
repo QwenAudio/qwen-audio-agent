@@ -4,7 +4,16 @@
 
 A normal qwen-audio-agent client with **two independent connections**: one to the Gateway for conversation, and one to a replaceable avatar renderer. The renderer consumes assistant reply audio; it does not own another ASR / LLM / TTS loop.
 
-No framework runtime, SDK, GCP or framework dependency changes are required. No qwen-audio-agent-rtc installation is required. Run inside this repository or copy this directory and use the official package's public Client SDK with an ordinary Gateway.
+The example supports two integrations:
+
+| Integration | Configuration | Playback capability |
+| --- | --- | --- |
+| Self-hosted DHAV / FlashHead | Default `DH_RENDERER_ADAPTER=dhav`; an empty renderer URL uses the GPU-free Mock | Actual start, drain and cancellation receipts |
+| Commercial Vidu / ARTC | `DH_RENDERER_ADAPTER=vidu` and explicit `VIDU_EXPERIMENTAL=1` | Native audio/video and interruption; no per-reply playback receipts |
+
+Vendor implementations stay in this example. Gateway only adds a generic fallback for clients that explicitly omit `playback.receipts`; no vendor API, new public protocol or vendor SDK dependency enters the framework. No qwen-audio-agent-rtc installation is required.
+
+**Vidu requires the Gateway revision containing this fallback. Until it is released, run Gateway from this branch's source. Older published versions may stall transcript display or scheduling with a receipt-less client.** Copying this example or updating its client SDK alone does not upgrade Gateway.
 
 ## Demo
 
@@ -22,18 +31,20 @@ https://github.com/user-attachments/assets/5301ef5e-b674-4561-93bb-e0c7544cf696
 The example-local Node host proxies GCP unchanged and protects renderer credentials. It is not a custom Gateway.
 
 - Implemented: DHAV adapter, GPU-free synthetic Mock renderer, remote DHAV configuration.
-- Vidu preview: native ARTC audio/video with local interruption and stale-session isolation. It does **not** negotiate `playback.receipts` or send playback acknowledgements: reliable per-reply completion is not available. Disabled by default and still Draft; see [scope, setup and limits](docs/vidu.md).
+- Vidu preview: native ARTC audio/video with local interruption and stale-session isolation. It does **not** negotiate `playback.receipts` or send playback acknowledgements. Ordinary dialogue and generated transcripts work through the Gateway fallback; automatic background-result announcements are not claimed. Disabled by default; see [scope, setup and limits](docs/vidu.md).
 - Supported reply format: PCM16 little-endian, 24 kHz, mono. Other sample rates are rejected rather than misplayed.
 
 ## Run
 
-Node.js ≥ 22.22.2. First start an ordinary Gateway with your existing model configuration, for example:
+Node.js ≥ 22.22.2. Use the matching source checkout for Gateway, retaining your existing model configuration. From the repository root:
 
 ```bash
-qwenaudio gateway --backend none
+npm ci
+npm run build
+npm start -- --backend none
 ```
 
-Model keys and backend settings belong to Gateway, not this example. The example never starts, changes or stops your Gateway; no example-specific Gateway branch is needed.
+Model keys and backend settings belong to Gateway, not this example. The example never starts, changes or stops your Gateway. Ensure an older Gateway is not already occupying the selected port. DHAV can use its existing compatible Gateway; Vidu needs the generic receipt-less fallback described above.
 
 Then, in a checkout:
 
@@ -45,7 +56,7 @@ npm run build:client
 npm start
 ```
 
-For a standalone source copy, install the public SDK package before building:
+For a standalone source copy, install the public SDK package before building. The Gateway process must still meet the revision requirement above:
 
 ```bash
 npm install qwen-audio-agent
@@ -80,7 +91,7 @@ Vidu reuses `useDualConnection` and the public SDK, but keeps native RTC present
 
 Set `DH_RENDERER_ADAPTER=vidu` and the server credentials in the same `.env.local`; see [Vidu setup](docs/vidu.md). The preview is disabled unless `VIDU_EXPERIMENTAL=1`. A live may incur Vidu/ARTC charges even while idle. Interruption retires the old live/RTC channel; the next valid reply creates a new one. This adds reconnection latency and may increase session charges. End releases the current session.
 
-The returned audio and video stay together in one native media element. There is no muted source player, original-audio comparison mode, waveform matching or estimated completion. The missing per-response media boundary remains a merge blocker, not a successful-delivery signal.
+The returned audio and video stay together in one native media element. There is no muted source player, original-audio comparison mode, waveform matching or estimated completion. The missing per-response media boundary is an explicit capability limitation, not a successful-delivery signal.
 
 The optional Electron shell opens the same running example page. In another terminal here:
 
@@ -99,8 +110,13 @@ DHAV uses actual paired-media playback for start/drain/cancel receipts and may f
 PCM before its first playback. Its media lifecycle remains separate from source `audio.done`.
 
 Vidu does not advertise `playback.receipts` and sends none of `playback.started/ended/cancelled`.
-Neither source `audio.done` nor a silent local clock proves remote playback completion. Therefore
-this preview cannot provide reliable task-result announcements or delivery confirmation.
+Neither source `audio.done` nor a silent local clock proves remote playback completion. For an
+explicit receipt-less GCP client, Gateway displays generated transcripts and records ordinary
+dialogue, releasing generation-side scheduling when generation finishes without marking audio as
+played. Automatic background-result notifications remain pending rather than being claimed for
+announcement. Gateway task records and query/control APIs remain available; users can actively
+ask for task status by voice or text. This minimal example does not include a full task-card or
+permission-management UI.
 
 On interruption, the client immediately mutes, pauses and detaches the old RTC media. The adapter
 requests remote interruption and hangs up the old live; a fresh epoch/live/channel isolates the
@@ -108,8 +124,9 @@ next reply from late old media. It does not wait for a remote acknowledgement to
 Renderer failure stops microphone capture and reports an error requiring reconnection; no audio
 is automatically replayed. Input-only microphone mute preserves normal output.
 
-Vidu stays Draft and disabled by default until supplier-backed playback boundaries and real-service
-validation are available. This does not implement heard-position feedback or model-history truncation.
+Vidu remains an opt-in experimental integration, unsuitable for production workflows that depend
+on automatic spoken-delivery confirmation. This revision has not been accepted against the real
+Vidu service, and it does not implement heard-position feedback or model-history truncation.
 See the [Vidu guide](docs/vidu.md) and [audio flow](docs/audio-processing-flow.zh.md).
 
 ## Security and scope

@@ -317,6 +317,51 @@ test('5.x connect and 7.0 session.hello share one Gateway business path', async 
   modern.socket.close()
 })
 
+for (const mode of ['legacy', 'receipts', 'no-receipts']) {
+  test(`${mode} client negotiates transcript delivery over the real Gateway transport`, async t => {
+    let emit
+    const { server, gateway } = gatewayHarness({
+      realtimeFrontendFactory: options => {
+        emit = options.onEvent
+        return {
+          provider: options.provider, ready: false,
+          async connect() { this.ready = true },
+          close() { this.ready = false }, updateAgentContext() {}, cancelResponses() {},
+        }
+      },
+    })
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+    t.after(async () => { await gateway.close(); await new Promise(resolve => server.close(resolve)) })
+    const client = await connect(server, mode === 'legacy'
+      ? { type: 'connect', clientType: 'web', inputEnabled: true, outputEnabled: true }
+      : createGatewaySessionHello({
+        clientType: 'web', clientInstanceId: `playback-${mode}`,
+        capabilities: [GatewayClientCapability.INPUT_AUDIO,
+          ...(mode === 'receipts' ? [GatewayClientCapability.PLAYBACK_RECEIPTS] : [])],
+        connection: { input_enabled: true, output_enabled: true },
+      }))
+    t.after(() => client.socket.close())
+    await waitUntil(() => typeof emit === 'function')
+    const context = { __voiceContext: { turnId: 'original-turn', turnGeneration: 1 } }
+    emit({ type: 'response.created', response: { id: 'r' }, ...context })
+    emit({ type: 'response.audio.delta', response_id: 'r', delta: 'AAA=', sampleRate: 24000 })
+    emit({ type: 'response.audio_transcript.done', response_id: 'r', transcript: 'Generated reply' })
+    emit({ type: 'response.done', response: { id: 'r', status: 'completed' } })
+    await waitFor(client.received, event => event.type === 'audio.done')
+    if (mode !== 'no-receipts') {
+      assert.equal(client.received.some(event => event.type === 'transcript.final'), false)
+      client.socket.send(JSON.stringify({ type: 'playback.started', responseId: 'r',
+        ...(mode === 'receipts' ? { event_id: 'evt_playback_started' } : {}) }))
+    }
+    const transcript = await waitFor(client.received, event => event.type === 'transcript.final')
+    assert.equal(transcript.content, 'Generated reply')
+    assert.equal(transcript.turnId, 'original-turn')
+    if (mode === 'no-receipts') {
+      assert.equal(client.received.some(event => event.type === 'voice.state' && event.state === 'speaking'), false)
+    }
+  })
+}
+
 test('routes negotiated live visual frames through the provider-neutral Gateway path', async t => {
   const images = []
   const deliveries = []

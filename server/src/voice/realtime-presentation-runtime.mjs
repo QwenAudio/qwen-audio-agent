@@ -80,6 +80,7 @@ export class RealtimePresentationRuntime {
     getFrontend,
     getOutputEnabled,
     getNonVoiceClient,
+    getPlaybackReceipts = () => true,
     getResponseTurnCandidate,
     clearResponseCandidate,
     announcementQuietMs,
@@ -97,6 +98,7 @@ export class RealtimePresentationRuntime {
     this.getFrontend = getFrontend
     this.getOutputEnabled = getOutputEnabled
     this.getNonVoiceClient = getNonVoiceClient
+    this.getPlaybackReceipts = getPlaybackReceipts
     this.getResponseTurnCandidate = getResponseTurnCandidate
     this.clearResponseCandidate = clearResponseCandidate
     this.announcementQuietMs = announcementQuietMs
@@ -259,10 +261,12 @@ export class RealtimePresentationRuntime {
     if (id) {
       context.hasAudio = true
       this.playbackTurns.set(id, responseTurnId)
-      this.announcementWindow.queueAudio(id, {
-        turnId: responseTurnId,
-        origin: context.origin || 'model',
-      })
+      if (this.getPlaybackReceipts()) {
+        this.announcementWindow.queueAudio(id, {
+          turnId: responseTurnId,
+          origin: context.origin || 'model',
+        })
+      }
     }
     this.send({
       type: GatewayServerEvent.AUDIO_DELTA,
@@ -278,7 +282,7 @@ export class RealtimePresentationRuntime {
     const id = realtimeResponseId(event)
     const context = this.#contextFor(event)
     if (context.suppressed) return
-    if (!context.playbackStarted) {
+    if (this.getPlaybackReceipts() && !context.playbackStarted) {
       context.pendingTranscripts.push({
         content: event.delta || '',
         final: false,
@@ -299,7 +303,7 @@ export class RealtimePresentationRuntime {
     if (context.suppressed) return
     context.transcriptDone = true
     context.assistantTranscript = event.transcript || ''
-    if (!context.playbackStarted) {
+    if (this.getPlaybackReceipts() && !context.playbackStarted) {
       context.pendingTranscripts.push({
         content: event.transcript || '',
         final: true,
@@ -339,11 +343,13 @@ export class RealtimePresentationRuntime {
       content: event.text || '',
       final: true,
     })
+    this.#finishContextIfComplete(id, context)
   }
 
   #responseDone(event) {
     const id = realtimeResponseId(event)
     const context = this.contexts.get(id)
+    const awaitsPlayback = this.getPlaybackReceipts()
     const terminalToolResponse = this.toolCalls.consumeTerminalToolResponse(id)
     const responseTurnId = context?.turnId || this.turns.turnId
     const responseStatus = event.response?.status
@@ -374,7 +380,7 @@ export class RealtimePresentationRuntime {
         responseId: id,
         turnId: responseTurnId,
       })
-      if (!context?.hasAudio && !toolFollowUpPending) {
+      if ((!context?.hasAudio || !awaitsPlayback) && !toolFollowUpPending) {
         this.send({
           type: GatewayServerEvent.VOICE_STATE,
           state: 'idle',
@@ -388,6 +394,10 @@ export class RealtimePresentationRuntime {
     if (context?.hasAudio && !failed) {
       context.responseDone = true
       this.#finishContextIfComplete(id, context)
+      if (!awaitsPlayback) {
+        this.playbackTurns.delete(id)
+        if (this.contexts.has(id)) this.#scheduleContextCleanup(id, context)
+      }
     } else {
       const nonVoiceClient = this.getNonVoiceClient()
       const completedNonVoiceAnnouncement = (
@@ -419,7 +429,15 @@ export class RealtimePresentationRuntime {
       } else if (completedNonVoiceTaskNotification) {
         this.announcements.confirmMany(contextTaskIds(context))
       }
-      this.contexts.delete(id)
+      if (!awaitsPlayback && context && (failed || context.suppressed)) {
+        // Keep a bounded tombstone so late provider chunks cannot revive a
+        // cancelled response on clients with no playback acknowledgement.
+        context.suppressed = true
+        context.pendingTranscripts = []
+        this.#scheduleContextCleanup(id, context)
+      } else {
+        this.contexts.delete(id)
+      }
     }
     if (failed && id) {
       this.playbackTurns.delete(id)
@@ -430,7 +448,7 @@ export class RealtimePresentationRuntime {
     this.announcementWindow.responseDone({
       turnId: responseTurnId,
       origin: context?.origin || 'model',
-      hasAudio: Boolean(context?.hasAudio && !context?.playbackEnded),
+      hasAudio: Boolean(awaitsPlayback && context?.hasAudio && !context?.playbackEnded),
       awaitsToolFollowUp: toolFollowUpPending,
       suppressed: Boolean(context?.suppressed) || terminalToolResponse,
       failed,
@@ -532,7 +550,8 @@ export class RealtimePresentationRuntime {
   #finishContextIfComplete(id, context) {
     if (
       context
-      && context.playbackEnded
+      && (context.playbackEnded || !this.getPlaybackReceipts())
+      && !context.suppressed
       && context.responseDone
       && context.transcriptDone
     ) {
@@ -542,11 +561,14 @@ export class RealtimePresentationRuntime {
 
   #scheduleContextCleanup(id, context) {
     const timer = setTimeout(() => {
-      if (this.contexts.get(id) !== context) return
+      const current = this.contexts.get(id)
+      // Provider metadata merges replace the object; the response's turn is
+      // stable even if its final transcript arrives after response.done.
+      if (!current || current.turnId !== context.turnId || current.turnGeneration !== context.turnGeneration) return
       this.contexts.delete(id)
       this.playbackTurns.delete(id)
       this.announcementWindow.finishPlayback(id, {
-        awaitsToolFollowUp: awaitsToolFollowUp(context),
+        awaitsToolFollowUp: awaitsToolFollowUp(current),
       })
     }, this.responseContextCleanupMs)
     timer.unref?.()
@@ -618,7 +640,7 @@ export class RealtimePresentationRuntime {
   failToolResponse({ responseId, turnId }) {
     const context = this.contexts.get(responseId)
     if (context) context.awaitsToolFollowUp = false
-    const hasAudio = Boolean(context?.hasAudio && !context.playbackEnded)
+    const hasAudio = Boolean(this.getPlaybackReceipts() && context?.hasAudio && !context.playbackEnded)
     this.announcementWindow.responseDone({
       turnId,
       origin: context?.origin || 'model',
@@ -696,6 +718,11 @@ export class RealtimePresentationRuntime {
   failResponse(event) {
     const id = realtimeResponseId(event)
     const context = this.contexts.get(id)
+    if (context && !this.getPlaybackReceipts()) {
+      context.suppressed = true
+      context.pendingTranscripts = []
+      this.playbackTurns.delete(id)
+    }
     if (context?.origin === 'announcement') {
       this.send({ type: GatewayServerEvent.PLAYBACK_CLEAR })
       this.announcementWindow.finishPlayback(id)
@@ -717,7 +744,7 @@ export class RealtimePresentationRuntime {
       this.announcementWindow.responseDone({
         turnId: context?.turnId || this.turns.turnId,
         origin: context?.origin || 'model',
-        hasAudio: Boolean(context?.hasAudio),
+        hasAudio: Boolean(this.getPlaybackReceipts() && context?.hasAudio),
         awaitsToolFollowUp: false,
         failed: true,
       })

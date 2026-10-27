@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { normalizeInputParts } from '../../../shared/input-parts.mjs'
 import { GatewayClientEvent, GatewayServerEvent } from '../../../shared/protocol/realtime-events.mjs'
+import { GatewayClientCapability } from '../../../shared/protocol/gateway-client-protocol.mjs'
 import { AnnouncementWindow } from './announcement/announcement-window.mjs'
 import { normalizeClientContext } from '../conversation/frontend-agent-context.mjs'
 import { realtimeEventErrorMessage } from './realtime-provider.mjs'
@@ -97,6 +98,7 @@ export function createRealtimeSessionRuntime({
   // capturing, so nothing here may re-enable audio on its own.
   let inputSuspended = initialInputSuspension?.suspended === true
   let nonVoiceClient = false
+  let playbackReceipts = true
   let descriptor = { type: 'unknown', instanceId: null }
   let responseTurnCandidate = null
   let responseStartWatchdog = null
@@ -195,6 +197,7 @@ export function createRealtimeSessionRuntime({
       getState: () => ({
         ready: realtimeSession?.ready === true,
         outputEnabled, sleeping, waking,
+        notificationDeliverySupported: nonVoiceClient || playbackReceipts,
         windowBlocked: announcementWindow.isBlocked(),
         busy: turns.userSpeaking || announcementWindow.isBlocked(),
       }),
@@ -565,6 +568,7 @@ export function createRealtimeSessionRuntime({
     getFrontend: () => realtimeSession.frontend,
     getOutputEnabled: () => outputEnabled,
     getNonVoiceClient: () => nonVoiceClient,
+    getPlaybackReceipts: () => playbackReceipts,
     getResponseTurnCandidate: () => responseTurnCandidate,
     clearResponseCandidate,
     announcementQuietMs: config.announcementQuietMs,
@@ -882,7 +886,7 @@ export function createRealtimeSessionRuntime({
     }
   }
 
-  const handleClientEvent = (event, { descriptor: nextDescriptor = descriptor, capabilities: negotiatedCapabilities = [] } = {}) => {
+  const handleClientEvent = (event, { descriptor: nextDescriptor = descriptor, capabilities: negotiatedCapabilities = [], capabilitiesNegotiated = false } = {}) => {
     if (closed) return
     if (event.type === GatewayClientEvent.CONNECT) {
       descriptor = nextDescriptor
@@ -895,6 +899,9 @@ export function createRealtimeSessionRuntime({
         textOnly: event.textOnly === true,
       })
       nonVoiceClient = event.textOnly === true
+      // Legacy clients predate negotiation and already send playback receipts.
+      playbackReceipts = !capabilitiesNegotiated
+        || negotiatedCapabilities.includes(GatewayClientCapability.PLAYBACK_RECEIPTS)
       sessionOutputVoice = String(event.outputVoice || '').trim()
       // The client may pick a realtime front end per session. An unknown
       // name is reported instead of silently falling back, so a typo does

@@ -6,7 +6,7 @@ import { createArtcPlayer } from './artc-player.mjs'
 export function createViduController({ player, sendRenderer, image = () => undefined,
   onError = () => {}, onStatus = () => {}, maxPendingBytes = 8 * 1024 * 1024 } = {}) {
   let closed = false, ready = false, opened = false, connected = false, failed = false
-  let epoch = 0, generation = 0, current = null, turnId = '', hasInput = false, mediaReady = false
+  let epoch = 0, generation = 0, current = null, turnId = '', hasInput = false, inputReady = false
   let pending = [], pendingBytes = 0, mediaPending = [], mediaBytes = 0
   const known = new Set(), retired = new Set(), inputEnded = new Set()
   const validId = id => typeof id === 'string' && id.length > 0 && id.length <= 256
@@ -19,7 +19,7 @@ export function createViduController({ player, sendRenderer, image = () => undef
   }
   const write = event => {
     if (closed || failed) return
-    if (!mediaReady && ['turn.start', 'audio.append', 'audio.end'].includes(event.type)) {
+    if (!inputReady && ['turn.start', 'audio.append', 'audio.end'].includes(event.type)) {
       const size = JSON.stringify(event).length
       if (mediaBytes + size > maxPendingBytes) { notice('数字人等待入会的音频积压，请重新连接。'); return }
       mediaPending.push(event); mediaBytes += size
@@ -30,7 +30,10 @@ export function createViduController({ player, sendRenderer, image = () => undef
       if (pendingBytes + size > maxPendingBytes) { notice('数字人输入积压，已停止输出，请重新连接。'); return }
       pending.push(event); pendingBytes += size
     } else {
-      try { if (sendRenderer(event) === false) notice('数字人连接不可用，请重新连接。') }
+      try {
+        if (event.type === 'audio.append') player.expectMedia?.()
+        if (sendRenderer(event) === false) notice('数字人连接不可用，请重新连接。')
+      }
       catch { notice('数字人连接不可用，请重新连接。') }
     }
   }
@@ -50,7 +53,7 @@ export function createViduController({ player, sendRenderer, image = () => undef
     void player.disconnect()
     if (ready && opened) write({ type: 'session.cancel', epoch, reason })
     pending = []; pendingBytes = 0; mediaPending = []; mediaBytes = 0
-    epoch += 1; opened = false; connected = false; hasInput = false; mediaReady = false
+    epoch += 1; opened = false; connected = false; hasInput = false; inputReady = false
     onStatus({ state: 'idle', output: 'renderer', reason })
     // A new live is allocated only if another valid audio response arrives.
   }
@@ -99,12 +102,14 @@ export function createViduController({ player, sendRenderer, image = () => undef
         connected = true
         const connectingEpoch = epoch
         if (player.connect(message.rtc, {
-          onReady: () => {
-            if (closed || failed || epoch !== connectingEpoch || mediaReady) return
-            mediaReady = true
+          onInputReady: () => {
+            if (closed || failed || epoch !== connectingEpoch || inputReady) return
+            inputReady = true
             const queued = mediaPending; mediaPending = []; mediaBytes = 0
             for (const event of queued) write(event)
-            if (!failed) onStatus({ state: 'idle', output: 'renderer' })
+          },
+          onReady: () => {
+            if (!closed && !failed && epoch === connectingEpoch) onStatus({ state: 'idle', output: 'renderer' })
           },
           onError: error => { if (epoch === connectingEpoch) notice(error) },
         }) === false) notice('数字人播放器未能建立新连接。')

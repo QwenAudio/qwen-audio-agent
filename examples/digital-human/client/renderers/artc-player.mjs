@@ -56,6 +56,12 @@ export function createArtcPlayer({ video, onFrame = () => {}, loadSdk = loadArtc
     clearTimer(state.readyTimer)
     state.callbacks.onReady?.()
   }
+  const waitForMedia = state => {
+    if (!live(state) || !state.joined || !state.expectsMedia || state.ready || state.readyTimer) return
+    state.readyTimer = setTimer(() => {
+      if (!state.ready) error(state, 'ARTC media readiness timeout')
+    }, 15000)
+  }
   const play = state => {
     if (!live(state) || !state.stream.getTracks().length) return
     if (video.srcObject !== state.stream) video.srcObject = state.stream
@@ -71,6 +77,13 @@ export function createArtcPlayer({ video, onFrame = () => {}, loadSdk = loadArtc
       .finally(() => { state.playing = null })
   }
   return {
+    // Vendors may publish their tracks only after receiving the first PCM.
+    // Idle room membership is not missing media and must not start this timer.
+    expectMedia() {
+      if (!session || !live(session)) return
+      session.expectsMedia = true
+      waitForMedia(session)
+    },
     disconnect() {
       stop(session)
       session = null
@@ -124,10 +137,12 @@ export function createArtcPlayer({ video, onFrame = () => {}, loadSdk = loadArtc
         }).finally(() => { clearTimer(state.joinTimer); state.abortJoin = null })
         if (!live(state)) return
         state.joined = true
-        state.readyTimer = setTimer(() => {
-          if (!state.ready) error(state, 'ARTC media readiness timeout')
-        }, 15000)
         state.expiry = setTimer(() => error(state, 'ARTC credentials expired'), Math.min(rtc.expires_at * 1000 - now(), 2 * 60 * 60 * 1000))
+        // Receiving is configured and the viewer is in the room. Source input
+        // can now start; waiting for returned tracks here would deadlock a
+        // vendor that creates them only when the first input arrives.
+        callbacks.onInputReady?.()
+        waitForMedia(state)
         ready(state)
       }).catch(cause => error(state, cause))
       return true

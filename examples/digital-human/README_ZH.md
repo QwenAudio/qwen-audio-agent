@@ -4,7 +4,16 @@
 
 一个普通语音 Agent 客户端，同时连接 **qwen-audio-agent Gateway** 和**可替换的数字人服务**。Gateway 负责理解、对话和工具；数字人服务只消费助手回复音频，负责呈现人物与声音，不再运行一套 ASR / LLM / TTS。
 
-本示例不修改框架运行时、SDK、GCP 或框架依赖，也不依赖 qwen-audio-agent-rtc。可以在仓库中运行，也可以复制本目录后使用官方 npm 包的公开 Client SDK，连接普通 Gateway。
+提供两种接入方式：
+
+| 接入方式 | 配置 | 播放能力 |
+| --- | --- | --- |
+| 自部署 DHAV / FlashHead | 默认 `DH_RENDERER_ADAPTER=dhav`；渲染地址留空使用无 GPU 的 Mock | 真实起播、排空与取消回执 |
+| 商业 Vidu / ARTC | `DH_RENDERER_ADAPTER=vidu`，显式启用 `VIDU_EXPERIMENTAL=1` | 原生音画与打断；不支持逐回复播放回执 |
+
+厂商实现在示例内。Gateway 只增加“客户端明确不支持 `playback.receipts`”时的通用降级，不加入供应商实现、新公开协议或厂商 SDK 依赖；也不依赖 qwen-audio-agent-rtc。
+
+**Vidu 必须连接包含这项降级的 Gateway。对应版本发布前，请使用本分支源码启动；旧已发布版本可能出现字幕或调度等待回执而卡住。** 仅复制本例或更新客户端 SDK 不会升级 Gateway。
 
 ## 演示
 
@@ -24,22 +33,24 @@ https://github.com/user-attachments/assets/5301ef5e-b674-4561-93bb-e0c7544cf696
 示例本地服务代理第一条连接，并保护第二条连接的厂商密钥。它不是另一个 Gateway，不改变 GCP 消息，也不保存另一份对话历史。
 
 - **已提供**：DHAV 适配器、本地无 GPU 的合成画面 Mock、连接自部署 DHAV 服务的配置。
-- **Vidu 实验适配器**：保留原生 ARTC 音画播放，支持本地立即打断和旧会话隔离；不协商 `playback.receipts`，也不发送播放回执。逐回复播放完成边界仍缺失，默认关闭，PR 保持 Draft。见 [Vidu 配置及限制](docs/vidu.zh.md)。
+- **Vidu 实验适配器**：保留原生 ARTC 音画，支持本地打断与旧会话隔离；不协商或发送播放回执。Gateway 降级支持普通对话和生成字幕，不领取自动后台结果播报；默认关闭。见 [Vidu 配置及限制](docs/vidu.zh.md)。
 - **当前音频范围**：PCM16 little-endian、24 kHz、单声道。其他采样率会明确拒绝本轮，不隐式按错误速率播放。
 
 ## 快速开始
 
 ### 1. 启动标准 Gateway
 
-使用已安装框架的常规配置启动 Gateway，例如：
+使用配套源码启动 Gateway，保留用户的常规模型配置。在仓库根目录执行：
 
 ```bash
-qwenaudio gateway --backend none
+npm ci
+npm run build
+npm start -- --backend none
 ```
 
 模型密钥、Realtime 服务、后台 Agent 都在 Gateway 配置；不放入本例。后台可按需要启用。本示例不会启动、修改或关闭用户已有 Gateway。
 
-无需数字人专用 Gateway 分支或协议补丁。
+确认选定端口没有被旧 Gateway 占用。DHAV 可以沿用其兼容版本；Vidu 在上述通用降级发布前需要本分支源码，不应直接连接缺少该能力的旧安装版。
 
 ### 2. 安装并启动客户端
 
@@ -53,7 +64,7 @@ npm run build:client
 npm start
 ```
 
-如果单独复制了本目录，在构建前额外安装公开 SDK 所在的官方包：
+如果单独复制了本目录，在构建前额外安装公开 SDK 所在的官方包；Gateway 进程仍须满足前述版本要求：
 
 ```bash
 npm install qwen-audio-agent
@@ -94,7 +105,7 @@ DHAV 服务需提供：
 
 在服务端和浏览器注册同名适配器，通过 `DH_RENDERER_ADAPTER` 选择。配置只能选择已注册实现，不能从浏览器传入任意 URL 或加载任意模块。
 
-自部署 DHAV 用 WebAudio + canvas 播放 PCM / I420；Vidu 已在这两个位置注册，复用 `useDualConnection`。DHAV 的 `AvatarPlaybackController` 与真实播放回执不变，Vidu 的原生 RTC 播放留在适配器内。**不用改 Gateway，也不用把 RTC 媒体再转成 DHAV。** 具体接口和能力限制见 [适配器契约](docs/provider-contract.zh.md)。
+自部署 DHAV 用 WebAudio + canvas 播放 PCM / I420；Vidu 已在这两个位置注册，复用 `useDualConnection`。DHAV 的 `AvatarPlaybackController` 与真实播放回执不变，Vidu 的原生 RTC 播放留在适配器内。**无需供应商专用 Gateway 逻辑，也不用把 RTC 媒体再转成 DHAV。** 具体接口和能力限制见 [适配器契约](docs/provider-contract.zh.md)。
 
 ## Vidu 与桌面浮窗
 
@@ -115,7 +126,8 @@ npm run desktop
 
 - DHAV：`audio.done` 只结束渲染输入；实际媒体开始、排空和取消产生回执。首次起播前失败可回退原声一次，开始后不会从头重播。
 - Vidu：返回音视频使用同一原生媒体元素播放；不再创建静音源播放器或原声对照模式，不做波形匹配或完成时间估算。
-- Vidu 不协商 `playback.receipts`，不发送 `playback.started/ended/cancelled`。`audio.done` 不能证明数字人已说完，因此当前预览不支持可靠的任务播报与交付确认。
+- Vidu 不协商 `playback.receipts`，不发送 `playback.started/ended/cancelled`。Gateway 展示生成字幕、记录普通对话，在生成完成时释放生成侧调度，但不标记实际播放完成。
+- 自动后台结果通知不领取，保持 pending；框架的任务记录、查询及控制能力保留，可通过语音或文字主动询问状态。本例没有完整任务卡片或权限管理 UI，也不能把文字或音频生成完成当作用户已听完。
 - 用户打断时，本地立即静音、暂停并解绑旧 RTC 媒体；适配器发送远端 interrupt 并挂断旧 live，不等待远端确认才停播。
 - 下一条有效回复使用新 epoch、live 和 RTC channel，旧回调和迟到媒体不能进入新播放。数字人故障会明确报错并停止收音，需重连；不自动重播音频。
 - 麦克风静音只影响采集；结束和新会话会释放数字人资源。输入与排队有界。
@@ -124,7 +136,7 @@ npm run desktop
 
 ## 安全与范围
 
-Vidu 默认关闭，PR 保持 Draft。关闭回执能力只是停止上报无法证实的状态，不是补齐供应商能力；逐回复播放边界和真实服务验收仍阻塞正式合并。详见[PR 说明](docs/pr-description.zh.md)与[音频流程](docs/audio-processing-flow.zh.md)。
+Vidu 是默认关闭的可选实验接入，不适合依赖自动播报确认的生产流程。本版尚未完成真实 Vidu 验收；通用无回执降级不代表供应商播放边界已经补齐。详见[PR 说明](docs/pr-description.zh.md)与[音频流程](docs/audio-processing-flow.zh.md)。
 
 本例默认仅监听回环地址，并校验 Host / WebSocket Origin。Gateway 访问令牌和厂商长期密钥只保留在本地 Node 进程；商业 RTC 必需的短期播放凭据可由适配器下发浏览器。不要把长期密钥放进 Vite 环境变量或前端代码。
 
@@ -143,7 +155,7 @@ npm run test:browser:vidu
 测试覆盖协议编解码、Mock / 真实本地 WebSocket、取消隔离、两轮独立时间线、播放回执、安全边界及不同媒体适配器。浏览器测试不使用真实模型或付费 API。
 
 Vidu 浏览器测试使用假厂商 SDK 和本地 MediaStream，检查不发送播放回执、原生媒体播放、
-本地打断、旧媒体隔离、故障和重连。CI 同时运行 DHAV 与 Vidu 浏览器测试；本次结果待验证，
+本地打断、旧媒体隔离、故障和重连。CI 同时运行 DHAV 与 Vidu 浏览器测试；结果见[验证记录](docs/presentation-validation.zh.md)。
 这些测试不能替代商业 RTC 网络、实际音画同步与长时间稳定性的真实验收。
 
 真实服务验收清单见 [部署验证](docs/implementation-plan.zh.md)。自动化通过不等于已完成 FlashHead / 商业服务的部署验收。

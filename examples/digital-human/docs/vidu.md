@@ -2,19 +2,27 @@
 
 [中文](vidu.zh.md) · [Overview](../README.md)
 
-The adapter forwards assistant PCM from the ordinary Gateway to Vidu and plays the returned ARTC audio and video together in one native media element. It preserves the vendor's audio and audiovisual synchronization without changing the framework runtime, public SDK, GCP, model prompts or tools.
+The adapter forwards assistant PCM from Gateway to Vidu and plays returned ARTC audio and video together in one native media element. Vendor code stays inside the example. Gateway only adds a generic fallback for explicit capability negotiation without playback receipts; there is no new public protocol, vendor implementation or vendor SDK dependency in the framework.
 
-**This opt-in preview remains Draft. Per-reply playback boundaries and real-service acceptance are still missing. Do not use it for reliable task-result announcements or delivery confirmation.**
+**This commercial integration is experimental and disabled by default. This revision has not been accepted against the real Vidu service; do not use it for production workflows requiring automatic spoken-delivery confirmation.** Self-hosted DHAV remains the default with actual-playback receipts.
+
+**Gateway revision requirement:** use a Gateway containing the generic receipt-less fallback. Until released, follow the [source-checkout instructions](../README.md#run) on this branch. Older published versions may wait indefinitely for receipts before displaying transcripts or advancing scheduling. Updating only the example or client SDK is insufficient.
 
 ## Playback boundary
 
 Vidu does not negotiate `playback.receipts` and sends none of `playback.started/ended/cancelled`. DHAV's actual-playback receipts are unchanged. There is no muted source PCM player or original-audio comparison switch.
+
+For a GCP client that explicitly negotiates capabilities without `playback.receipts`, Gateway displays generated transcripts, records ordinary dialogue and releases generation-side scheduling on generation completion. It does not claim audio was played. Automatic background-result notifications remain pending rather than being claimed for announcement. Framework task records, query and control APIs remain available; users can ask for task status by voice or text, but this minimal example has no full task-card or permission-management UI. Legacy clients retain their existing behavior.
 
 Source `audio.done` only seals that reply's input; it does not prove that Vidu has finished producing media or that the browser has played it all. Silence gaps, input duration, waveform matching and estimated timers are not completion proofs. The adapter does not extract and reschedule the native audio/video tracks.
 
 As checked on 2026-10-27, the [official component parameters](https://platform.vidu.com/vidu-stream/doc/s2-avatar/component/parameters) expose no output-end marker correlated to a client reply ID. The [official WebSocket reference](https://github.com/shengshu-ai/vidu-s-api/blob/main/skills/vidu-s-api/references/websocket-protocol.md) specifies a type 7 interrupt request but no matching acknowledgement proving that old media has drained. Initialization, RTC join and hangup are not per-reply completion signals. This describes the public interfaces, not the vendor's internal capabilities.
 
 Disabling receipts prevents false claims; it does not solve delivery confirmation. Integration with the shared playback controller still needs supplier-backed reply boundaries and observable player drain. Heard-position feedback and model-history truncation are not implemented.
+
+## Input readiness is not playback completion
+
+After joining ARTC and configuring reception, the example-local `onInputReady` callback releases queued PCM without waiting for returned tracks. This avoids deadlock with a vendor that publishes media only after receiving the first audio packet. The separate `onReady` callback updates media presentation after native playback starts; it sends no Gateway receipt. A bounded timeout handles missing media after input has been sent.
 
 ## Interruption and isolation
 
@@ -28,7 +36,7 @@ Initialization, playback or connection failure reports an error and stops microp
 
 ## Setup
 
-Create a key with S2 Avatar component access at the [Vidu API platform](https://platform.vidu.cn/). Create an ARTC application using the [Alibaba Cloud Live guide](https://help.aliyun.com/zh/live/activate-application) and copy its AppID/AppKey, not an account AccessKey. Start the ordinary Gateway, then configure this example's `.env.local`:
+Create a key with S2 Avatar component access at the [Vidu API platform](https://platform.vidu.cn/). Create an ARTC application using the [Alibaba Cloud Live guide](https://help.aliyun.com/zh/live/activate-application) and copy its AppID/AppKey, not an account AccessKey. Start the compatible Gateway revision described above, then configure this example's `.env.local`:
 
 ```dotenv
 DH_GATEWAY_URL=ws://127.0.0.1:18888/api/realtime

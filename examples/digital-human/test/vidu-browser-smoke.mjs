@@ -60,13 +60,19 @@ window.AliRtcEngine = {
     const destination = context.createMediaStreamDestination();
     const queue = []; let sample = 0;
     const monitor = new WebSocket('ws://127.0.0.1:${viduHttp.address().port}/monitor'); monitor.binaryType='arraybuffer';
-    monitor.onmessage = ({data}) => { if(data==='clear'){queue.length=0;sample=0;return} const view=new DataView(data), values=[];for(let i=0;i<view.byteLength;i+=2)values.push(view.getInt16(i,true)/32768);queue.push(window.__unmatchedRemote ? values.map(()=>0.1) : values) };
+    monitor.onmessage = ({data}) => { if(data==='clear'){queue.length=0;sample=0;return} const view=new DataView(data), values=[];for(let i=0;i<view.byteLength;i+=2)values.push(view.getInt16(i,true)/32768);queue.push(window.__unmatchedRemote ? values.map(()=>0.1) : values); publishTracks() };
     const processor=context.createScriptProcessor(1024,0,1);
     processor.onaudioprocess=e=>{const out=e.outputBuffer.getChannelData(0);for(let i=0;i<out.length;i++){out[i]=queue.length?queue[0][Math.floor(sample)]||0:0;if(queue.length){sample+=24000/context.sampleRate;if(sample>=queue[0].length){sample-=queue[0].length;queue.shift()}}}};
     processor.connect(destination);
     const canvas = document.createElement('canvas'); canvas.width = 40; canvas.height = 40;
     canvas.getContext('2d').fillRect(0,0,40,40);
     const videoStream = canvas.captureStream(25); const handlers = {};
+    let remoteId, published = false;
+    // Exercise a vendor that publishes no media until its first input PCM.
+    const publishTracks = () => {
+      if(published)return; published=true;
+      handlers.audioSubscribeStateChanged(remoteId,0,3); handlers.videoSubscribeStateChanged(remoteId,0,3);
+    };
     const engine = {
       volume: 0, destroyed: false,
       on: (name,fn) => {handlers[name]=fn},
@@ -79,7 +85,7 @@ window.AliRtcEngine = {
       },
       setChannelProfile(){}, publishLocalAudioStream(){}, publishLocalVideoStream(){}, enableLocalVideo(){},
       setDefaultSubscribeAllRemoteAudioStreams(){}, setDefaultSubscribeAllRemoteVideoStreams(){},
-      async joinChannel() { await new Promise(resolve => { if(monitor.readyState===1)resolve();else monitor.addEventListener('open',resolve,{once:true}) }); handlers.audioSubscribeStateChanged(''+window.__avatarId,0,3); handlers.videoSubscribeStateChanged(''+window.__avatarId,0,3); },
+      async joinChannel() { await new Promise(resolve => { if(monitor.readyState===1)resolve();else monitor.addEventListener('open',resolve,{once:true}) }); remoteId=''+window.__avatarId; },
       async leaveChannel(){}, async destroy() {
         this.destroyed=true; processor.disconnect(); monitor.close(); videoStream.getTracks().forEach(t=>t.stop());
         destination.stream.getTracks().forEach(t=>t.stop()); await context.close();
@@ -130,7 +136,8 @@ try {
   await page.getByTestId('avatar-connect').click()
   await page.waitForFunction(() => document.querySelector('[data-testid="avatar-stage"]').dataset.connection === 'connected')
   await wait(() => live === 1)
-  await page.waitForFunction(() => document.querySelector('[data-testid="avatar-video"]').dataset.active === 'true')
+  assert.equal(receivedPcm, 0)
+  assert.equal(await page.getByTestId('avatar-video').evaluate(video => video.srcObject), null)
   await wait(() => events.some(e => e.type === 'input_audio_buffer.append'))
   await page.getByRole('button', { name: '麦克风静音', exact: true }).waitFor()
   const send = async text => { await page.getByTestId('avatar-input').fill(text); await page.getByTestId('avatar-send').click() }
@@ -138,6 +145,7 @@ try {
   await page.evaluate(() => { window.__unmatchedRemote = true })
   await send('native audio and video')
   await wait(() => receivedPcm > 0)
+  await page.waitForFunction(() => document.querySelector('[data-testid="avatar-video"]').dataset.active === 'true')
   assert.equal(await page.evaluate(() => window.__sourceBuffers.length), 0, 'no hidden source playback clock')
   const firstStream = await page.evaluateHandle(() => document.querySelector('[data-testid="avatar-video"]').srcObject)
   await page.getByTestId('avatar-mic').click()
@@ -199,7 +207,7 @@ try {
   await page.getByRole('button', { name: '对话', exact: true }).click()
   await page.getByTestId('avatar-input').waitFor({ state: 'visible' })
   assert.deepEqual(errors, [])
-  console.log('PASS Vidu adapter: native audio/video, no fabricated receipts, immediate local stop, remote interrupt/hangup, fresh live on next response, microphone-only mute, fail-closed errors and reconnect (mock vendor only)')
+  console.log('PASS Vidu adapter: first-input-triggered media, native audio/video, no fabricated receipts, immediate local stop, remote interrupt/hangup, fresh live on next response, microphone-only mute, fail-closed errors and reconnect (mock vendor only)')
 } finally {
   await browser?.close()
   await host?.close()

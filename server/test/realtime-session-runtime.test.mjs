@@ -171,6 +171,20 @@ test('invalid speech releases a completed task without another user turn', async
   await until(() => f.deliveries.some(d => d.origin === 'announcement'))
 })
 
+test('a turn the reply watchdog gives up on no longer holds Gateway requests', async t => {
+  const h = harness(t)
+  h.provider.responseStartTimeoutMs = 20
+  const f = await h.connect()
+  const task = h.request('diagnostic work')
+  await until(() => h.runs.has(task.id))
+  f.emit({ type: 'input_audio_buffer.speech_started', item_id: 'unanswered' })
+  f.emit({ type: 'input_audio_buffer.speech_stopped', item_id: 'unanswered' })
+  await until(() => h.frontends.length === 2 && h.frontends[1].ready)
+  h.runs.get(task.id).resolve({ content: 'diagnostic result' })
+  await h.manager.wait(task.id)
+  await until(() => h.frontends[1].deliveries.some(d => d.origin === 'announcement'))
+})
+
 test('interruption clears old audio without requiring a client cancellation receipt', async t => {
   const h = harness(t)
   const f = await h.connect()

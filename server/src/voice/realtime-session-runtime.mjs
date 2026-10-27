@@ -510,6 +510,8 @@ export function createRealtimeSessionRuntime({
     responseStartWatchdog = setTimeout(() => {
       if (responseTurnCandidate !== context) return
       clearResponseCandidate()
+      // The turn is given up: Gateway requests no longer wait for its reply.
+      announcementWindow.responseDone({ turnId: context.turnId, failed: true })
       emit({
         type: 'error',
         message: '实时模型没有开始回复，语音连接已自动恢复，请再说一次。',

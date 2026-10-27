@@ -90,6 +90,95 @@ test('clears a list and reports the removed count', () => {
   assert.deepEqual(store.lists('owner-a').map(list => list.list), ['购物清单'])
 })
 
+for (const operation of ['clear', 'remove']) {
+  test(`preserves an empty list on disk after ${operation}`, t => {
+    const directory = mkdtempSync(join(tmpdir(), 'qwen-audio-agent-notes-empty-'))
+    t.after(() => rmSync(directory, { recursive: true, force: true }))
+    const filePath = join(directory, 'frontend-notes.json')
+    let now = 1000
+    const options = { filePath, now: () => now }
+    const first = new FrontendNotesStore(options)
+    first.add('owner-a', { list: '早期清单', items: ['旧条目'] })
+    now = 2000
+    first.add('owner-a', { list: '购物清单', items: ['牛奶'] })
+    now = 3000
+    if (operation === 'clear') first.clear('owner-a', '购物清单')
+    else first.remove('owner-a', { list: '购物清单', items: ['牛奶'] })
+
+    now = 4000
+    const second = new FrontendNotesStore(options)
+    assert.deepEqual(second.show('owner-a', '购物清单'), {
+      status: 'ok', list: '购物清单', items: [],
+    })
+    assert.deepEqual(second.lists('owner-a'), [
+      { list: '购物清单', count: 0, updated_at: 3000 },
+      { list: '早期清单', count: 1, updated_at: 1000 },
+    ])
+    assert.deepEqual(second.lists('owner-b'), [])
+
+    // Every write reloads the file, even when the original instance is reused.
+    now = 5000
+    first.add('owner-a', { list: '书单', items: ['三体'] })
+    const saved = JSON.parse(readFileSync(filePath, 'utf8')).owners['owner-a']
+    assert.equal(saved['购物清单'].updatedAt, 3000)
+    now = 6000
+    const third = new FrontendNotesStore(options)
+    assert.deepEqual(third.lists('owner-a'), [
+      { list: '书单', count: 1, updated_at: 5000 },
+      { list: '购物清单', count: 0, updated_at: 3000 },
+      { list: '早期清单', count: 1, updated_at: 1000 },
+    ])
+    assert.equal(second.show('owner-a', '购物清单').status, 'ok')
+    assert.deepEqual(second.drop('owner-a', '购物清单'), {
+      status: 'ok', list: '购物清单',
+    })
+    const fourth = new FrontendNotesStore(options)
+    assert.equal(fourth.show('owner-a', '购物清单').status, 'not_found')
+    assert.equal(fourth.show('owner-a', '书单').items[0].text, '三体')
+  })
+}
+
+test('uses stable finite timestamps when loading empty lists', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwen-audio-agent-notes-timestamps-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  const filePath = join(directory, 'frontend-notes.json')
+  const cases = [
+    ['saved', { createdAt: 1000, updatedAt: 3000 }, 3000],
+    ['zero', { createdAt: 1000, updatedAt: 0 }, 0],
+    ['missing', { createdAt: 1000 }, 1000],
+    ['invalid', { createdAt: 1000, updatedAt: 'invalid' }, 1000],
+    ['null', { createdAt: 1000, updatedAt: null }, 1000],
+    ['unknown', {}, 0],
+  ]
+  const lists = Object.fromEntries(cases.map(([name, timestamps]) => (
+    [name, { name, items: [], ...timestamps }]
+  )))
+  writeFileSync(filePath, JSON.stringify({ version: 1, owners: { a: lists } }))
+  const expected = Object.fromEntries(cases.map(([name, , updatedAt]) => [name, updatedAt]))
+  let now = 5000
+  const options = { filePath, now: () => now }
+  const first = new FrontendNotesStore(options)
+  assert.deepEqual(
+    Object.fromEntries(first.lists('a').map(list => [list.list, list.updated_at])),
+    expected,
+  )
+
+  now = 6000
+  first.add('other-owner', { list: 'other', items: ['item'] })
+  const saved = JSON.parse(readFileSync(filePath, 'utf8')).owners.a
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(saved).map(([name, entry]) => [name, entry.updatedAt])),
+    expected,
+  )
+  now = 7000
+  const second = new FrontendNotesStore(options)
+  assert.deepEqual(
+    Object.fromEntries(second.lists('a').map(list => [list.list, list.updated_at])),
+    expected,
+  )
+  assert.ok(second.lists('a').every(list => Number.isFinite(list.updated_at)))
+})
+
 test('drops a whole list and keeps others', () => {
   const store = new FrontendNotesStore()
   store.add('owner-a', { list: '购物清单', items: ['牛奶'] })

@@ -183,7 +183,7 @@ export class FrontendNotesStore {
       Object.entries(lists).slice(0, MAX_LISTS_PER_OWNER).forEach(([key, entry]) => {
         const safeKey = clean(key, MAX_LIST_NAME_CHARS).toLocaleLowerCase()
         const name = clean(entry?.name, MAX_LIST_NAME_CHARS)
-        if (!safeKey || !name) return
+        if (!safeKey || !name || !Array.isArray(entry?.items)) return
         const items = []
         const seen = new Set()
         for (const item of (Array.isArray(entry?.items) ? entry.items : []).slice(0, MAX_ITEMS_PER_LIST)) {
@@ -197,14 +197,16 @@ export class FrontendNotesStore {
             addedAt: Number(item?.addedAt) || 0,
           })
         }
-        if (!items.length) return
         normalized.set(safeKey, {
           name,
           items,
           createdAt: Number(entry?.createdAt) || this.now(),
-          updatedAt: Math.max(
-            ...items.map(item => item.addedAt || 0),
-          ) || this.now(),
+          updatedAt: Number.isFinite(entry?.updatedAt)
+            ? entry.updatedAt
+            : Math.max(
+              Number.isFinite(entry?.createdAt) ? entry.createdAt : 0,
+              ...items.map(item => Number.isFinite(item.addedAt) ? item.addedAt : 0),
+            ),
         })
       })
       if (normalized.size) {

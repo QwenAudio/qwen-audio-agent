@@ -16,9 +16,9 @@ export default function AvatarHero({ avatar, personaId, rendererId = 'dhav', ref
   const dot = avatarStatusDot(visual)
 
   const ready = state === 'connected'
-  const showVideo = !avatar.sourceAudible && frameCount > 0 && visual !== 'audio_only'
+  const showVideo = frameCount > 0 && visual !== 'audio_only'
     && (rendererId !== 'vidu' || (videoRef.current?.srcObject && !videoRef.current.paused && videoRef.current.readyState >= 2))
-  const showReference = !avatar.sourceAudible && rendererId === 'vidu' && referenceImage && failedImage !== referenceImage && !showVideo
+  const showReference = rendererId === 'vidu' && referenceImage && failedImage !== referenceImage && !showVideo
 
   const submit = event => {
     event.preventDefault()
@@ -61,7 +61,7 @@ export default function AvatarHero({ avatar, personaId, rendererId = 'dhav', ref
           <div className="avatar-placeholder">
             <span className={`orb ${dot}`} />
             <p>
-              {avatar.sourceAudible ? '原始音频对照模式' : visual === 'audio_only'
+              {visual === 'audio_only'
                 ? '头像不可用，已降级为纯音频'
                 : ready
                   ? '说话或输入文字开始'

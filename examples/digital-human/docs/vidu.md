@@ -1,50 +1,34 @@
-# Vidu / ARTC delayed presentation preview
+# Vidu / ARTC native audiovisual preview
 
 [中文](vidu.zh.md) · [Overview](../README.md)
 
-Vidu is a presentation side branch. Original model PCM is scheduled locally through a zero-gain
-output; that source timeline alone owns Gateway `playback.started`, `playback.ended`, and
-`playback.cancelled`. These are explicitly source-timeline receipts, not acknowledgements that
-Vidu output has reached the listener. Vidu returns original RTC audio/video to one native media
-element, preserving its native synchronization.
+The adapter forwards assistant PCM from the ordinary Gateway to Vidu and plays the returned ARTC audio and video together in one native media element. It preserves the vendor's audio and audiovisual synchronization without changing the framework runtime, public SDK, GCP, model prompts or tools.
 
-Gateway connects independently of Vidu initialization and RTC join. Vendor failures, unrelated
-or delayed media, missing end markers and autoplay failure cannot cancel source playback, alter
-its receipts, or cancel a model response. No waveform matching, estimated completion, extra
-startup reserve, frame cache or quiet gate remains. Source PCM is forwarded unchanged; no PCM
-chunk means no upload, with no inserted silence.
+**This opt-in preview remains Draft. Per-reply playback boundaries and real-service acceptance are still missing. Do not use it for reliable task-result announcements or delivery confirmation.**
 
-Interruption follows the original Realtime/Gateway input handling and stops original PCM.
-Subsequent cancelled source chunks are fenced, but already uploaded media may continue.
-There is no Vidu interrupt on response completion, user interruption, or the next response.
-Only ending the session hangs up the live. This deliberately favors continuous delayed
-presentation over immediate media cancellation.
+## Playback boundary
 
-The original-audio comparison checkbox mutes/hides the avatar and unmutes the same source
-player. Switching does not recreate sources, reschedule PCM or change receipts. Both modes
-share the ordinary local Web client's 20 ms scheduling lead. This verifies these two example
-modes; it does not prove equivalence to every WebUI feature or remote playback transport.
+Vidu does not negotiate `playback.receipts` and sends none of `playback.started/ended/cancelled`. DHAV's actual-playback receipts are unchanged. There is no muted source PCM player or original-audio comparison switch.
 
-## Tradeoff and review status
+Source `audio.done` only seals that reply's input; it does not prove that Vidu has finished producing media or that the browser has played it all. Silence gaps, input duration, waveform matching and estimated timers are not completion proofs. The adapter does not extract and reschedule the native audio/video tracks.
 
-A three-second avatar delay means that at local second eight, the user hears approximately
-source second five. The model may already have generated through second eight or beyond.
-Keeping source-timeline control prevents display delay from changing Agent scheduling, but
-does not resolve the listener/model context mismatch or provide heard-position truncation.
+As checked on 2026-10-27, the [official component parameters](https://platform.vidu.com/vidu-stream/doc/s2-avatar/component/parameters) expose no output-end marker correlated to a client reply ID. The [official WebSocket reference](https://github.com/shengshu-ai/vidu-s-api/blob/main/skills/vidu-s-api/references/websocket-protocol.md) specifies a type 7 interrupt request but no matching acknowledgement proving that old media has drained. Initialization, RTC join and hangup are not per-reply completion signals. This describes the public interfaces, not the vendor's internal capabilities.
 
-This design explicitly differs from the earlier review's requirement for actual ARTC playback
-receipts and immediate cancellation/stale-media isolation. Maintainer agreement is still needed;
-the adapter stays experimental and disabled by default. Historical alignment/live recordings
-are not acceptance evidence for this design.
+Disabling receipts prevents false claims; it does not solve delivery confirmation. Integration with the shared playback controller still needs supplier-backed reply boundaries and observable player drain. Heard-position feedback and model-history truncation are not implemented.
+
+## Interruption and isolation
+
+On interruption, new text input or Gateway output clearing, the client immediately mutes, pauses and detaches old RTC media. It rejects old PCM and invalidates old callbacks and credentials.
+
+The server makes a best-effort type 7 interrupt request, then hangs up the old live. The next valid reply creates a fresh epoch, live and RTC channel rather than unmuting the old stream. Local stopping does not wait for a remote acknowledgement.
+
+Normal source completion does not hang up or estimate playback completion. Idle lives may incur charges. Recreating a connection after interruption increases startup latency and may increase session charges. End releases the current session.
+
+Initialization, playback or connection failure reports an error and stops microphone capture until reconnection. No original audio is automatically replayed. Manually muting the microphone affects input only.
 
 ## Setup
 
-Create a key at the [Vidu API platform](https://platform.vidu.cn/) using the
-[quick start](https://platform.vidu.cn/vidu-stream/doc/s2-avatar/realtime/quick-start).
-Use credentials with S2 Avatar component access. Create an ARTC application in the
-[Alibaba Cloud Live console](https://help.aliyun.com/zh/live/activate-application) and copy
-its AppID/AppKey (not your account AccessKey). Start your ordinary Gateway, then configure
-`examples/digital-human/.env.local`:
+Create a key with S2 Avatar component access at the [Vidu API platform](https://platform.vidu.cn/). Create an ARTC application using the [Alibaba Cloud Live guide](https://help.aliyun.com/zh/live/activate-application) and copy its AppID/AppKey, not an account AccessKey. Start the ordinary Gateway, then configure this example's `.env.local`:
 
 ```dotenv
 DH_GATEWAY_URL=ws://127.0.0.1:18888/api/realtime
@@ -57,9 +41,7 @@ ARTC_APP_KEY=your_app_key
 VIDU_HOST=api.vidu.cn
 ```
 
-Use `api.vidu.com` for international platform keys. The key has no `Token` prefix.
-Environment variables override `.env.local`; restart after changes. Keep long-term credentials
-server-side; temporary RTC credentials are generated automatically.
+Use `api.vidu.com` for international keys. Enable `VIDU_EXPERIMENTAL` only after accepting the limitations and charges; its template default is 0. The key has no `Token` prefix. Environment variables override `.env.local`; restart after changes. Keep long-term credentials server-side; temporary RTC credentials are generated automatically.
 
 ```sh
 npm ci
@@ -67,17 +49,10 @@ npm run build:client
 npm start
 ```
 
-Choose the default image, an HTTPS URL, or a PNG/JPEG/WebP upload up to 4 MB before connecting.
-The bundled preview works independently of access to the remote reference URL. Connecting
-starts continuous microphone capture and a persistent live; idle time may incur charges.
-Mic mute affects input only. Interrupt affects the original conversation; End closes both paths.
-The desktop floating window and optional original orb remain available.
+Before connecting, choose the default image, an HTTPS URL or a PNG/JPEG/WebP upload up to 4 MB. The default preview is bundled locally. Vidu mode requests microphone access after connecting. The floating window shares the same page; the original orb remains a separate UI option. Use only one microphone client at a time.
 
-The SDK is pinned to ARTC Web SDK 7.1.9. Source uploads are bounded to 4.8 MB per response;
-queued mirror input is bounded, and live duration is capped at 30 minutes. Presentation errors
-release presentation resources only. If creation times out without a live ID, check remote billing
-and session status. Prompt, search and other tools remain configured in your normal Gateway.
+## Resources and validation
 
-[Historical demo](../assets/digital_human_demo_vidu.mp4) ·
-[Audio flow diagrams (Chinese)](audio-processing-flow.zh.md) ·
-[Proposed PR description (Chinese)](pr-description.zh.md)
+ARTC Web SDK is pinned to 7.1.9. Source uploads are bounded to 4.8 MB per reply, pending input is bounded, and a live lasts at most 30 minutes. Failures and expiry release sessions and require reconnection. If creation times out before a live ID is received, check remote session state and billing.
+
+See the [current validation record](presentation-validation.zh.md) and [deployment checklist](implementation-plan.zh.md). The [historical demo](../assets/digital_human_demo_vidu.mp4) and older alignment experiments do not establish acceptance of this revision.

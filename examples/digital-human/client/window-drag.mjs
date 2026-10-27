@@ -10,17 +10,27 @@ export function installWindowDrag(element, bridge) {
     if (element.hasPointerCapture(id)) element.releasePointerCapture(id)
     element.classList.remove('dragging')
   }
-  element.addEventListener('pointerdown', event => {
+  const start = event => {
     if (event.button !== 0 || pointerId !== null) return
     pointerId = event.pointerId
     element.setPointerCapture(pointerId)
     element.classList.add('dragging')
     bridge.startDrag(point(event))
     event.preventDefault()
-  })
-  element.addEventListener('pointermove', event => {
+  }
+  const move = event => {
     if (event.pointerId === pointerId) bridge.moveDrag(point(event))
-  })
-  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) element.addEventListener(type, finish)
+  }
+  const endEvents = ['pointerup', 'pointercancel', 'lostpointercapture']
+  element.addEventListener('pointerdown', start)
+  element.addEventListener('pointermove', move)
+  for (const type of endEvents) element.addEventListener(type, finish)
   window.addEventListener('blur', finish)
+  return () => {
+    finish()
+    element.removeEventListener('pointerdown', start)
+    element.removeEventListener('pointermove', move)
+    for (const type of endEvents) element.removeEventListener(type, finish)
+    window.removeEventListener('blur', finish)
+  }
 }

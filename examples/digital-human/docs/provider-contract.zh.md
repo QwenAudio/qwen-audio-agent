@@ -31,13 +31,12 @@ const renderer = {
 - 适配器的同步异常、返回 false、Promise 拒绝或 `onError` 表示渲染 / 播放失败，不代表模型执行终态；队列必须有界。
 - 异步服务初始化由适配器完成后，桥接发送通用的 `session.ready`。厂商 session 字段不进入公共控制器。
 
-上述 renderer 契约描述实际媒体交付路径，DHAV 继续遵守。Vidu 则明确作为展示旁路：
-`createController` 接收 `audioContext`，创建独立的源 PCM 播放器，默认 gain=0，其回执只代表源时间线；
-RTC 生命周期不接入这些回调。它不声称以静音源时间线证明 RTC 实际播放。
+上述 renderer 契约描述真实媒体交付路径，DHAV 继续遵守。Vidu 目前缺少可验证的逐回复媒体完成边界，
+不能接入该完成回调并宣称已满足契约。其原生媒体控制器仍留在示例内，但不协商 `playback.receipts`，
+也不发送 `playback.started/ended/cancelled`。已经移除静音源播放器和原声对照接口。
 
-注册项 `presentationOnly: true` 表示 Gateway 无须等待展示 `session.ready` 或 RTC 入会，展示断线不关闭 Gateway。
-Vidu 的 `handleGateway` 先交给源播放器，再尽力转交展示；`rendererDisconnected` 只关闭展示并提示。
-`setSourceAudible` 仅用于原声对照，交换音量和画面，不重建音频源。
+回执能力由可信适配器声明，公共连接代码据此选择 GCP 能力；不能让浏览器请求自行伪造供应商能力。
+不声明回执并不等于交付完成，也不能用作可靠任务播报的接入方式。供应商能力补齐前，Vidu 保持默认关闭的 Draft 预览。
 
 注册项可选 `maxBufferedBytes`，供公共发送器限制待发字节；例如图片的 Base64 编码可能
 大于 PCM 的默认限额。该值来自可信适配器代码，浏览器请求不能任意修改。
@@ -78,13 +77,13 @@ const adapter = {
 
 浏览器接收原 DHAV 二进制帧。provider 的 avatarSessionId 只存在于 DHAV 适配器内部；公共控制器不要求此字段。原 DHAV v1 编解码、Mock 和服务端协议保持可复用。
 
-## Vidu 延迟展示的明确例外
+## Vidu 的当前能力边界
 
-- Gateway 回执全部来自 `source-playback.mjs`，是原始 PCM 时间线状态；不代表 Vidu 媒体排空。
-- `audio.append` 转交源 PCM；`audio.end` 仅封口本轮输入，无逐轮媒体停止。
-- `turn.cancel` 只拒绝后续旧输入，不发送 Vidu interrupt。正常结束与新回复也不发送 interrupt。
-- 无在线匹配、无估算时间、无远端音频等待；持续 RTC 媒体不因源回合而摘轨或静音。
-- 结束会话才挂断。展示创建、断线或播放错误只处理展示资源，不能取消源播放器或模型。
+- `audio.append` 转交源 PCM；`audio.end` 只封口输入，不证明媒体结束或用户听完。
+- 取消先立即停止本地 RTC，再尽力发送供应商 interrupt 和 hangup；不得等待远端响应才停播。
+- 下一条有效回复使用新 epoch/live/channel，隔离旧输入、迟到凭据、回调及媒体。
+- 不做在线匹配、结束估算或静音时钟回执；正常源输入结束也不触发估算挂断。
+- 原生声音与画面由同一媒体元素播放；故障报错停麦并要求重连，不自动重播。
 
-该范围与原审查的实际 RTC 回执和立即媒体取消契约不同，需要维护者确认。
-详见 [Vidu 指南](vidu.zh.md)及 [PR 说明](pr-description.zh.md)。
+这些措施修复本地停止和隔离，不补造供应商缺失的逐回复完成或 interrupt 排空确认。
+无法提供真实回执前，正式合并与可靠任务交付仍被阻塞。详见 [Vidu 指南](vidu.zh.md)及 [PR 说明](pr-description.zh.md)。

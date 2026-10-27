@@ -1,4 +1,4 @@
-// Native RTC media playback; analysis is an inaudible side branch only.
+// Native RTC audio/video; no source-audio clock or inferred playback receipts.
 export const ARTC_SDK_URL = 'https://g.alicdn.com/apsara-media-box/imp-web-rtc/7.1.9/aliyun-rtc-sdk.js'
 let loading
 // The pinned SDK exposes a singleton engine. A reconnect must wait for the
@@ -18,13 +18,13 @@ export function loadArtcSdk() {
   })
   return loading
 }
-// Presentation only. Neither RTC media nor vendor errors produce Gateway receipts.
+// Connection/track readiness does not prove that a particular response played.
 export function createArtcPlayer({ video, onFrame = () => {}, loadSdk = loadArtcSdk,
   makeStream = tracks => new MediaStream(tracks), setTimer = setTimeout,
   clearTimer = clearTimeout, now = Date.now,
 } = {}) {
   if (!video) throw new Error('ARTC requires a native video element')
-  let session = null, closed = false, serial = Promise.resolve(), audible = true
+  let session = null, closed = false, serial = Promise.resolve()
   const live = state => !closed && session === state && !state.cancelled
   const dispose = state => {
     if (!state) return Promise.resolve()
@@ -37,7 +37,7 @@ export function createArtcPlayer({ video, onFrame = () => {}, loadSdk = loadArtc
   }
   const stop = state => {
     if (!state || state.cancelled) return
-    state.cancelled = true; state.abortJoin?.(); clearTimer(state.expiry)
+    state.cancelled = true; state.abortJoin?.(); clearTimer(state.expiry); clearTimer(state.readyTimer)
     video.muted = true; video.pause(); video.srcObject = null
     serial = serial.then(() => dispose(state))
     releaseBarrier = serial.catch(() => {})
@@ -47,18 +47,35 @@ export function createArtcPlayer({ video, onFrame = () => {}, loadSdk = loadArtc
     stop(state)
     state.callbacks.onError?.(cause instanceof Error ? cause : new Error(cause))
   }
+  const ready = state => {
+    if (!live(state) || state.ready || !state.joined || !state.playSucceeded
+      || video.paused || video.muted || video.srcObject !== state.stream) return
+    const tracks = state.stream.getTracks()
+    if (!['audio', 'video'].every(kind => tracks.some(track => track.kind === kind && track.readyState !== 'ended'))) return
+    state.ready = true
+    clearTimer(state.readyTimer)
+    state.callbacks.onReady?.()
+  }
   const play = state => {
     if (!live(state) || !state.stream.getTracks().length) return
     if (video.srcObject !== state.stream) video.srcObject = state.stream
-    video.muted = !audible
-    if (!video.paused) return
+    video.muted = false
+    if (!video.paused && state.playSucceeded) { ready(state); return }
     state.playing ||= Promise.resolve().then(() => {
       if (live(state)) return video.play()
+    }).then(() => {
+      if (!live(state)) return
+      state.playSucceeded = true
+      ready(state)
     }).catch(() => error(state, 'ARTC native playback failed or blocked'))
       .finally(() => { state.playing = null })
   }
   return {
-    setAudible(value) { audible = Boolean(value); video.muted = !audible },
+    disconnect() {
+      stop(session)
+      session = null
+      return serial
+    },
     connect(rtc, callbacks = {}) {
       if (closed || session) return false
       const state = session = { rtc, callbacks, stream: makeStream([]), cancelled: false }
@@ -106,7 +123,12 @@ export function createArtcPlayer({ video, onFrame = () => {}, loadSdk = loadArtc
           Promise.resolve(engine.joinChannel(rtc.token, rtc.user_id)).then(resolve, reject)
         }).finally(() => { clearTimer(state.joinTimer); state.abortJoin = null })
         if (!live(state)) return
+        state.joined = true
+        state.readyTimer = setTimer(() => {
+          if (!state.ready) error(state, 'ARTC media readiness timeout')
+        }, 15000)
         state.expiry = setTimer(() => error(state, 'ARTC credentials expired'), Math.min(rtc.expires_at * 1000 - now(), 2 * 60 * 60 * 1000))
+        ready(state)
       }).catch(cause => error(state, cause))
       return true
     },

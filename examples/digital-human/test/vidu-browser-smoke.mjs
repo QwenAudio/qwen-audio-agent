@@ -15,7 +15,7 @@ const wait = async fn => {
 const gateway = new WebSocketServer({ host: '127.0.0.1', port: 0 })
 await new Promise(resolve => gateway.once('listening', resolve))
 const events = [], controls = [], upstreams = []
-let reply = 0, live = 0
+let reply = 0, live = 0, receivedPcm = 0
 const monitors = new Set()
 const sourcePcm = () => { const b = Buffer.alloc(24000 * 2 * 2); for (let i = 0; i < b.length / 2; i++) b.writeInt16LE(Math.round(3000 * Math.sin(i * 0.07) * Math.sin(i * i * 0.0000017)), i * 2); return b }
 const emit = (socket, event) => socket.send(JSON.stringify({ event_id: randomUUID(), ...event }))
@@ -44,7 +44,7 @@ viduWs.on('connection', (socket, request) => {
   if (request.url === '/monitor') { monitors.add(socket); socket.once('close', () => monitors.delete(socket)); return }
   upstreams.push(socket)
   socket.on('message', (raw, binary) => {
-    if (binary) { for (const monitor of monitors) monitor.send(raw); return }
+    if (binary) { receivedPcm++; for (const monitor of monitors) monitor.send(raw); return }
     const event = JSON.parse(raw); controls.push(event)
     if (event.type === 7) { for (const monitor of monitors) monitor.send('clear') }
     if (event.type === 1) socket.send(JSON.stringify({ type: 2, payload: { conn_init_ack: { success: true } } }))
@@ -134,55 +134,56 @@ try {
   await wait(() => events.some(e => e.type === 'input_audio_buffer.append'))
   await page.getByRole('button', { name: '麦克风静音', exact: true }).waitFor()
   const send = async text => { await page.getByTestId('avatar-input').fill(text); await page.getByTestId('avatar-send').click() }
-  // Unrelated remote content must not affect source playback receipts.
+  assert.ok(!events.find(e => e.type === 'session.hello').capabilities.includes('playback.receipts'))
   await page.evaluate(() => { window.__unmatchedRemote = true })
-  await send('natural source completion')
-  await wait(() => events.some(e => e.responseId === 'r1' && e.type === 'playback.started'))
-  await wait(() => events.some(e => e.responseId === 'r1' && e.type === 'playback.ended'))
-  assert.ok(!events.some(e => e.responseId === 'r1' && e.type === 'playback.cancelled'))
-  assert.equal(await page.evaluate(() => window.__sourceBuffers[0].buffer.getChannelData(0).some(x => x !== 0)), true)
-  assert.equal(await page.evaluate(() => window.__sourceGains[0].gain.value), 0)
+  await send('native audio and video')
+  await wait(() => receivedPcm > 0)
+  assert.equal(await page.evaluate(() => window.__sourceBuffers.length), 0, 'no hidden source playback clock')
+  const firstStream = await page.evaluateHandle(() => document.querySelector('[data-testid="avatar-video"]').srcObject)
   await page.getByTestId('avatar-mic').click()
   await page.getByRole('button', { name: '开启麦克风', exact: true }).waitFor()
-  await page.getByTestId('avatar-mic').click()
-  await page.getByRole('button', { name: '麦克风静音', exact: true }).waitFor()
-  await send('cancel original timeline')
-  await wait(() => events.some(e => e.responseId === 'r2' && e.type === 'playback.started'))
-  const streamHandle = await page.evaluateHandle(() => document.querySelector('[data-testid="avatar-video"]').srcObject)
-  await page.getByRole('button', { name: '打断', exact: true }).click()
-  await wait(() => events.some(e => e.responseId === 'r2' && e.type === 'playback.cancelled'))
   assert.equal(await page.evaluate(stream => {
     const v = document.querySelector('[data-testid="avatar-video"]')
-    return v.srcObject === stream && !v.muted && !v.paused && stream.getAudioTracks().length === 1
-  }, streamHandle), true, 'source interruption must not cut or detach delayed RTC media')
-  assert.equal(controls.filter(e => e.type === 7).length, 0)
-  assert.equal(live, 1)
-  await page.getByLabel('原声对照（隐藏数字人并播放原始音频）').check()
-  assert.equal(await page.evaluate(() => window.__sourceGains[0].gain.value), 1)
-  assert.equal(await page.getByTestId('avatar-video').getAttribute('data-active'), 'false')
-  assert.equal(await page.getByTestId('avatar-video').evaluate(v => v.muted), true)
-  await send('audible original reference')
-  await wait(() => events.some(e => e.responseId === 'r3' && e.type === 'playback.ended'))
-  await page.getByLabel('原声对照（隐藏数字人并播放原始音频）').uncheck()
-  assert.equal(await page.evaluate(() => window.__sourceGains[0].gain.value), 0)
-  assert.equal(await page.getByTestId('avatar-video').evaluate(v => v.muted), false)
-  upstreams[0].close()
+    return v.srcObject === stream && !v.muted && !v.paused
+  }, firstStream), true, 'microphone mute must not stop output')
+  await page.getByTestId('avatar-mic').click()
+  await page.getByRole('button', { name: '麦克风静音', exact: true }).waitFor()
+  await send('new input cancels old media')
+  await wait(() => live === 2)
+  await page.waitForFunction(() => window.__rtcEngines.length === 2 && window.__rtcEngines[0].destroyed)
+  await page.waitForFunction(() => document.querySelector('[data-testid="avatar-video"]').dataset.active === 'true')
+  assert.equal(await page.evaluate(stream => document.querySelector('[data-testid="avatar-video"]').srcObject !== stream, firstStream), true)
+  assert.equal(controls.filter(e => e.type === 7).length, 1)
+  await page.getByRole('button', { name: '打断', exact: true }).click()
+  await page.waitForFunction(() => {
+    const v = document.querySelector('[data-testid="avatar-video"]')
+    return v.muted && v.paused && v.srcObject === null
+  })
+  await wait(() => controls.filter(e => e.type === 7).length === 2)
+  assert.equal(live, 2, 'cancellation alone must not allocate a replacement paid live')
+  await send('next response creates a fresh channel')
+  await wait(() => live === 3)
+  await page.waitForFunction(() => window.__rtcEngines.length === 3 && window.__rtcEngines.slice(0,2).every(e => e.destroyed))
+  await page.waitForFunction(() => document.querySelector('[data-testid="avatar-video"]').dataset.active === 'true')
+  assert.ok(!events.some(e => ['playback.started', 'playback.ended', 'playback.cancelled'].includes(e.type)), 'native RTC has no proven response receipts')
+  upstreams.at(-1).close()
   await page.getByTestId('avatar-error').waitFor({ state: 'visible' })
-  await send('source after vendor failure')
-  await wait(() => events.some(e => e.responseId === 'r4' && e.type === 'playback.ended'))
-  assert.equal(await page.getByTestId('avatar-stage').getAttribute('data-connection'), 'connected')
-  await page.getByRole('button', { name: '结束', exact: true }).click()
+  await page.waitForFunction(() => document.querySelector('[data-testid="avatar-stage"]').dataset.connection === 'error')
+  assert.equal(await page.getByTestId('avatar-mic').isDisabled(), true)
   await page.waitForFunction(() => window.__rtcEngines.every(e => e.destroyed))
   await page.getByTestId('avatar-connect').click()
   await page.waitForFunction(() => document.querySelector('[data-testid="avatar-stage"]').dataset.connection === 'connected')
-  await wait(() => live === 2)
-  await page.waitForFunction(() => window.__rtcEngines.length === 2)
-  await send('after reconnect')
-  await wait(() => events.some(e => e.responseId === 'r5' && e.type === 'playback.ended'))
+  await wait(() => live === 4)
+  await page.waitForFunction(() => window.__rtcEngines.length === 4)
+  await send('after explicit reconnect')
+  await page.waitForFunction(() => document.querySelector('[data-testid="avatar-video"]').dataset.active === 'true')
   await page.getByRole('button', { name: '结束', exact: true }).click()
   await page.waitForFunction(() => window.__rtcEngines.every(e => e.destroyed))
-  await wait(() => controls.filter(e => e.type === 5).length >= 1)
-  assert.equal(controls.filter(e => e.type === 7).length, 0)
+  // Two cancellations and explicit close hang up; the injected remote failure
+  // already closed the third live's socket and cannot receive a hangup packet.
+  await wait(() => controls.filter(e => e.type === 5).length === 3)
+  await wait(() => upstreams.every(socket => socket.readyState === WebSocket.CLOSED))
+  assert.ok(!events.some(e => ['playback.started', 'playback.ended', 'playback.cancelled'].includes(e.type)))
   // The Electron shell uses the same page with a full-window portrait and
   // optional drawers. Exercise that presentation without a paid service.
   await page.addInitScript(() => { window.viduAvatarDesktop = { quit() {} } })
@@ -198,7 +199,7 @@ try {
   await page.getByRole('button', { name: '对话', exact: true }).click()
   await page.getByTestId('avatar-input').waitFor({ state: 'visible' })
   assert.deepEqual(errors, [])
-  console.log('PASS Vidu adapter: original PCM owns muted/audible receipts, unrelated RTC media and vendor failures cannot affect source playback, continuous RTC survives source cancellation, no remote interrupt, reconnect and cleanup (mock vendor only)')
+  console.log('PASS Vidu adapter: native audio/video, no fabricated receipts, immediate local stop, remote interrupt/hangup, fresh live on next response, microphone-only mute, fail-closed errors and reconnect (mock vendor only)')
 } finally {
   await browser?.close()
   await host?.close()

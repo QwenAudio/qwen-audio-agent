@@ -83,7 +83,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [conversationOpen, setConversationOpen] = useState(false)
   useEffect(() => {
-    if (desktop) installWindowDrag(dragRef.current, desktop)
+    if (desktop) return installWindowDrag(dragRef.current, desktop)
   }, [desktop])
   const upload = async event => {
     const epoch = ++imageEpoch.current
@@ -182,10 +182,9 @@ export default function App() {
         <AvatarHero avatar={avatar} personaId={config?.persona || '—'} rendererId={config?.renderer?.id} referenceImage={!image || image === DEFAULT_IMAGE ? defaultPreview : image} />
         {notice && <p className="notice" role="status">{notice}</p>}
         {vidu && <aside className="renderer-settings">
-          <p role="status">Vidu 延迟展示预览。打断按原始音频时间线处理，已上传的数字人内容会继续展示，不硬切。
-            连接即启动持续直播，待机也可能产生 Vidu/ARTC 费用；结束后挂断。</p>
-          <label><input type="checkbox" checked={avatar.sourceAudible} disabled={avatar.state !== 'connected'}
-            onChange={avatar.toggleSourceAudio} />原声对照（隐藏数字人并播放原始音频）</label>
+          <p role="status">Vidu 实验接入：播放原生音视频，但不支持准确的逐回复播放回执，暂不适用于可靠任务播报。
+            打断立即停播并关闭旧直播，下一条回复会重新建立直播，可能增加延迟和费用。
+            连接及待机也可能产生 Vidu/ARTC 费用；结束后挂断。</p>
           {config.renderer?.enabled === false && <p>{config.renderer.reason}</p>}
           <label>角色图片 HTTPS URL<input disabled={avatar.state !== 'idle' && avatar.state !== 'error'} value={image.startsWith('data:') ? '' : image}
             onChange={event => { imageEpoch.current++; setImage(event.target.value); setImageError(null) }} placeholder={DEFAULT_IMAGE} /></label>

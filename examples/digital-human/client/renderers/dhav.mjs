@@ -69,8 +69,16 @@ export function createDhavRenderer({ player, sendRenderer,
         }
         const record = decodeDhavRecord(value)
         const { header } = record
+        if (header.turn.avatarSessionId !== avatarSessionId) return
+        // Idle animation belongs to no reply: paint it without an active turn and
+        // keep it off the receipt-bearing timeline. Optional, so a renderer whose
+        // player owns a continuous RTC track can simply not implement it.
+        if (record.kind === RecordKind.PAIRED_AV && header.idle) {
+          player.paintIdle?.({ ...header.video, data: record.video })
+          return
+        }
         const state = active
-        if (!state || header.turn.avatarSessionId !== avatarSessionId || !current(header.turn) || state.ended) return
+        if (!state || !current(header.turn) || state.ended) return
         if (record.kind === RecordKind.MEDIA_END) {
           if (header.lastSequence !== state.sequence - 1 || header.reason !== 'finished') throw new Error(`Renderer ended unexpectedly: ${header.reason}`)
           state.ended = true
@@ -85,10 +93,10 @@ export function createDhavRenderer({ player, sendRenderer,
         state.sequence += 1
         state.sampleOffset += header.samples - header.paddingSamples
         watch(state)
-        // Standby frames and synthetic padding never acknowledge assistant
+        // Synthetic padding and silent frames never acknowledge assistant
         // playback. Trim terminal padding instead of treating it as speech.
         const actualSamples = header.samples - header.paddingSamples
-        if (!header.idle && !header.silence && actualSamples > 0) {
+        if (!header.silence && actualSamples > 0) {
           player.append(state.key, { audio: record.audio.subarray(0, actualSamples * 2), sampleRate: header.format.sampleRate,
             video: { ...header.video, data: record.video }, receiptEligible: true })
         }

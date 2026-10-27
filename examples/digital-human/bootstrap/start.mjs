@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { startExampleServer } from '../server/server.mjs'
+import { readViduOptions } from '../server/renderers/vidu.mjs'
 
 export async function main(argv = process.argv.slice(2)) {
   if (argv.includes('--help')) {
@@ -25,7 +26,8 @@ export async function main(argv = process.argv.slice(2)) {
       gatewayUrl: process.env.DH_GATEWAY_URL || 'ws://127.0.0.1:18888/api/realtime',
       gatewayToken: process.env.DH_GATEWAY_TOKEN,
       rendererId, rendererUrl, rendererToken: process.env.DH_RENDERER_TOKEN,
-      persona: process.env.DH_PERSONA || 'mock-default',
+      persona: process.env.DH_PERSONA || (rendererId === 'vidu' ? 'vidu-default' : 'mock-default'),
+      providerOptions: rendererId === 'vidu' ? readViduOptions() : undefined,
     })
   } catch (error) { await mock?.close(); throw error }
   console.log(`Digital-human client: ${server.origin}\nRenderer adapter: ${rendererId}${mock ? ' (synthetic mock)' : ''}\nClick Connect to enable audio. Ctrl-C stops only this example, not your Gateway.`)

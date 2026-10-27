@@ -4,18 +4,21 @@ import './avatar-hero.css'
 
 // DHAV paints paired I420 frames into the canvas. The video surface is reserved
 // for renderer adapters that own an RTC media track; neither changes Gateway.
-export default function AvatarHero({ avatar, personaId }) {
+export default function AvatarHero({ avatar, personaId, rendererId = 'dhav', referenceImage }) {
   const {
     state, playback, avatarState, error,
     canvasRef, videoRef, frameCount, send, clearError,
   } = avatar
 
   const [draft, setDraft] = useState('')
+  const [failedImage, setFailedImage] = useState(null)
   const visual = avatarVisualState(avatar)
   const dot = avatarStatusDot(visual)
 
   const ready = state === 'connected'
   const showVideo = frameCount > 0 && visual !== 'audio_only'
+    && (rendererId !== 'vidu' || (videoRef.current?.srcObject && !videoRef.current.paused && videoRef.current.readyState >= 2))
+  const showReference = rendererId === 'vidu' && referenceImage && failedImage !== referenceImage && !showVideo
 
   const submit = event => {
     event.preventDefault()
@@ -39,16 +42,22 @@ export default function AvatarHero({ avatar, personaId }) {
           ref={canvasRef}
           className="avatar-video"
           data-testid="avatar-canvas"
-          data-active={showVideo ? 'true' : 'false'}
+          data-active={showVideo && rendererId === 'dhav' ? 'true' : 'false'}
           aria-label="数字人画面"
         />
+        {rendererId === 'vidu' && referenceImage && failedImage !== referenceImage && (
+          <img className="avatar-reference" data-testid="avatar-reference" src={referenceImage}
+            alt="数字人参考图片" data-active={showReference ? 'true' : 'false'}
+            onError={() => setFailedImage(referenceImage)} />
+        )}
         <video
           ref={videoRef}
           className="avatar-rtc-video"
           data-testid="avatar-video"
+          data-active={showVideo && rendererId === 'vidu' ? 'true' : 'false'}
           playsInline
         />
-        {!showVideo && (
+        {!showVideo && !showReference && (
           <div className="avatar-placeholder">
             <span className={`orb ${dot}`} />
             <p>

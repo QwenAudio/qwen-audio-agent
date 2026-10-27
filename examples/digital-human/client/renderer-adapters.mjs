@@ -1,11 +1,13 @@
 import { AvatarPlaybackController } from './avatar-playback.mjs'
 import { createBrowserAvatarPlayer } from './browser-avatar-player.mjs'
 import { createDhavRenderer } from './renderers/dhav.mjs'
+import { viduAdapter } from './renderers/vidu.mjs'
 
 // Example-local adapters only: adding a commercial RTC renderer does not add a
 // digital-human hook or protocol to the audio-agent core. Its own createPlayer
-// can use <video>; createController injects its real playback lifecycle.
+// can use <video>; createController defines delivery or a presentation-only mirror.
 const adapters = new Map([
+  ['vidu', viduAdapter],
   ['dhav', {
     createPlayer: options => createBrowserAvatarPlayer(options),
     createController: ({ player, sendRenderer, ...options }) => new AvatarPlaybackController({

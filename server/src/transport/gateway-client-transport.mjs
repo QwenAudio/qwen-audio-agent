@@ -449,6 +449,7 @@ export function attachGatewayClientTransport(server, {
       sessionRuntime.handleClientEvent(event, {
         descriptor,
         capabilities: clientProtocol.capabilities,
+        capabilitiesNegotiated: clientProtocol.mode === 'v6',
       })
     })
 

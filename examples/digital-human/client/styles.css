@@ -183,3 +183,41 @@ article .interrupted {
   header button { padding: 7px 10px; font-size: 12px; }
   .workspace { height: calc(100dvh - 108px); padding-top: 24px; }
 }
+
+.renderer-settings { padding: 12px; border: 1px solid #ffffff24; border-radius: 12px; font-size: 13px; }
+.renderer-settings label { display: block; margin: 8px 0; }
+.renderer-settings input { display: block; width: 100%; }
+.desktop-toolbar { display: flex; gap: 6px; align-items: center; }
+.desktop-drag { flex: 1; min-height: 30px; cursor: grab; touch-action: none; user-select: none; }
+.desktop-drag.dragging { cursor: grabbing; }
+.app-vidu, .app-desktop { display: flex; flex-direction: column; }
+.app-vidu > header, .app-desktop > header, .desktop-toolbar { flex: 0 0 auto; }
+.app-vidu > .workspace, .app-desktop > .workspace { flex: 1; height: auto; overflow-y: auto; }
+.app-vidu .renderer-settings { flex: 0 0 auto; }
+@media (max-width: 480px) {
+  .app { padding: 10px; }
+  .app > header { flex-wrap: wrap; gap: 8px; height: auto; padding: 8px; }
+  .workspace { padding: 4px; }
+  .avatar-viewport { width: min(300px, 80vw); }
+  .messages { max-height: 160px; }
+}
+
+/* Desktop controls overlay the full portrait stage. */
+.app-overlay { position: relative; padding: 0; }
+.app-overlay > .workspace { position: absolute; inset: 0; width: 100%; margin: 0; padding: 0; overflow: hidden; }
+.app-overlay .hero.avatar-hero { position: absolute; inset: 0; display: block; }
+.app-overlay .avatar-viewport { width: 100%; height: 100%; max-height: none; aspect-ratio: auto; border: 0; border-radius: 0; box-shadow: none; }
+.app-overlay .avatar-tagline, .app-overlay .brand { display: none; }
+.app-overlay .desktop-toolbar { position: absolute; inset: 0 0 auto; z-index: 5; padding: 8px; background: linear-gradient(#08090ddd, transparent); }
+.app-overlay .desktop-toolbar button { border: 1px solid #ffffff30; background: #0c0d14d9; color: #eee; border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+.app-overlay .desktop-drag { font-size: 11px; display: flex; align-items: center; }
+.app-overlay > header { position: absolute; inset: auto 0 0; z-index: 4; height: auto; min-height: 0; display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; border: 0; background: #0c0d14d9; }
+.app-overlay .status { width: 100%; margin: 0 0 4px; }
+.app-overlay header button { padding: 7px 9px; font-size: 12px; }
+.app-overlay .renderer-settings { display: none; position: absolute; inset: 48px 10px auto; z-index: 3; max-height: calc(100% - 160px); overflow: auto; background: #0c0d14f5; }
+.app-overlay.settings-open .renderer-settings { display: block; }
+.app-overlay .messages { display: none; position: absolute; inset: 48px 10px 166px; z-index: 2; margin: 0; background: #0c0d14e8; border-radius: 12px; }
+.app-overlay .avatar-composer { display: none; position: absolute; bottom: 116px; left: 10px; right: 10px; z-index: 3; width: auto; }
+.app-overlay.conversation-open .messages { display: flex; max-height: none; }
+.app-overlay.conversation-open .avatar-composer { display: flex; }
+.app-overlay .avatar-error, .app-overlay .notice { position: absolute; bottom: 116px; left: 10px; right: 10px; width: auto; max-width: none; z-index: 4; margin: 0; background: #471e31f5; }

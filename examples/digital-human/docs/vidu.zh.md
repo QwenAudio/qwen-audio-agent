@@ -6,7 +6,7 @@ Vidu 适配器接收 Gateway 已生成的助手 PCM，并通过原生 ARTC 返�
 
 **这是默认关闭、需显式启用的商业服务接入示例。本版尚未完成真实 Vidu 验收；不适合依赖自动播报确认的生产流程。** 自部署服务可选择默认 DHAV，其真实播放回执不变。
 
-**Gateway 版本要求：**须包含本次通用无回执降级。对应版本发布前，按[总览的源码步骤](../README_ZH.md#1-启动标准-gateway)使用本分支启动 Gateway；旧已发布版本可能卡在等待回执的字幕/调度路径。只更新 example 或客户端 SDK 不够。
+**Gateway 版本要求：**须包含通用无回执降级（`761672f` 及之后版本）。对应版本发布前，按[总览的源码步骤](../README_ZH.md#快速开始)使用最新 `main` 启动 Gateway；旧已发布版本可能卡在等待回执的字幕/调度路径。只更新 example 或客户端 SDK 不够。
 
 ## 回执边界
 
@@ -74,4 +74,4 @@ npm start
 - 创建请求超时且未获得 live ID 时，不能保证远端未创建直播，需核查平台会话与账单。
 - `.env.local` 与 `.desktop/` 已忽略；删除本地文件不等于删除供应商保留的数据。
 
-本次自动化与真实服务验证状态见[验证记录](presentation-validation.zh.md)，部署检查见[验收清单](implementation-plan.zh.md)。[旧版视频](../assets/digital_human_demo_vidu.mp4)只展示历史外观与交互，不证明当前实现已验收；旧对齐实验也不作为本次证据。
+本次自动化与真实服务验证状态见[验证记录](presentation-validation.zh.md)，部署检查见[验收清单](implementation-plan.zh.md)。[旧版视频](https://github.com/user-attachments/assets/dc9296b5-dfbe-4243-a2c6-3bf49237d71b)只展示历史外观与交互，不证明当前实现已验收；旧对齐实验也不作为本次证据。

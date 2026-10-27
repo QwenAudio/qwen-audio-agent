@@ -6,7 +6,7 @@ The adapter forwards assistant PCM from Gateway to Vidu and plays returned ARTC 
 
 **This commercial integration is experimental and disabled by default. This revision has not been accepted against the real Vidu service; do not use it for production workflows requiring automatic spoken-delivery confirmation.** Self-hosted DHAV remains the default with actual-playback receipts.
 
-**Gateway revision requirement:** use a Gateway containing the generic receipt-less fallback. Until released, follow the [source-checkout instructions](../README.md#run) on this branch. Older published versions may wait indefinitely for receipts before displaying transcripts or advancing scheduling. Updating only the example or client SDK is insufficient.
+**Gateway revision requirement:** use a Gateway containing the generic receipt-less fallback (`761672f` or later). Until released, follow the [source-checkout instructions](../README.md#quick-start) using the latest `main`. Older published versions may wait indefinitely for receipts before displaying transcripts or advancing scheduling. Updating only the example or client SDK is insufficient.
 
 ## Playback boundary
 
@@ -63,4 +63,4 @@ Before connecting, choose the default image, an HTTPS URL or a PNG/JPEG/WebP upl
 
 ARTC Web SDK is pinned to 7.1.9. Source uploads are bounded to 4.8 MB per reply, pending input is bounded, and a live lasts at most 30 minutes. Failures and expiry release sessions and require reconnection. If creation times out before a live ID is received, check remote session state and billing.
 
-See the [current validation record](presentation-validation.zh.md) and [deployment checklist](implementation-plan.zh.md). The [historical demo](../assets/digital_human_demo_vidu.mp4) and older alignment experiments do not establish acceptance of this revision.
+See the [current validation record](presentation-validation.zh.md) and [deployment checklist](implementation-plan.zh.md). The [historical demo](https://github.com/user-attachments/assets/dc9296b5-dfbe-4243-a2c6-3bf49237d71b) and older alignment experiments do not establish acceptance of this revision.

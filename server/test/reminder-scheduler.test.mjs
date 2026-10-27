@@ -40,6 +40,44 @@ test('reschedule registers a timer for the nearest future scheduled task', () =>
   clearTimeout(scheduler.timer)
 })
 
+test('waits for distant reminders without overflowing or delaying nearer tasks', async t => {
+  const now = Date.parse('2026-01-01T00:00:00.000Z')
+  const maxDelay = 2_147_483_647
+  const distantAt = now + 30 * 86_400_000
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now })
+  const setMockTimeout = globalThis.setTimeout
+  // Node clamps delays above its signed 32-bit limit to 1 ms. Mock timers
+  // accept larger delays, so reproduce that native behavior at the boundary.
+  t.mock.method(globalThis, 'setTimeout', (callback, delay, ...args) => (
+    setMockTimeout(callback, delay > maxDelay ? 1 : delay, ...args)
+  ))
+  const manager = new TaskManager()
+  const scheduler = new ReminderScheduler({ taskManager: manager })
+  t.after(() => scheduler.close())
+  const fire = t.mock.method(scheduler, 'fire')
+  const runner = t.mock.fn(async objective => ({ content: objective }))
+  const distant = createScheduledTask(manager, { at: distantAt, runner })
+
+  t.mock.timers.tick(1)
+  assert.equal(fire.mock.callCount(), 0, 'must not poll after an overflowing delay')
+  t.mock.timers.tick(maxDelay - 1)
+  assert.equal(fire.mock.callCount(), 1, 'rechecks at the native timer limit')
+  assert.equal(manager.get(distant.id).status, 'scheduled')
+  assert.equal(runner.mock.callCount(), 0)
+
+  const nearer = createScheduledTask(manager, { at: Date.now() + 60_000, runner })
+  t.mock.timers.tick(60_000)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(manager.get(nearer.id).status, 'completed')
+  assert.equal(manager.get(distant.id).status, 'scheduled')
+
+  t.mock.timers.tick(distantAt - Date.now())
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(manager.get(distant.id).status, 'completed')
+  assert.equal(runner.mock.callCount(), 2)
+  assert.equal(scheduler.timer, null)
+})
+
 test('fire transitions all due scheduled tasks to queued and re-arms', async () => {
   const manager = new TaskManager()
   const events = []

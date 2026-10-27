@@ -9,3 +9,4 @@ renderer/.venv/
 renderer/.upstream/
 __pycache__/
 *.pyc
+.desktop/

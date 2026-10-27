@@ -34,7 +34,7 @@ export async function startExampleServer({
     const url = new URL(request.url, origin)
     if (url.pathname === '/api/config') {
       response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
-      response.end(JSON.stringify({ persona, renderer: { id: rendererId }, gatewayPath: '/gateway', rendererPath: '/avatar' }))
+      response.end(JSON.stringify({ persona, renderer: { id: rendererId, ...adapter.config?.({ providerOptions }) }, gatewayPath: '/gateway', rendererPath: '/avatar' }))
       return
     }
     try {
@@ -45,7 +45,7 @@ export async function startExampleServer({
       response.end(body)
     } catch { response.writeHead(404).end('Not found; run npm run build:client first.') }
   })
-  const wss = new WebSocketServer({ noServer: true, maxPayload: LIMIT })
+  const wss = new WebSocketServer({ noServer: true, maxPayload: adapter.maxMessageBytes || LIMIT })
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url, origin)
     // A loopback credential relay must reject hostile web pages / DNS rebinding.

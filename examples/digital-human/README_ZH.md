@@ -4,40 +4,53 @@
 
 一个普通语音 Agent 客户端，同时连接 **qwen-audio-agent Gateway** 和**可替换的数字人服务**。Gateway 负责理解、对话和工具；数字人服务只消费助手回复音频，负责呈现人物与声音，不再运行一套 ASR / LLM / TTS。
 
-本示例不修改框架运行时、SDK、GCP 或框架依赖，也不依赖 qwen-audio-agent-rtc。可以在仓库中运行，也可以复制本目录后使用官方 npm 包的公开 Client SDK，连接普通 Gateway。
+提供两种接入方式：
+
+| 接入方式 | 配置 | 播放能力 |
+| --- | --- | --- |
+| 自部署 DHAV / FlashHead | 默认 `DH_RENDERER_ADAPTER=dhav`；渲染地址留空使用无 GPU 的 Mock | 真实起播、排空与取消回执 |
+| 商业 Vidu / ARTC | `DH_RENDERER_ADAPTER=vidu`，显式启用 `VIDU_EXPERIMENTAL=1` | 原生音画与打断；不支持逐回复播放回执 |
+
+厂商实现在示例内。Gateway 只增加“客户端明确不支持 `playback.receipts`”时的通用降级，不加入供应商实现、新公开协议或厂商 SDK 依赖；也不依赖 qwen-audio-agent-rtc。
+
+**Vidu 必须连接包含这项降级的 Gateway。对应版本发布前，请使用本分支源码启动；旧已发布版本可能出现字幕或调度等待回执而卡住。** 仅复制本例或更新客户端 SDK 不会升级 Gateway。
 
 ## 演示
 
-下面是原始 DHAV / FlashHead 实现的演示素材；本次客户端重构仍需使用真实 GPU 服务重新部署验收。
+下面是原始 DHAV / FlashHead 演示，保留在线播放链接及[本地素材](assets/digital-human-demo.mp4)。
 
 https://github.com/user-attachments/assets/5301ef5e-b674-4561-93bb-e0c7544cf696
+
+[Vidu 旧版浮窗演示](assets/digital_human_demo_vidu.mp4)展示外观与交互，不代表当前改造已经完成真实服务验收。
 
 ## 连接方式
 
 | 连接 | 数据 | 职责 |
 | --- | --- | --- |
-| 浏览器 ↔ Gateway | 标准 GCP：麦克风、文本、助手 PCM、响应事件、播放回执 | 对话与任务 |
+| 浏览器 ↔ Gateway | 标准 GCP：麦克风、文本、助手 PCM、响应事件；有能力时提供播放回执 | 对话与任务 |
 | 浏览器 ↔ 数字人适配器 | 助手 PCM、渲染控制、媒体或短期 RTC 凭据 | 数字人呈现 |
 
 示例本地服务代理第一条连接，并保护第二条连接的厂商密钥。它不是另一个 Gateway，不改变 GCP 消息，也不保存另一份对话历史。
 
 - **已提供**：DHAV 适配器、本地无 GPU 的合成画面 Mock、连接自部署 DHAV 服务的配置。
-- **扩展位置已提供**：商业服务适配器可以直接播放厂商 RTC 媒体，无须转换为 DHAV；当前版本未包含 Vidu 商业适配器，也未执行付费服务验证。
+- **Vidu 实验适配器**：保留原生 ARTC 音画，支持本地打断与旧会话隔离；不协商或发送播放回执。Gateway 降级支持普通对话和生成字幕，不领取自动后台结果播报；默认关闭。见 [Vidu 配置及限制](docs/vidu.zh.md)。
 - **当前音频范围**：PCM16 little-endian、24 kHz、单声道。其他采样率会明确拒绝本轮，不隐式按错误速率播放。
 
 ## 快速开始
 
 ### 1. 启动标准 Gateway
 
-使用已安装框架的常规配置启动 Gateway，例如：
+使用配套源码启动 Gateway，保留用户的常规模型配置。在仓库根目录执行：
 
 ```bash
-qwenaudio gateway --backend none
+npm ci
+npm run build
+npm start -- --backend none
 ```
 
 模型密钥、Realtime 服务、后台 Agent 都在 Gateway 配置；不放入本例。后台可按需要启用。本示例不会启动、修改或关闭用户已有 Gateway。
 
-无需数字人专用 Gateway 分支或协议补丁。
+确认选定端口没有被旧 Gateway 占用。DHAV 可以沿用其兼容版本；Vidu 在上述通用降级发布前需要本分支源码，不应直接连接缺少该能力的旧安装版。
 
 ### 2. 安装并启动客户端
 
@@ -51,7 +64,7 @@ npm run build:client
 npm start
 ```
 
-如果单独复制了本目录，在构建前额外安装公开 SDK 所在的官方包：
+如果单独复制了本目录，在构建前额外安装公开 SDK 所在的官方包；Gateway 进程仍须满足前述版本要求：
 
 ```bash
 npm install qwen-audio-agent
@@ -88,24 +101,42 @@ DHAV 服务需提供：
 服务适配分为两个位置，均在本示例内：
 
 1. `server/renderers/`：厂商鉴权、创建 / 关闭服务会话、音频转交、短期媒体凭据。
-2. `client/renderers/`：接收媒体、调用厂商播放器、上报真实播放开始 / 排空 / 错误。
+2. `client/renderers/`：接收媒体、调用厂商播放器；DHAV 回报实际播放，Vidu 独立展示。
 
 在服务端和浏览器注册同名适配器，通过 `DH_RENDERER_ADAPTER` 选择。配置只能选择已注册实现，不能从浏览器传入任意 URL 或加载任意模块。
 
-自部署 DHAV 用 WebAudio + canvas 播放 PCM / I420；#570 的 Vidu / ARTC 路径可将其商业组件控制和 RTC 播放迁入这两个位置。**不用改 Gateway，也不用把 RTC 媒体再转成 DHAV。** 具体接口和迁移对照见 [适配器契约](docs/provider-contract.zh.md)。
+自部署 DHAV 用 WebAudio + canvas 播放 PCM / I420；Vidu 已在这两个位置注册，复用 `useDualConnection`。DHAV 的 `AvatarPlaybackController` 与真实播放回执不变，Vidu 的原生 RTC 播放留在适配器内。**无需供应商专用 Gateway 逻辑，也不用把 RTC 媒体再转成 DHAV。** 具体接口和能力限制见 [适配器契约](docs/provider-contract.zh.md)。
+
+## Vidu 与桌面浮窗
+
+同一 `.env.local` 设置 `DH_RENDERER_ADAPTER=vidu` 及 Vidu/ARTC 凭证；只有显式设置 `VIDU_EXPERIMENTAL=1` 才允许预览，步骤见 [Vidu 指南](docs/vidu.zh.md)。共用 `npm run build:client`、`npm start` 和同一浏览器页面。live 待机期间也可能计费；打断会关闭旧 live/RTC channel，下一条有效回复才创建新的连接，因此会增加重连延迟，也可能增加供应商会话费用。点击“结束”释放当前会话。
+
+可选浮窗只打开已运行的同一页面，安装 Electron 后在另一终端执行：
+
+```bash
+npm install --no-save --package-lock=false electron@43.8.1
+npm run desktop
+```
+
+浮窗共用页面的对话、图片上传和播放控制，可拖动顶部，默认不置顶，顶部“置顶 / 取消置顶”可随时切换；关闭浮窗不会关闭 Gateway 或示例服务。Shell 环境变量 `DH_DESKTOP_URL` 可设置其他本机 HTTP 地址。原悬浮球仍是独立 UI 选项；一次仅用一套 UI 采集麦克风。
+
+要启用“切换悬浮球”按钮，可在启动浮窗的 Shell 设置 `DH_ORB_LAUNCH` 为本机操作者提供的 JSON argv 数组，如 `["npm","run","desktop","--prefix","/path/to/source-checkout"]`；不设时不执行外部启动命令。页面不能指定命令，启动不经过 Shell。
 
 ## 播放与打断
 
-- 收到第一块真实助手音频才创建渲染轮次；纯文本和工具调用不会产生假播放。
-- 使用现有 `audio.delta`、`audio.done` 和全量 `playback.clear`；`audio.done` 仅结束渲染输入，必须等数字人媒体和浏览器播放队列排空才发 `playback.ended`。
-- 播放回执由真实可听播放驱动，不使用静音音轨或定时器模拟已播放。
-- 用户打断、新会话、连接关闭会清理队列，隔离旧 response / generation 的迟到媒体。
-- 首次播放前渲染失败可回退原音频一次；已经开始数字人播放后失败，取消本轮而不是从头重播。
-- 麦克风静音只停止收音，不停止助手输出；队列与网络缓冲均有上限。
+- DHAV：`audio.done` 只结束渲染输入；实际媒体开始、排空和取消产生回执。首次起播前失败可回退原声一次，开始后不会从头重播。
+- Vidu：返回音视频使用同一原生媒体元素播放；不再创建静音源播放器或原声对照模式，不做波形匹配或完成时间估算。
+- Vidu 不协商 `playback.receipts`，不发送 `playback.started/ended/cancelled`。Gateway 展示生成字幕、记录普通对话，在生成完成时释放生成侧调度，但不标记实际播放完成。
+- 自动后台结果通知不领取，保持 pending；框架的任务记录、查询及控制能力保留，可通过语音或文字主动询问状态。本例没有完整任务卡片或权限管理 UI，也不能把文字或音频生成完成当作用户已听完。
+- 用户打断时，本地立即静音、暂停并解绑旧 RTC 媒体；适配器发送远端 interrupt 并挂断旧 live，不等待远端确认才停播。
+- 下一条有效回复使用新 epoch、live 和 RTC channel，旧回调和迟到媒体不能进入新播放。数字人故障会明确报错并停止收音，需重连；不自动重播音频。
+- 麦克风静音只影响采集；结束和新会话会释放数字人资源。输入与排队有界。
 
-普通 Gateway WebSocket 输出不提供精确的模型执行终态，`audio.done` 不能证明模型成功。通用 `error` 只用于提示，不从错误文案猜测某条回复失败或取消。本例不要求响应终态或定向清理扩展。
+普通 `audio.done` 不证明模型执行成功，通用错误也不用于猜测模型终态。本例不提供听到位置反馈或模型上下文截断。
 
 ## 安全与范围
+
+Vidu 是默认关闭的可选实验接入，不适合依赖自动播报确认的生产流程。本版尚未完成真实 Vidu 验收；通用无回执降级不代表供应商播放边界已经补齐。详见[PR 说明](docs/pr-description.zh.md)与[音频流程](docs/audio-processing-flow.zh.md)。
 
 本例默认仅监听回环地址，并校验 Host / WebSocket Origin。Gateway 访问令牌和厂商长期密钥只保留在本地 Node 进程；商业 RTC 必需的短期播放凭据可由适配器下发浏览器。不要把长期密钥放进 Vite 环境变量或前端代码。
 
@@ -118,9 +149,14 @@ npm test
 npm run build:client
 npx playwright install chromium
 npm run test:browser
+npm run test:browser:vidu
 ```
 
 测试覆盖协议编解码、Mock / 真实本地 WebSocket、取消隔离、两轮独立时间线、播放回执、安全边界及不同媒体适配器。浏览器测试不使用真实模型或付费 API。
+
+Vidu 浏览器测试使用假厂商 SDK 和本地 MediaStream，检查不发送播放回执、原生媒体播放、
+本地打断、旧媒体隔离、故障和重连。CI 同时运行 DHAV 与 Vidu 浏览器测试；结果见[验证记录](docs/presentation-validation.zh.md)。
+这些测试不能替代商业 RTC 网络、实际音画同步与长时间稳定性的真实验收。
 
 真实服务验收清单见 [部署验证](docs/implementation-plan.zh.md)。自动化通过不等于已完成 FlashHead / 商业服务的部署验收。
 

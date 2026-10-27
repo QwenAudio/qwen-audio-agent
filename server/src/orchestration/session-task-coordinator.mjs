@@ -149,7 +149,11 @@ export class SessionTaskCoordinator {
   // Reconnect/wake must not replay another conversation's results. A trusted
   // host can explicitly opt in when it knows both sessions share a recipient.
   claimPendingNotifications(taskIds, { includeOtherSessions = false } = {}) {
-    if (!this.canDeliver()) return
+    // Clients without delivery confirmation still observe/query Tasks, but
+    // must not hold a notification lease or retry an unconfirmable delivery.
+    // Leave it pending for a capable client; omitted capability keeps existing
+    // presentation implementations compatible.
+    if (!this.canDeliver() || this.presentation.state().notificationDeliverySupported === false) return
     const claimed = this.taskManager.claimNotifications({
       ownerId: this.ownerId,
       sessionId: this.sessionId,
@@ -168,6 +172,7 @@ export class SessionTaskCoordinator {
     if (this.closed || event.ownerId !== this.ownerId) return
     const task = event.task
     if (event.type === TaskDomainEvent.NOTIFICATION_PENDING) {
+      if (this.presentation.state().notificationDeliverySupported === false) return
       if (this.presentation.state().sleeping) {
         this.onWake()
       } else if (task.sessionId === this.sessionId) {

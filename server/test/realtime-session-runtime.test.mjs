@@ -99,10 +99,11 @@ function harness(t, {
     ...overrides,
   })
   const send = (event, options) => runtime.handleClientEvent(event, options)
-  const connect = async (options = {}) => {
+  const connect = async (options = {}, protocol = {}) => {
     runtime.start()
     send({ type: Input.CONNECT, inputEnabled: true, outputEnabled: true, ...options }, {
       descriptor: { type: 'test', instanceId: 'instance' }, capabilities: [],
+      ...protocol,
     })
     await until(() => runtime.status().state === 'connected')
     return frontends.at(-1)
@@ -115,6 +116,47 @@ function harness(t, {
   return { runtime, send, connect, request, manager, operations, events, frontends, runs, tasks, observations,
     done, memoryListeners, provider, conversationSync, ownerId, sessionId }
 }
+
+test('negotiated receipt-less audio keeps result notifications pending while tasks and conversation work', async t => {
+  const h = harness(t)
+  const f = await h.connect({}, { capabilitiesNegotiated: true, capabilities: ['input.audio', 'input.text'] })
+  h.send({ type: Input.TEXT_MESSAGE, text: 'hello' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'r' } })
+  f.emit({ type: 'response.audio.delta', response_id: 'r', delta: 'AAA=' })
+  f.emit({ type: 'response.audio_transcript.done', response_id: 'r', transcript: 'hello there' })
+  f.emit({ type: 'response.done', response: { id: 'r', status: 'completed' } })
+  assert.equal(h.events.find(e => e.type === 'transcript.final' && e.role === 'assistant').content, 'hello there')
+  const task = h.request('background work')
+  await until(() => h.runs.has(task.id))
+  h.runs.get(task.id).resolve({ content: 'completed work' })
+  await h.manager.wait(task.id)
+  await tick()
+  assert.equal(h.manager.get(task.id).status, 'completed')
+  assert.equal(h.manager.get(task.id).notificationStatus, 'pending')
+  assert.equal(f.deliveries.some(d => d.origin === 'announcement'), false)
+  assert.ok(h.tasks.some(e => e.task?.id === task.id))
+  assert.ok(h.conversationSync.frontendContext({ ownerId: h.ownerId, sessionId: h.sessionId })
+    .some(message => message.content === 'hello there'))
+})
+
+test('negotiated text-only clients still receive and confirm task notifications without audio receipts', async t => {
+  const h = harness(t)
+  const f = await h.connect({ textOnly: true, inputEnabled: false }, {
+    capabilitiesNegotiated: true, capabilities: ['input.text'],
+  })
+  const task = h.request('text-only work')
+  await until(() => h.runs.has(task.id))
+  h.runs.get(task.id).resolve({ content: 'text result' })
+  await h.manager.wait(task.id)
+  await until(() => f.deliveries.some(d => d.origin === 'announcement'))
+  const delivery = f.deliveries.find(d => d.origin === 'announcement')
+  f.emit({ type: 'response.created', response: { id: 'text-result' },
+    __voiceOrigin: delivery.origin, __voiceContext: delivery.context })
+  f.emit({ type: 'response.text.done', response_id: 'text-result', text: 'text result' })
+  f.emit({ type: 'response.done', response: { id: 'text-result', status: 'completed' } })
+  assert.equal(h.manager.get(task.id).notificationStatus, 'delivered')
+})
 
 test('invalid speech releases a completed task without another user turn', async t => {
   const h = harness(t)

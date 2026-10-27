@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { RealtimePresentationRuntime } from '../src/voice/realtime-presentation-runtime.mjs'
 import { RealtimeTurnState } from '../src/voice/realtime-turn-state.mjs'
+import { AnnouncementWindow } from '../src/voice/announcement/announcement-window.mjs'
 
 function harness({
   nonVoiceClient = false,
@@ -9,6 +10,9 @@ function harness({
   terminalToolResponses = [],
   resultSummaryResponses = [],
   perResponseInstructions = false,
+  playbackReceipts = true,
+  announcementWindow = null,
+  responseContextCleanupMs = 60_000,
 } = {}) {
   const events = []
   const records = []
@@ -29,7 +33,7 @@ function harness({
     sessionId: 'session-1',
     turns,
     conversationSync: { record: value => records.push(value) },
-    announcementWindow: {
+    announcementWindow: announcementWindow || {
       queueAudio: (...args) => calls.push(['queueAudio', ...args]),
       startPlayback: (...args) => calls.push(['startPlayback', ...args]),
       finishPlayback: (...args) => calls.push(['finishPlayback', ...args]),
@@ -55,13 +59,14 @@ function harness({
     getFrontend: () => frontend,
     getOutputEnabled: () => true,
     getNonVoiceClient: () => nonVoiceClient,
+    getPlaybackReceipts: () => playbackReceipts,
     getResponseTurnCandidate: () => responseTurnCandidate,
     clearResponseCandidate: () => {
       responseTurnCandidate = null
       calls.push(['clearResponseCandidate'])
     },
     announcementQuietMs: 60_000,
-    responseContextCleanupMs: 60_000,
+    responseContextCleanupMs,
     turnCitations,
   })
   return {
@@ -74,6 +79,82 @@ function harness({
       responseTurnCandidate = value
     },
   }
+}
+
+for (const transcriptFirst of [true, false]) {
+  test(`receipt-less audio publishes generated text without claiming playback (transcript first: ${transcriptFirst})`, () => {
+    const window = new AnnouncementWindow()
+    const h = harness({ playbackReceipts: false, announcementWindow: window })
+    h.turns.beginManual('turn-1')
+    window.beginTurn('turn-1')
+    window.endSpeech()
+    deliver(h.runtime, { type: 'response.audio.delta', response_id: 'r', delta: 'AAA=' })
+    deliver(h.runtime, { type: 'response.audio_transcript.delta', response_id: 'r', delta: 'hello' })
+    const context = h.runtime.get('r')
+    assert.equal(context.playbackStarted, false)
+    assert.equal(window.audioResponses.size, 0)
+    assert.equal(window.isBlocked(), true, 'generation still in progress')
+    assert.equal(h.events.find(e => e.type === 'transcript.delta').content, 'hello')
+    const done = () => deliver(h.runtime, { type: 'response.done', response: { id: 'r', status: 'completed' } })
+    const transcript = () => deliver(h.runtime, { type: 'response.audio_transcript.done', response_id: 'r', transcript: 'hello' })
+    if (transcriptFirst) { transcript(); done() } else {
+      done()
+      assert.equal(window.isBlocked(), false)
+      assert.equal(h.runtime.has('r'), true, 'keep the correlation for a late final transcript')
+      h.turns.beginManual('turn-2')
+      transcript()
+    }
+    assert.equal(window.isBlocked(), false)
+    assert.equal(h.runtime.has('r'), false)
+    assert.equal(h.runtime.playbackTurns.size, 0)
+    assert.equal(context.playbackEnded, false)
+    assert.equal(h.records.length, 1)
+    assert.equal(h.records[0].turnId, 'turn-1')
+    assert.equal(h.events.findLast(e => e.type === 'voice.state').state, 'idle')
+    assert.equal(h.events.some(e => e.state === 'speaking'), false)
+    assert.equal(h.calls.some(([name]) => name === 'confirmMany'), false)
+  })
+}
+
+test('receipt-less generation bounds context retention when the final transcript is absent', async () => {
+  const h = harness({ playbackReceipts: false, responseContextCleanupMs: 20 })
+  deliver(h.runtime, { type: 'response.audio.delta', response_id: 'r', delta: 'AAA=' })
+  deliver(h.runtime, { type: 'response.done', response: { id: 'r', status: 'completed' } })
+  deliver(h.runtime, { type: 'response.audio_transcript.delta', response_id: 'r', delta: 'late partial' })
+  await new Promise(resolve => setTimeout(resolve, 50))
+  assert.equal(h.runtime.has('r'), false)
+  assert.equal(h.runtime.playbackTurns.size, 0)
+})
+
+test('receipt-less tool continuation waits for its result but never for audio playback', () => {
+  const window = new AnnouncementWindow()
+  const h = harness({ playbackReceipts: false, announcementWindow: window, resultSummaryResponses: ['r'] })
+  h.turns.beginManual('turn-1')
+  window.beginTurn('turn-1'); window.endSpeech()
+  deliver(h.runtime, { type: 'response.audio.delta', response_id: 'r', delta: 'AAA=' })
+  h.runtime.markFunctionCall('r')
+  deliver(h.runtime, { type: 'response.done', response: { id: 'r', status: 'completed' } })
+  assert.equal(window.isBlocked(), true)
+  assert.equal(h.events.findLast(e => e.type === 'voice.state').state, 'processing')
+  h.runtime.failToolResponse({ responseId: 'r', turnId: 'turn-1' })
+  assert.equal(window.isBlocked(), false)
+  assert.equal(h.events.findLast(e => e.type === 'voice.state').state, 'idle')
+})
+
+for (const mode of ['clear', 'failed', 'cancelled', 'error']) {
+  test(`receipt-less ${mode} suppresses late audio and transcripts`, () => {
+    const h = harness({ playbackReceipts: false })
+    deliver(h.runtime, { type: 'response.audio.delta', response_id: 'r', delta: 'AAA=' })
+    if (mode === 'clear') h.runtime.clearPlayback({ reason: 'user_interruption' })
+    if (mode === 'error') h.runtime.failResponse({ type: 'error', response_id: 'r' })
+    else deliver(h.runtime, { type: 'response.done', response: { id: 'r', status: mode === 'clear' ? 'completed' : mode } })
+    const before = h.events.length
+    deliver(h.runtime, { type: 'response.audio.delta', response_id: 'r', delta: 'AAA=' })
+    deliver(h.runtime, { type: 'response.audio_transcript.done', response_id: 'r', transcript: 'do not revive' })
+    assert.equal(h.events.length, before)
+    assert.equal(h.records.length, 0)
+    assert.equal(h.runtime.get('r').suppressed, true)
+  })
 }
 
 test('failed tool follow-up releases processing but still waits for foreground audio', () => {

@@ -55,7 +55,10 @@ function matchesConversationItem(expected, received) {
   if (expected.type === 'function_call_output') return expected.call_id === received.call_id
   if (expected.type !== 'message' || expected.role !== received.role) return false
   // Ignore automatically created microphone/assistant items on the same socket.
-  const text = item => (item.content || []).map(part => part.text || part.transcript || '').join('')
+  // StepFun acknowledges text as audio/transcript; input_audio is microphone input.
+  const text = item => (item.content || []).map(part => (
+    part.text || (part.type === 'input_audio' ? '' : part.transcript) || ''
+  )).join('')
   return text(expected) !== '' && text(expected) === text(received)
 }
 

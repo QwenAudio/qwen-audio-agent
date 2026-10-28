@@ -85,6 +85,7 @@ test('StepFun restoration ignores unrelated receipts before accepting matching t
   const unrelated = [
     { ...original, type: 'function_call' },
     { ...original, role: 'assistant' },
+    { ...original, content: [{ type: 'input_audio', transcript: text }] },
     { ...original, content: [{ type: 'audio', transcript: 'unrelated microphone speech' }] },
     { ...original, content: [{ type: 'audio', transcript: '' }] },
     { ...original, content: [{ type: 'input_text', text: 'different text', transcript: text }] },

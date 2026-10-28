@@ -26,6 +26,9 @@
 以下是 **CLI / 源码** 的要求：Node.js ^22.22.2、^24.15.0 或 >=26.0.0，npm 10+。
 源码仓库提供 `.nvmrc` 和 `.node-version`，使用 nvm 时可运行 `nvm use`。
 
+Windows 使用 Node 24.x 时，请选择 24.16.0 或更新版本；24.15.0 存在
+[已在 24.16.0 修复的 TCP 原生崩溃](https://github.com/nodejs/node/issues/63620)。
+
 安装正式版：
 
 ```bash

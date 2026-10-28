@@ -29,6 +29,9 @@ The following requirements apply to **CLI / source installations**: Node.js ^22.
 or >=26.0.0, and npm 10+. The source repository includes `.nvmrc` and `.node-version`;
 with nvm, run `nvm use`.
 
+On Windows, use Node 24.16.0 or later within the 24.x line: 24.15.0 has a
+[native TCP crash fixed in 24.16.0](https://github.com/nodejs/node/issues/63620).
+
 Install the stable release:
 
 ```bash

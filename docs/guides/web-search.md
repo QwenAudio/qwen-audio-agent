@@ -20,6 +20,21 @@ explicitly; it then reuses `DASHSCOPE_API_KEY`:
 QWEN_AUDIO_WEB_SEARCH_PROVIDER=bailian
 ```
 
+The built-in [Keenable](https://docs.keenable.ai) preset connects to the
+Keenable Web Search MCP (`https://api.keenable.ai/mcp`) without an account or
+key. Keyless use is rate limited per IP; set `KEENABLE_API_KEY` only to raise
+those limits:
+
+```dotenv
+QWEN_AUDIO_WEB_SEARCH_PROVIDER=keenable
+# KEENABLE_API_KEY=your-key
+```
+
+With this preset, search queries go to Keenable, and the returned titles,
+snippets and links enter the voice model's context as sources. It always uses
+this endpoint and the `search_web_pages` tool and does not read the
+`QWEN_AUDIO_WEB_SEARCH_MCP_*` settings below.
+
 The same provider-neutral adapter can connect to another compatible MCP search
 service. Custom endpoints must provide their own credentials explicitly:
 
@@ -30,7 +45,7 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN=your-token
 QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 ```
 
-Choose `so360` (default), `bing`, `bailian`, `mcp`, or `none`. Setting `none` disables search, not page fetching. Disable both search and page fetching with:
+Choose `so360` (default), `bing`, `bailian`, `keenable`, `mcp`, or `none`. Setting `none` disables search, not page fetching. Disable both search and page fetching with:
 
 ```dotenv
 QWEN_AUDIO_WEB_TOOLS_ENABLED=false

@@ -11,7 +11,7 @@ export function createWebSearchProvider(config, options = {}) {
   if (provider === 'so360') {
     return new So360WebSearchProvider(options)
   }
-  if (provider === 'mcp' || provider === 'bailian') {
+  if (provider === 'mcp' || provider === 'bailian' || provider === 'keenable') {
     return new McpWebSearchProvider({
       url: config.webSearchMcpUrl,
       token: config.webSearchMcpToken,
@@ -21,6 +21,15 @@ export function createWebSearchProvider(config, options = {}) {
             key: 'bailian-mcp',
             label: 'Bailian Web Search MCP',
             requiresToken: true,
+          }
+        : {}),
+      ...(provider === 'keenable'
+        ? {
+            key: 'keenable-mcp',
+            label: 'Keenable Web Search MCP',
+            // JSON keeps title, URL and snippet per result; snippets match
+            // the 1200-character citation bound.
+            toolArguments: { output_format: 'json', snippet_max_length: 1200 },
           }
         : {}),
       ...options,

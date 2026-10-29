@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import {
   numberSetting,
   resolveDisabledFrontendTools,
+  resolveGptLive1Timing,
   resolveBackendModels,
   resolveBackendWorkspace,
   resolveOpenCodeCoordinatorAgent,
@@ -57,6 +58,17 @@ test('treats missing and blank numeric settings as unset', () => {
 test('preserves explicit zero numeric settings', () => {
   assert.equal(numberSetting('0', 120, { min: 0, max: 1000 }), 0)
   assert.equal(numberSetting(0, 120, { min: 0, max: 1000 }), 0)
+})
+
+test('reads GPT-Live 1 timing overrides, leaving unset and invalid ones to the adapter', () => {
+  assert.deepEqual(resolveGptLive1Timing({}), {})
+  assert.deepEqual(resolveGptLive1Timing({
+    GPT_LIVE_1_INPUT_IDLE_MS: '2500', GPT_LIVE_1_WORD_GAP_MS: 'soon', GPT_LIVE_1_INPUT_SEGMENT_GAP_MS: ' ',
+  }), { inputIdleMs: 2500 })
+  // Each keeps a floor, so an idle timer still ends a turn, and a ceiling.
+  assert.deepEqual(resolveGptLive1Timing({
+    GPT_LIVE_1_OUTPUT_IDLE_MS: '0', GPT_LIVE_1_WORD_GAP_MS: '60000',
+  }), { outputIdleMs: 100, wordGapMs: 10000 })
 })
 
 test('keeps optional frontend tools enabled unless explicitly disabled', () => {

@@ -53,6 +53,29 @@ export function acceptsVoiceState(event, currentTurnId) {
   return acceptsGatewayVoiceState(event, currentTurnId)
 }
 
+// The user speaking stops playback, unless the frontend's model finishes the speech it already generated.
+export function stopsPlaybackOnVoiceState(event, currentTurnId, interruptionPlaysOut = false) {
+  return event?.type === GatewayServerEvent.VOICE_STATE
+    && acceptsVoiceState(event, currentTurnId)
+    && event.state === 'listening'
+    && !interruptionPlaysOut
+}
+
+// A remote Gateway, or a frontend whose speech arrives at playback speed, plays from a reserve.
+export function buffersPlayback(remoteGateway, pacedOutputAudio = false) {
+  return remoteGateway || pacedOutputAudio
+}
+
+// A playback cursor is a time on the AudioContext it was scheduled on: a replaced
+// context, as after the desktop sleeps, starts its timeline again at zero.
+export function playbackCursorOn(playback, context) {
+  if (playback.context !== context) {
+    playback.context = context
+    playback.cursor = 0
+  }
+  return playback.cursor
+}
+
 export function visualVoiceState(state) {
   return state
 }
@@ -257,6 +280,10 @@ export default function useRealtimeVoice({
     String(configuredClientInstanceId || '').trim() || crypto.randomUUID(),
   )
   const inputSampleRate = useRef(DEFAULT_INPUT_RATE)
+  // From voice.ready: the frontend's model finishes the speech it already generated when interrupted.
+  const interruptionPlaysOutRef = useRef(false)
+  // From voice.ready: the frontend's speech arrives at playback speed.
+  const pacedOutputAudioRef = useRef(false)
   const clientStatesSignature = [...new Set(
     (Array.isArray(clientStates) ? clientStates : [])
       .filter(state => typeof state === 'string' && state),
@@ -539,7 +566,7 @@ export default function useRealtimeVoice({
       // Remote playback has already accumulated real PCM in its jitter queue.
       // This small Web Audio lead is only for stable source scheduling.
       const leadSeconds = audioSchedulingLeadSeconds()
-      start = Math.max(context.currentTime + leadSeconds, playback.cursor)
+      start = Math.max(context.currentTime + leadSeconds, playbackCursorOn(playback, context))
       playback.cursor = start + buffer.duration
       playback.sources.push(source)
       if (responseId) {
@@ -628,7 +655,7 @@ export default function useRealtimeVoice({
     const playback = playbackRef.current
     if (!playback.queue) {
       playback.queue = createPcmPlaybackQueue({
-        remote: gatewayTransportIsRemote(),
+        remote: buffersPlayback(gatewayTransportIsRemote(), pacedOutputAudioRef.current),
         onFlush: items => items.forEach(scheduleAudioItem),
       })
     }
@@ -655,6 +682,13 @@ export default function useRealtimeVoice({
       if (event.type === GatewayServerEvent.VOICE_READY) environmentState.setReady(true)
       if (event.type === GatewayServerEvent.VOICE_CONNECTION && event.state !== 'connected') {
         environmentState.setReady(false)
+      }
+      if (event.type === GatewayServerEvent.VOICE_READY) interruptionPlaysOutRef.current = event.interruptionPlaysOut === true
+      if (event.type === GatewayServerEvent.VOICE_READY && pacedOutputAudioRef.current !== (event.pacedOutputAudio === true)) {
+        pacedOutputAudioRef.current = event.pacedOutputAudio === true
+        // A queue built for the other pacing plays what it holds; the next chunk builds the right one.
+        playbackRef.current.queue?.finish?.()
+        playbackRef.current.queue = null
       }
       if (event.type === GatewayServerEvent.VOICE_READY && event.inputSampleRate) {
         inputSampleRate.current = event.inputSampleRate
@@ -686,11 +720,7 @@ export default function useRealtimeVoice({
       if (releasesManualInputGuard(event, manualInputTurnRef.current)) {
         releaseManualInputGuard()
       }
-      if (
-        event.type === GatewayServerEvent.VOICE_STATE
-        && acceptsVoiceState(event, currentTurnId.current)
-        && event.state === 'listening'
-      ) {
+      if (stopsPlaybackOnVoiceState(event, currentTurnId.current, interruptionPlaysOutRef.current)) {
         stopPlayback('user_interruption')
       }
       if (event.type === GatewayServerEvent.PLAYBACK_CLEAR) {
@@ -1080,8 +1110,9 @@ export default function useRealtimeVoice({
     audioRef.current = null
   }, [])
 
+  // A frontend whose model finishes the speech it already generated plays it out, then stops.
   const interrupt = () => {
-    stopPlayback('user_interruption')
+    if (!interruptionPlaysOutRef.current) stopPlayback('user_interruption')
     sendSocketEvent({ type: 'interrupt' })
   }
 

@@ -24,6 +24,12 @@ export class RealtimeTurnState {
     this.turnSequence = 0
     this.committedTurnId = ''
     this.committedTurnGeneration = 0
+    // Each committed user turn and the generation it began in.
+    this.userTurns = new Map()
+    // The generation of the last boundary (interrupt, mute, close).
+    this.boundaryGeneration = 0
+    // The turn sequence when the Gateway first asked each request.
+    this.requestTurns = new Map()
     this.userSpeaking = false
     this.voiceStartItemId = ''
     this.manualInputGeneration = null
@@ -123,7 +129,31 @@ export class RealtimeTurnState {
     if (this.isStale(context)) return false
     this.committedTurnId = context.turnId
     this.committedTurnGeneration = context.turnGeneration
+    this.userTurns.set(context.turnId, context.turnGeneration)
+    if (this.userTurns.size > 100) this.userTurns.delete(this.userTurns.keys().next().value)
     return true
+  }
+
+  // Later user turns may have superseded this one, but no boundary has.
+  isUserTurnSinceBoundary(context) {
+    const began = this.userTurns.get(context?.turnId)
+    return began === context?.turnGeneration && began > this.boundaryGeneration
+  }
+
+  // Whether user turn `laterId` began after user turn `turnId`.
+  beganAfterTurn(laterId, turnId) {
+    return this.userTurns.get(laterId) > this.userTurns.get(turnId)
+  }
+
+  noteRequest(requestId) {
+    if (!requestId || this.requestTurns.has(requestId)) return
+    this.requestTurns.set(requestId, this.turnSequence)
+    if (this.requestTurns.size > 100) this.requestTurns.delete(this.requestTurns.keys().next().value)
+  }
+
+  // Only a turn that began after the Gateway asked a request answers it.
+  beganAfterRequest(turnId, requestId) {
+    return this.userTurns.get(turnId) > this.requestTurns.get(requestId)
   }
 
   finishManualResponse(context, { automatic = false } = {}) {
@@ -145,6 +175,7 @@ export class RealtimeTurnState {
   advanceBoundary() {
     this.turnGeneration = ++this.turnSequence
     this.committedTurnGeneration = this.turnGeneration
+    this.boundaryGeneration = this.turnGeneration
     return this.current()
   }
 

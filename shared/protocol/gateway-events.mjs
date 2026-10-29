@@ -233,6 +233,8 @@ const GatewayVoicePayloadSchemas = Object.freeze({
     inputSampleRate: z.number().int().positive(),
     provider: z.string().min(1).optional(),
     providerLabel: z.string().min(1).optional(),
+    interruptionPlaysOut: z.boolean().optional(),
+    pacedOutputAudio: z.boolean().optional(),
   }).passthrough(),
   [GatewayServerEvent.VOICE_CONNECTION]: z.object({
     state: z.string().min(1),

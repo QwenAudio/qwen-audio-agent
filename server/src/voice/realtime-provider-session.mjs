@@ -202,7 +202,7 @@ export class RealtimeProviderSession {
         if (this.frontend === createdFrontend) this.onResponseSettled?.(event)
       },
       onError: error => this.#handleProviderError(createdFrontend, error),
-      onClose: () => this.#handleClose(createdFrontend),
+      onClose: closeInfo => this.#handleClose(createdFrontend, closeInfo),
     })
     this.frontend = createdFrontend
     let createdConnectPromise
@@ -228,7 +228,7 @@ export class RealtimeProviderSession {
         this.onReady(createdFrontend)
       })
       .catch(error => {
-        if (this.frontend !== createdFrontend) return
+        if (this.frontend && this.frontend !== createdFrontend) return
         this.logger.error('realtime.connect_failed', {
           provider: createdFrontend.provider.key,
           durationMs: Date.now() - connectStartedAt,
@@ -291,13 +291,15 @@ export class RealtimeProviderSession {
     }
   }
 
-  #handleClose(createdFrontend) {
+  #handleClose(createdFrontend, closeInfo = {}) {
     if (this.frontend !== createdFrontend) return
     const connectedMs = this.connectedAt ? Date.now() - this.connectedAt : 0
     this.logger.warn('realtime.closed', {
       provider: createdFrontend.provider.key,
       connectedMs,
       blocked: Boolean(this.blockedError),
+      ...(closeInfo?.code ? { closeCode: closeInfo.code } : {}),
+      ...(closeInfo?.reason ? { closeReason: closeInfo.reason } : {}),
     })
     this.frontend = null
     this.onDisconnected()

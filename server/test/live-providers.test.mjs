@@ -215,6 +215,28 @@ test('Google Live setup passes Gemini tool schema validation', async t => {
   assert.ok(declarations.every(declaration => declaration.parameters === undefined))
 })
 
+test('createGoogleLiveProtocol formats declarations with parametersJsonSchema', () => {
+  const protocol = createGoogleLiveProtocol()
+  const declarations = protocol.googleTools([
+    {
+      function: {
+        name: 'sample_tool',
+        description: 'a test tool',
+        parameters: { type: 'object', properties: {}, additionalProperties: false },
+      },
+    },
+  ])
+  assert.equal(declarations.length, 1)
+  const fn = declarations[0].functionDeclarations[0]
+  assert.equal(fn.name, 'sample_tool')
+  assert.equal(fn.parameters, undefined)
+  assert.deepEqual(fn.parametersJsonSchema, {
+    type: 'object',
+    properties: {},
+    additionalProperties: false,
+  })
+})
+
 test('Google Live waits for turnComplete and preserves interruption status', () => {
   const protocol = createGoogleLiveProtocol()
   const started = protocol.normalizeIncoming({ serverContent: { modelTurn: { parts: [{ text: 'hello' }] } } })

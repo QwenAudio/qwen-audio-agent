@@ -44,6 +44,17 @@ test('Doubao Seeduplex protocol emits session.create and audio append events', (
   assert.deepEqual(protocol.inputUnmute(), { type: 'input_audio_unmute.commit' })
 })
 
+test('Doubao Seeduplex protocol maps transcription.started to speech_started for barge-in', () => {
+  const protocol = createDoubaoSeeduplexProtocol()
+
+  const mapped = protocol.normalizeIncoming({
+    type: 'conversation.item.input_audio_transcription.started',
+    item_id: 'item_123',
+  })
+  assert.equal(mapped.type, 'input_audio_buffer.speech_started')
+  assert.equal(mapped.item_id, 'item_123')
+})
+
 test('Doubao Seeduplex protocol normalizes text, audio and completion events', () => {
   const protocol = createDoubaoSeeduplexProtocol()
 

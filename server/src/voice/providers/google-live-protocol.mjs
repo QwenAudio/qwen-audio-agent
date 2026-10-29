@@ -30,10 +30,12 @@ function googleTools(tools = []) {
   const declarations = tools
     .map(tool => tool.function || tool)
     .filter(tool => tool?.name)
+    // Gemini rejects JSON Schema keywords such as additionalProperties in
+    // `parameters` (OpenAPI subset); `parametersJsonSchema` takes them as-is.
     .map(tool => ({
       name: tool.name,
       ...(tool.description ? { description: tool.description } : {}),
-      ...(tool.parameters ? { parameters: tool.parameters } : {}),
+      ...(tool.parameters ? { parametersJsonSchema: tool.parameters } : {}),
     }))
   return declarations.length ? [{ functionDeclarations: declarations }] : []
 }

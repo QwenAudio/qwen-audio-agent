@@ -12,6 +12,7 @@
 
 ### 修复与改进
 
+- 修复 Linux 上 `qwenaudio gateway install` 生成的 systemd 用户服务无法启动：`WorkingDirectory=` 被加了引号，systemd 不会去掉引号，报 "path is not absolute" 并拒绝加载该单元；路径现按原样写入，仅转义 `%`。
 - 修复 Google Live 前台在默认配置下无法连接：setup 携带的前台工具参数含 `additionalProperties`，Gemini API 以 1007 拒绝；工具参数改用 `parametersJsonSchema` 发送（#560）。
 - 修复超过约 24.9 天后的提醒或定时任务导致定时器溢出、反复唤醒的问题；分段等待并在到期时执行。
 - Gateway 为完成显式能力协商且未声明 `playback.receipts` 的 GCP 客户端提供通用降级：生成字幕和普通会话记录正常推进，生成完成释放调度，但不伪造播放完成；自动后台结果通知保持 pending，框架的任务投影、查询、权限及取消接口保留。传统客户端行为不变。

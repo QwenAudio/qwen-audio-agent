@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import test from 'node:test'
 import {
   GATEWAY_WEBSOCKET_PROTOCOL,
@@ -24,4 +25,12 @@ test('rejects malformed WebSocket bearer values', () => {
   assert.throws(() => gatewayWebSocketProtocols('not a token'))
   assert.equal(gatewayWebSocketBearer('qwaudio.bearer.short'), '')
   assert.equal(selectGatewayWebSocketProtocol(new Set(['other'])), false)
+})
+
+test('accepts the 128-bit device tokens the Gateway issues', () => {
+  const token = randomBytes(16).toString('base64url')
+  assert.equal(token.length, 22)
+  assert.equal(gatewayWebSocketBearer(gatewayWebSocketProtocols(token).join(', ')), token)
+  assert.throws(() => gatewayWebSocketProtocols(token.slice(1)))
+  assert.equal(gatewayWebSocketBearer(`qwaudio.bearer.${token.slice(1)}`), '')
 })

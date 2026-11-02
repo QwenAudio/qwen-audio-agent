@@ -34,6 +34,7 @@ const DEFAULT_ADMISSION_SECONDS = 120
 
 export async function startMockRendererServer({
   host = '127.0.0.1', port = 0, personas = MOCK_PERSONAS, authToken = null, fault = null,
+  faultResponseId = null,
   heartbeatIntervalMs = 1000, admissionSeconds = DEFAULT_ADMISSION_SECONDS, log = () => {},
 } = {}) {
   if (fault && !FAULTS.includes(fault)) throw new Error(`unknown fault ${fault}`)
@@ -109,6 +110,10 @@ export async function startMockRendererServer({
     let synthesisTimer = null
     let heartbeatTimer = null
     let progressTimer = null
+    // Tests may target one reply so idle or earlier turns cannot consume the
+    // injected fault. Without a selector, retain the existing all-turn behavior.
+    const hasFault = (name, ref = turn?.ref) => fault === name
+      && (faultResponseId === null || ref?.responseId === faultResponseId)
 
     const session = {
       id, inputToken, mediaToken,
@@ -219,7 +224,7 @@ export async function startMockRendererServer({
       if (frame.op === ControlOp.START) {
         if (turn) { failTurn('protocol_error', 'start while a turn is active'); return }
         if (!readySent) { failTurn('protocol_error', 'start before session.ready'); return }
-        if (fault === 'protocol_error') { sendInput(encodeMediaEvent({ event: 'not.a.real.event' })); return }
+        if (hasFault('protocol_error', frame.turn)) { sendInput(encodeMediaEvent({ event: 'not.a.real.event' })); return }
         turn = { ref: { ...frame.turn }, expectedSequence: 0, consumedSamples: 0, publishedUnits: 0, firstMediaSent: false, finishing: false, cancelRequested: false, chunks: [], seen: new Map() }
         log('turn.started', { id, responseId: frame.turn.responseId, generation: frame.turn.generation })
         return
@@ -253,18 +258,18 @@ export async function startMockRendererServer({
     }
 
     function startSynthesis() {
-      if (fault === 'first_media_timeout') return // admit input but never publish
+      if (hasFault('first_media_timeout')) return // admit input but never publish
       synthesisTimer = setInterval(synthesizeFrame, frameIntervalMs)
       synthesisTimer.unref?.()
       progressTimer = setInterval(() => {
-        if (turn && turn.firstMediaSent && fault !== 'media_stall') sendInput(encodeMediaEvent({ event: 'turn.progress', turn: turn.ref, unitsPublished: turn.publishedUnits }))
+        if (turn && turn.firstMediaSent && !hasFault('media_stall')) sendInput(encodeMediaEvent({ event: 'turn.progress', turn: turn.ref, unitsPublished: turn.publishedUnits }))
       }, 500)
       progressTimer.unref?.()
     }
 
     function synthesizeFrame() {
       if (destroyed || !turn) { stopSynthesis(); return }
-      if (fault === 'media_stall' && turn.publishedUnits >= 1) { stopSynthesis(); return }
+      if (hasFault('media_stall') && turn.publishedUnits >= 1) { stopSynthesis(); return }
       if (mediaSocket?.readyState !== WebSocket.OPEN) return
       const pcm = takeSamples(FRAME_SAMPLES)
       if (!pcm) {
@@ -325,7 +330,7 @@ export async function startMockRendererServer({
         if (error instanceof DhavError) failTurn('protocol_error', error.message)
         return
       }
-      if (fault === 'mid_turn_failure' && frameSequence >= 3) {
+      if (hasFault('mid_turn_failure') && frameSequence >= 3) {
         stopSynthesis()
         const ref = turn.ref
         turn = null
@@ -339,7 +344,7 @@ export async function startMockRendererServer({
         turn.firstMediaSent = true
         sendInput(encodeMediaEvent({ event: 'turn.first_media', turn: turn.ref }))
       }
-      if (fault === 'channel_drop' && turn.publishedUnits >= 2) {
+      if (hasFault('channel_drop') && turn.publishedUnits >= 2) {
         const ref = turn.ref
         turn = null
         stopSynthesis()

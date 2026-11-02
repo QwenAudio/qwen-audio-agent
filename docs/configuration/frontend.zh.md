@@ -11,6 +11,7 @@
 | Qwen Audio / Omni 3.5 / Omni 3.8 | `dashscope`（默认） | DashScope API Key；Omni 3.8 还需业务空间专属地址 | [Audio 语音](../voice-frontends/qwen-audio-realtime.zh.md) / [Omni 视觉](../voice-frontends/qwen-omni-realtime.zh.md) |
 | StepAudio 3 | `stepfun` | StepFun API Key | [StepFun](../voice-frontends/stepfun.zh.md) |
 | OpenAI Realtime | `gpt-live` | OpenAI API Key | [GPT-Live](../voice-frontends/gpt-live.zh.md) |
+| OpenAI Live API | `gpt-live-1` | OpenAI API Key | [GPT-Live 1](../voice-frontends/gpt-live-1.zh.md) |
 | Gemini Live | `google-live` | Google API Key | [Google Live](../voice-frontends/google-live.zh.md) |
 | 豆包 Seeduplex | `doubao-seeduplex` | 豆包 API Key | 模型、音色与服务地址配置见下表 |
 | Hugging Face speech-to-speech | `speech-to-speech` | 先启动服务；默认 `ws://127.0.0.1:8765/v1/realtime` | [本地模型链路](../voice-frontends/speech-to-speech.zh.md) |
@@ -55,12 +56,13 @@ QWEN_AUDIO_REALTIME_VOICE=
 | `dashscope` | `qwen-audio-3.1-realtime-plus` | `wss://dashscope.aliyuncs.com/api-ws/v1/realtime` |
 | `stepfun` | `stepaudio-3-realtime-preview` | `wss://api.stepfun.com/v1/realtime` |
 | `gpt-live` | `gpt-realtime-2.1` | `wss://api.openai.com/v1/realtime` |
+| `gpt-live-1` | `gpt-live-1` | `wss://api.openai.com/v1/live/sessions` |
 | `google-live` | `gemini-3.8-live` | `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent` |
 | `doubao-seeduplex` | `1.2.6.1` | `wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue` |
 | `speech-to-speech` | 上游配置 | `ws://127.0.0.1:8765/v1/realtime` |
 | `minicpm-o` | 上游配置 | `ws://127.0.0.1:8006/v1/realtime?mode=audio` |
 
-speech-to-speech 与 MiniCPM-o 的模型、音色由上游服务管理，应留空；服务启用 Bearer 认证时才需填写 API Key。Qwen3.8 Omni 必须填写[业务空间专属地址](../voice-frontends/qwen-omni-realtime.zh.md#配置)，不能使用 DashScope 公共默认地址。统一配置不改变各服务的协议和能力限制，这些差异仍由 Provider adapter 处理。
+speech-to-speech 与 MiniCPM-o 的模型、音色由上游服务管理，应留空；服务启用 Bearer 认证时才需填写 API Key。Qwen3.8 Omni 必须填写[业务空间专属地址](../voice-frontends/qwen-omni-realtime.zh.md#配置)，不能使用 DashScope 公共默认地址。统一配置不改变各服务的协议和能力限制，这些差异仍由 Provider adapter 处理。GPT-Live 1 另读取 `GPT_LIVE_1_DELEGATION_MODEL`，即它委托的 Responses 模型（默认 `gpt-6-luna`），以及[其指南](../voice-frontends/gpt-live-1.zh.md#配置)中的四个时间参数。
 
 DashScope 当前内置以下模型档案：
 
@@ -106,7 +108,7 @@ Audio 3.0 Plus / Flash 保持 `longanqian`。显式配置 `QWEN_AUDIO_REALTIME_V
 
 `api` 必填，用于选择可复用的接入预设：线协议变体、默认能力声明、会话默认参数（含话轮检测）和接入约束。这些是当前接入的共用默认值，不保证使用同一上游 API 的所有模型能力一致。只应登记与所选预设兼容的模型；登记不会探测模型能力，也不能覆盖预设。`label` 可省略，默认展示模型 ID。省略 `voice` 或设为 `null` 时，由服务决定默认音色；`config.env` 中显式配置的音色仍优先。
 
-DashScope 支持 `audio`、`omni`（3.5）和 `omni-v2`（3.8，仍需业务空间专属地址）。`stepfun`、`gpt-live`、`google-live`、`doubao-seeduplex` 的 `api` 必须与 Provider key 相同。登记仅可追加：不能覆盖同一供应商的内置模型，不能添加未支持的供应商/API，也不能填写未声明字段。模型 ID 区分大小写，以字母或数字开头，其余字符还可包含 `. _ : / @ + -`。无效条目会报配置错误。
+DashScope 支持 `audio`、`omni`（3.5）和 `omni-v2`（3.8，仍需业务空间专属地址）。`stepfun`、`gpt-live`、`gpt-live-1`、`google-live`、`doubao-seeduplex` 的 `api` 必须与 Provider key 相同。登记仅可追加：不能覆盖同一供应商的内置模型，不能添加未支持的供应商/API，也不能填写未声明字段。模型 ID 区分大小写，以字母或数字开头，其余字符还可包含 `. _ : / @ + -`。无效条目会报配置错误。
 
 加载目录后，可在桌面下拉框选择已登记 ID，也可设置 `QWEN_AUDIO_REALTIME_MODEL`，再按下文应用配置。目录不代表服务端授权：账号、地域、服务地址、音色和模型实际兼容性仍需验证。speech-to-speech 与 MiniCPM-o 的模型继续在外部服务中配置。
 

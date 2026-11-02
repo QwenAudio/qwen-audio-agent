@@ -2,6 +2,7 @@ export const DASHSCOPE_AUDIO_30_REALTIME_MODEL = 'qwen-audio-3.0-realtime-plus'
 export const DASHSCOPE_AUDIO_31_REALTIME_MODEL = 'qwen-audio-3.1-realtime-plus'
 export const DEFAULT_DASHSCOPE_REALTIME_MODEL = DASHSCOPE_AUDIO_31_REALTIME_MODEL
 export const DEFAULT_GPT_LIVE_REALTIME_MODEL = 'gpt-realtime-2.1'
+export const DEFAULT_GPT_LIVE_1_REALTIME_MODEL = 'gpt-live-1'
 export const DEFAULT_GOOGLE_LIVE_REALTIME_MODEL = 'gemini-3.8-live'
 export const DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL = '1.2.6.1'
 export const DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE = 'zh_female_vv_jupiter_bigtts'
@@ -52,6 +53,11 @@ export const REALTIME_MODEL_BUILTINS = Object.freeze({
   'gpt-live': provider(DEFAULT_GPT_LIVE_REALTIME_MODEL, {
     [DEFAULT_GPT_LIVE_REALTIME_MODEL]: {
       label: 'GPT Realtime 2.1', api: 'gpt-live', voice: null,
+    },
+  }),
+  'gpt-live-1': provider(DEFAULT_GPT_LIVE_1_REALTIME_MODEL, {
+    [DEFAULT_GPT_LIVE_1_REALTIME_MODEL]: {
+      label: 'GPT-Live 1', api: 'gpt-live-1', voice: null,
     },
   }),
   'google-live': provider(DEFAULT_GOOGLE_LIVE_REALTIME_MODEL, {

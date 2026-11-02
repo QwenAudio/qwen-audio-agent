@@ -9,6 +9,7 @@ export const DEFAULT_STEPFUN_REALTIME_URL = 'wss://api.stepfun.com/v1/realtime'
 export const DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL = 'ws://127.0.0.1:8765/v1/realtime'
 export const DEFAULT_MINICPM_O_REALTIME_URL = 'ws://127.0.0.1:8006/v1/realtime?mode=audio'
 export const DEFAULT_GPT_LIVE_REALTIME_URL = 'wss://api.openai.com/v1/realtime'
+export const DEFAULT_GPT_LIVE_1_REALTIME_URL = 'wss://api.openai.com/v1/live/sessions'
 export const DEFAULT_GOOGLE_LIVE_REALTIME_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent'
 export const DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_URL = 'wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue'
 
@@ -50,6 +51,11 @@ export const REALTIME_PROVIDERS = Object.freeze([
   defineProvider({
     key: 'gpt-live', label: 'GPT-Live', aliases: ['openai', 'gptlive', 'gpt-realtime'],
     description: 'GPT-Live · OpenAI Realtime', endpoint: DEFAULT_GPT_LIVE_REALTIME_URL,
+    helpUrl: 'https://platform.openai.com/api-keys',
+  }),
+  defineProvider({
+    key: 'gpt-live-1', label: 'GPT-Live 1', aliases: ['gptlive1', 'openai-live'],
+    description: 'GPT-Live 1 · OpenAI Live API（全双工）', endpoint: DEFAULT_GPT_LIVE_1_REALTIME_URL,
     helpUrl: 'https://platform.openai.com/api-keys',
   }),
   defineProvider({

@@ -8,6 +8,9 @@ import {
   realtimeClientMode,
   shouldAdvertiseVoice,
   shouldClaimReleasedVoice,
+  stopsPlaybackOnVoiceState,
+  buffersPlayback,
+  playbackCursorOn,
   visualVoiceState,
 } from '../src/realtime/useRealtimeVoice.js'
 
@@ -144,4 +147,27 @@ test('keeps visual state semantic instead of inferring it from local volume', ()
   assert.equal(visualVoiceState('listening'), 'listening')
   assert.equal(visualVoiceState('processing'), 'processing')
   assert.equal(visualVoiceState('speaking'), 'speaking')
+})
+
+test('the user speaking stops playback unless the frontend plays out interrupted speech', () => {
+  const listening = { type: 'voice.state', state: 'listening', turnId: 'voice-2' }
+  assert.equal(stopsPlaybackOnVoiceState(listening, 'voice-2'), true)
+  assert.equal(stopsPlaybackOnVoiceState(listening, 'voice-2', true), false)
+  assert.equal(stopsPlaybackOnVoiceState({ ...listening, state: 'speaking' }, 'voice-2'), false)
+})
+
+test('playback buffers from a remote Gateway, or a local one whose frontend speaks at playback speed', () => {
+  assert.equal(buffersPlayback(false), false)
+  assert.equal(buffersPlayback(true), true)
+  assert.equal(buffersPlayback(false, true), true)
+})
+
+test('the playback cursor starts again on a new audio context, as after the desktop sleeps', () => {
+  const asleep = {}
+  const awake = {}
+  const playback = { cursor: 0 }
+  playbackCursorOn(playback, asleep)
+  playback.cursor = 420
+  assert.equal(playbackCursorOn(playback, asleep), 420)
+  assert.equal(playbackCursorOn(playback, awake), 0)
 })

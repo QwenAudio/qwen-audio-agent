@@ -15,6 +15,7 @@ import {
   DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE,
   DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
   DEFAULT_GPT_LIVE_REALTIME_MODEL,
+  DEFAULT_GPT_LIVE_1_REALTIME_MODEL,
   DEFAULT_STEPFUN_REALTIME_MODEL,
   REALTIME_API_PROFILES,
   REALTIME_MODEL_BUILTINS,
@@ -59,6 +60,9 @@ test('preserves every built-in ID, label, family, voice, capability and order', 
     ['gpt-live', 'QWEN_AUDIO_REALTIME_MODEL', DEFAULT_GPT_LIVE_REALTIME_MODEL, [
       [DEFAULT_GPT_LIVE_REALTIME_MODEL, 'GPT Realtime 2.1', 'gpt-live', 'gpt-live', null, 'server_vad', false],
     ]],
+    ['gpt-live-1', 'QWEN_AUDIO_REALTIME_MODEL', DEFAULT_GPT_LIVE_1_REALTIME_MODEL, [
+      [DEFAULT_GPT_LIVE_1_REALTIME_MODEL, 'GPT-Live 1', 'gpt-live-1', 'gpt-live-1', null, null, false],
+    ]],
     ['google-live', 'QWEN_AUDIO_REALTIME_MODEL', DEFAULT_GOOGLE_LIVE_REALTIME_MODEL, [
       [DEFAULT_GOOGLE_LIVE_REALTIME_MODEL, 'Gemini 3.8 Live', 'google-live', 'google-live', null, 'server_vad', true],
     ]],
@@ -78,7 +82,7 @@ test('preserves every built-in ID, label, family, voice, capability and order', 
       const profile = resolveRealtimeModelProfile(id, provider)
       assert.deepEqual(profile, {
         id, label, api, family,
-        sessionDefaults: { voice, turnDetection: { type: vad } },
+        sessionDefaults: { voice, turnDetection: vad ? { type: vad } : null },
         modelCapabilities: visual ? visualCapabilities : audioCapabilities,
         transportCapabilities: visual ? visualTransport : audioTransport,
         sessionConstraints: api === 'omni' ? { unsupportedVoices: ['Cherry'] }

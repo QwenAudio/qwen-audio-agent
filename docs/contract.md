@@ -272,6 +272,8 @@ conversation surface.
 | server → client | `input.suspend` | Stop capturing outright (stronger than user-level mute: no capture, no wake word); carries `owner`, `reason`, `expiresAt` |
 | server → client | `input.resume` | Capture may resume |
 | client → server | `input.suspend.ack` | Confirms the suspension took effect on this client |
+| server → client | `voice.ready` | `interruptionPlaysOut: true` when the voice model finishes the speech it already generated on an interruption: Gateway sends no `playback.clear` for a spoken barge-in, typed input, or `interrupt`, and a client keeps playing on `voice.state` `listening` and on its own `interrupt` |
+| server → client | `voice.ready` | `pacedOutputAudio: true` when output audio arrives at playback speed: a client plays it from a reserve even from a local Gateway |
 | server → client | `voice.state` | Foreground voice-turn presentation state: `idle`, `listening`, `processing`, or `speaking`; `processing` remains active across a synchronous frontend tool call until its terminal result or direct follow-up response |
 | server → client | `transcript.final` | A final assistant transcript may include `citations: [{ id, title, url, snippet?, source?, published_at? }]`; capability: `messages.citations` |
 

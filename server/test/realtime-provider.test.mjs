@@ -14,6 +14,7 @@ import {
   TOOLS,
 } from '../src/voice/realtime-provider.mjs'
 import { validateRealtimeProvider } from '../src/voice/providers/registry.mjs'
+import { permissionResponseGate } from '../src/voice/realtime-session-runtime.mjs'
 import { buildFrontendToolContext } from '../src/frontend/tools/frontend-tool-context.mjs'
 import { inputRequestResponseInstructions } from '../src/frontend/frontend-tools.mjs'
 import {
@@ -1441,6 +1442,235 @@ test('can close a stale function call without creating a new model response', as
   await outcome
 })
 
+const tick = () => new Promise(resolve => setImmediate(resolve))
+
+// A ready Qwen frontend with capability overrides that records what it sends.
+function capableFrontend(t, capabilities = {}, provider = {}) {
+  const qwen = REALTIME_PROVIDERS.qwen
+  const frontend = new RealtimeFrontend({
+    provider: { ...qwen, ...provider, capabilities: { ...qwen.capabilities, ...capabilities } },
+  })
+  const sent = []
+  frontend.ready = true
+  frontend.ws = { readyState: 1, send: raw => sent.push(JSON.parse(raw)), close() {} }
+  t.after(() => frontend.close())
+  const emit = event => frontend.handleLifecycle(event)
+  return {
+    frontend,
+    payloads: () => sent,
+    wire: () => sent.map(payload => payload.item?.type || payload.type),
+    created: (id, marks) => emit({ type: 'response.created', response: { id }, ...marks }),
+    done: (id, marks) => emit({ type: 'response.done', response: { id, status: 'completed' }, ...marks }),
+    openCall: (callId, responseId) => emit({ type: 'response.function_call_arguments.done', response_id: responseId,
+      call_id: callId, name: 'lookup', arguments: '{}' }),
+    acknowledge: index => emit({ type: 'conversation.item.created', item: { id: sent[index].item.id } }),
+  }
+}
+
+for (const toolOutputsBeforeResponse of [true, false]) {
+  test(`a Gateway request queued during a tool call ${toolOutputsBeforeResponse ? 'goes after its output' : 'keeps its queue order'}`, async t => {
+    const { frontend, wire, created, done, openCall, acknowledge } = capableFrontend(t, { toolOutputsBeforeResponse })
+    created('backend')
+    openCall('call_1', 'backend')
+    const request = frontend.ensureResponse({ turnId: 'turn-1' })
+    const output = frontend.sendFunctionOutput('call_1', { ok: true }, {}, { createResponse: false })
+    await tick()
+    assert.deepEqual(wire(), [])
+    done('backend')
+    await tick()
+    if (toolOutputsBeforeResponse) {
+      assert.deepEqual(wire(), ['function_call_output'], 'the request waits for the output')
+      acknowledge(0)
+      await output
+      await tick()
+      assert.deepEqual(wire(), ['function_call_output', 'response.create'])
+    } else {
+      assert.deepEqual(wire(), ['response.create'], 'other providers keep the queue order')
+    }
+    created('requested')
+    done('requested')
+    assert.equal((await request).completed, true)
+    if (!toolOutputsBeforeResponse) {
+      await tick()
+      assert.deepEqual(wire(), ['response.create', 'function_call_output'])
+      acknowledge(1)
+      await output
+    }
+  })
+}
+
+test('a call that failed without an output is answered and stops holding Gateway requests', async t => {
+  const { frontend, wire, openCall, acknowledge } = capableFrontend(t, { toolOutputsBeforeResponse: true })
+  openCall('call_failed')
+  const request = frontend.ensureResponse({ turnId: 'turn-1' })
+  await tick()
+  assert.deepEqual(wire(), [])
+  const failed = frontend.failCall('call_failed', { error: true })
+  await tick()
+  acknowledge(0)
+  await failed
+  await tick()
+  assert.deepEqual(wire(), ['function_call_output', 'response.create'])
+  // Answered once: a second failure sends nothing.
+  await frontend.failCall('call_failed', { error: true })
+  assert.deepEqual(wire(), ['function_call_output', 'response.create'])
+  frontend.close()
+  assert.equal((await request).cancelled, true)
+  // Without the capability no call is tracked, so a failure sends nothing.
+  const other = capableFrontend(t)
+  other.openCall('call_failed')
+  await other.frontend.failCall('call_failed', { error: true })
+  assert.deepEqual(other.wire(), [])
+})
+
+test('a pending-permission request held for an open call is dropped once that call settles the permission', async t => {
+  const { frontend, wire, openCall, acknowledge } = capableFrontend(t, { toolOutputsBeforeResponse: true })
+  openCall('call_answer')
+  let pending = true
+  const request = frontend.ensureResponse({ turnId: 'turn-1' }, {
+    shouldCreate: permissionResponseGate({ isCandidate: () => true, hasPendingPermission: () => pending, claim() {} }),
+  })
+  await tick()
+  pending = false
+  const answered = frontend.sendFunctionOutput('call_answer', { status: 'approved' }, {}, { createResponse: false })
+  await tick()
+  acknowledge(0)
+  await answered
+  assert.equal((await request).skipped, true)
+  assert.equal(wire().includes('response.create'), false)
+})
+
+test('a Gateway request is sent in the same tick as its final check', async t => {
+  const { frontend, wire } = capableFrontend(t)
+  let checks = 0
+  frontend.ensureResponse({}, {
+    // A cancel right after the final check still finds the request sent.
+    shouldCreate: () => {
+      if (++checks === 2) queueMicrotask(() => frontend.cancel())
+      return true
+    },
+  })
+  await tick()
+  assert.deepEqual(wire(), ['response.create', 'response.cancel'])
+})
+
+for (const [label, drop, queueOpen] of [
+  ['a stop', frontend => frontend.cancel(), true],
+  ['dropping the request', frontend => frontend.cancelResponses(() => true), true],
+  ['closing the session', frontend => frontend.close(), false],
+]) {
+  test(`${label} ends a Gateway request held for an open call${queueOpen ? ' and frees the queue behind it' : ''}`, async t => {
+    const { frontend, wire, openCall, acknowledge } = capableFrontend(t, { toolOutputsBeforeResponse: true })
+    openCall('call_slow')
+    const held = frontend.ensureResponse({ turnId: 'turn-1' })
+    await tick()
+    drop(frontend)
+    if (queueOpen) {
+      const context = frontend.appendUserContext('typed after the stop')
+      await tick()
+      assert.deepEqual(wire(), ['message'])
+      acknowledge(0)
+      await context
+    }
+    assert.equal((await held).cancelled, true)
+    if (!queueOpen) assert.deepEqual(wire(), [])
+  })
+}
+
+for (const toolOutputsBeforeResponse of [true, false]) {
+  test(`results the Gateway does not voice ${toolOutputsBeforeResponse ? 'still continue the response that made the calls, once' : 'send nothing more on other providers'}`, async t => {
+    const { frontend, wire, created, done, openCall } = capableFrontend(t, { toolOutputsBeforeResponse, acknowledgesConversationItems: false })
+    created('backend')
+    openCall('call_1', 'backend')
+    done('backend')
+    await frontend.sendFunctionOutput('call_1', { status: 'superseded' }, {}, { createResponse: false })
+    const continued = frontend.continueToolResults({ turnId: 'turn-1' })
+    await tick()
+    if (!toolOutputsBeforeResponse) {
+      assert.deepEqual(await continued, { skipped: true })
+      assert.deepEqual(wire(), ['function_call_output'])
+      return
+    }
+    assert.deepEqual(wire(), ['function_call_output', 'response.create'])
+    created('backend')
+    done('backend')
+    assert.equal((await continued).completed, true)
+    // Continued once: a later continuation or follow-up finds nothing to resume.
+    assert.equal((await frontend.continueToolResults({})).skipped, true)
+    assert.equal((await frontend.ensureResponse({}, { afterToolResults: true })).skipped, true)
+    // An output for a call this connection is not waiting on is not sent.
+    await frontend.sendFunctionOutput('call_from_an_earlier_connection', { ok: true }, {}, { createResponse: false })
+    assert.deepEqual(wire(), ['function_call_output', 'response.create'])
+  })
+}
+
+test('a response a request already continued before it ended owes no second continuation', t => {
+  const { frontend, created, done, openCall } = capableFrontend(t, { toolOutputsBeforeResponse: true })
+  // Results submitted and continued while the response still ran.
+  created('early')
+  openCall('call_1', 'early')
+  frontend.send({ type: 'response.create' })
+  done('early')
+  assert.equal(frontend.continuationOwed, false)
+  // An error that names no response is not the end of the one running.
+  created('late')
+  openCall('call_2', 'late')
+  frontend.handleLifecycle({ type: 'error', error: { message: 'unrelated' } })
+  done('late')
+  assert.equal(frontend.continuationOwed, true)
+})
+
+test('on a full-duplex frontend a request to speak is answered only by a playback response', async t => {
+  const { frontend, created, done } = capableFrontend(t, { concurrentVoicePlayback: true }, { buildSpeakResponse: say => ({ say }) })
+  const responseCreate = response => (response?.say ? { type: 'speech.say', text: response.say } : { type: 'response.create' })
+  frontend.protocol = { ...frontend.protocol, responseCreate }
+  const spoken = frontend.speak('hello')
+  await tick()
+  // A backend response the model started meanwhile does not take it.
+  created('backend')
+  assert.equal(frontend.responseWaiters.has('backend'), false)
+  created('say', { __voicePlayback: true })
+  assert.equal(frontend.responseWaiters.has('say'), true)
+  done('say', { __voicePlayback: true })
+  assert.equal((await spoken).completed, true)
+  done('backend')
+})
+
+test('a stop sends the frame the protocol returns to stop speech, only on a full-duplex frontend', t => {
+  for (const concurrentVoicePlayback of [true, false]) {
+    const { frontend, wire } = capableFrontend(t, { concurrentVoicePlayback })
+    frontend.protocol = { ...frontend.protocol, interruptPlayback: ({ stop }) => (stop ? { type: 'speech.stop' } : null) }
+    frontend.cancel({ reason: 'user_interruption' })
+    frontend.cancel()
+    assert.deepEqual(wire(), concurrentVoicePlayback ? ['speech.stop'] : [])
+  }
+})
+
+test('a user interruption cancels the active response on a frontend without concurrentVoicePlayback', async t => {
+  const { frontend, wire, created } = capableFrontend(t)
+  const interrupted = frontend.speak('旧播报')
+  await tick()
+  created('response-interrupted')
+  frontend.cancel({ reason: 'user_interruption' })
+  assert.deepEqual(wire(), ['response.create', 'response.cancel'])
+  assert.deepEqual(await interrupted, { cancelled: true, phase: 'completion' })
+})
+
+test('a protocol send with correlate: false leaves the pending Gateway request alone', async t => {
+  const { frontend, payloads } = capableFrontend(t)
+  frontend.protocol = { ...frontend.protocol, correlateResponseCreate: (payload, requestId) => ({ ...payload, requestId }) }
+  const request = frontend.ensureResponse({ turnId: 'turn-1' })
+  await tick()
+  const [pending] = frontend.pendingResponses
+  const correlated = pending.responsePayload
+  assert.ok(correlated.requestId)
+  frontend.send({ type: 'response.create' }, { correlate: false })
+  assert.equal(pending.responsePayload, correlated)
+  assert.equal(payloads().at(-1).requestId, undefined)
+  frontend.close()
+  await request
+})
+
 test('accepts an Omni conversation item receipt with a provider-assigned id', async () => {
   const frontend = createQwenFrontend({
     provider: {
@@ -1867,6 +2097,17 @@ test('cancelling a response before response.created releases its queue entry', a
   assert.equal(frontend.pendingResponses.length, 0)
 })
 
+test('cancellation acknowledgement clears playback bookkeeping with the active responses', () => {
+  const frontend = createQwenFrontend()
+  frontend.activeResponses.add('response-1')
+  frontend.playbackResponses.add('response-1')
+  frontend.responseSlot.phase = 'cancelling'
+  frontend.handleLifecycle({ type: 'error', error: { message: 'no active response' } })
+  assert.equal(frontend.activeResponses.size, 0)
+  assert.equal(frontend.playbackResponses.size, 0)
+  assert.equal(frontend.responseSlot.phase, 'idle')
+})
+
 test('cancelling an active response releases queued input after cancellation acknowledgement', async () => {
   const frontend = createQwenFrontend({
     responseCancelGraceMs: 1,
@@ -2011,6 +2252,18 @@ test('associates an unscoped provider error with the sole active response', asyn
     status: undefined,
   })
   assert.equal(frontend.activeResponses.size, 0)
+})
+
+test('playback markers are ignored without the concurrentVoicePlayback capability', async t => {
+  const { frontend, created, done } = capableFrontend(t)
+  const outcome = frontend.speak('测试')
+  await tick()
+  created('marked', { __voicePlayback: true, __voiceAutomatic: true })
+  assert.equal(frontend.responseWaiters.has('marked'), true)
+  assert.equal(frontend.playbackResponses.size, 0)
+  assert.equal(frontend.gatingResponsesActive(), true)
+  done('marked')
+  assert.equal((await outcome).completed, true)
 })
 
 test('an error naming another response leaves the sole waiting request alone', async () => {
@@ -2393,6 +2646,10 @@ test('the Qwen provider exposes its supported realtime capabilities', () => {
     clientResponses: true,
     mutableSession: true,
     imageRequiresAudioStart: true,
+    concurrentVoicePlayback: false,
+    toolOutputsBeforeResponse: false,
+    interruptionPlaysOut: false,
+    pacedOutputAudio: false,
   })
 })
 

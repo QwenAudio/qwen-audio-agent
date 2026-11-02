@@ -110,8 +110,13 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
     await evaluate(`(() => {
       setRealtimeField('realtimeApiKey', 'test-step-key')
       setRealtimeField('realtimeVoice', 'step-voice')
-      selectFrontend('dashscope')
+      selectFrontend('gpt-live-1')
     })()`)
+    // GPT-Live 1 shows its own defaults and takes no other provider's key.
+    assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeModel]').value`), 'gpt-live-1')
+    assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeUrl]').value`), 'wss://api.openai.com/v1/live/sessions')
+    assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeApiKey]').value`), '')
+    await evaluate(`selectFrontend('dashscope')`)
     assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeVoice]').value`), 'audio-draft')
     await evaluate(`setRealtimeField('realtimeModel', 'private-audio')`)
     assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeModel]').checkValidity()`), true)

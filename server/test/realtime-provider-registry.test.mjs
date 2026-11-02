@@ -90,3 +90,10 @@ test('accepts per-connection protocol factories and validates their result', () 
     /encodeOutgoing/,
   )
 })
+
+test('an optional interruptPlayback hook must be a function', () => {
+  assert.throws(
+    () => validateRealtimeProtocol({ ...openAiCompatibleProtocol, interruptPlayback: true }, 'test'),
+    /protocol\.interruptPlayback 必须是函数/,
+  )
+})

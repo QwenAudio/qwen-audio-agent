@@ -62,6 +62,21 @@ export function resolveDisabledFrontendTools(env = process.env) {
   ]
 }
 
+// GPT-Live 1 timing overrides in milliseconds; a key left unset keeps the
+// adapter's default. The floor keeps an idle timer from never ending a turn.
+const GPT_LIVE_1_TIMING_SETTINGS = Object.freeze({
+  outputIdleMs: 'GPT_LIVE_1_OUTPUT_IDLE_MS',
+  wordGapMs: 'GPT_LIVE_1_WORD_GAP_MS',
+  inputSegmentGapMs: 'GPT_LIVE_1_INPUT_SEGMENT_GAP_MS',
+  inputIdleMs: 'GPT_LIVE_1_INPUT_IDLE_MS',
+})
+
+export function resolveGptLive1Timing(env = process.env) {
+  return Object.fromEntries(Object.entries(GPT_LIVE_1_TIMING_SETTINGS)
+    .map(([key, name]) => [key, numberSetting(env[name], undefined, { min: 100, max: 10_000 })])
+    .filter(([, value]) => value !== undefined))
+}
+
 export function resolveBackendWorkspace(
   protocol,
   env = process.env,
@@ -252,6 +267,9 @@ export const config = {
   realtimeEndpoint: realtimeFrontend.active.endpoint,
   realtimeModel: realtimeFrontend.active.model,
   realtimeVoice: realtimeFrontend.active.voice,
+  // The Responses model GPT-Live 1 delegates reasoning and tool calls to.
+  gptLive1DelegationModel: String(process.env.GPT_LIVE_1_DELEGATION_MODEL || '').trim(),
+  gptLive1Timing: resolveGptLive1Timing(),
   webSearchProvider: webSearch.provider,
   webSearchMcpUrl: webSearch.mcpUrl,
   webSearchMcpToken: webSearch.mcpToken,

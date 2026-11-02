@@ -24,7 +24,7 @@ function apiProfile(family, turnDetection, {
 } = {}) {
   return Object.freeze({
     family,
-    turnDetection: Object.freeze({ type: turnDetection }),
+    turnDetection: turnDetection ? Object.freeze({ type: turnDetection }) : null,
     defaultModelCapabilities: visual ? OMNI_MODEL_CAPABILITIES : AUDIO_MODEL_CAPABILITIES,
     transportCapabilities: visual ? OMNI_TRANSPORT_CAPABILITIES : AUDIO_TRANSPORT_CAPABILITIES,
     sessionConstraints,
@@ -48,6 +48,10 @@ export const REALTIME_API_PROFILES = Object.freeze({
   }),
   'gpt-live': Object.freeze({
     'gpt-live': apiProfile('gpt-live', 'server_vad'),
+  }),
+  // Full duplex with no turn-detection settings; tools go through Responses delegation.
+  'gpt-live-1': Object.freeze({
+    'gpt-live-1': apiProfile('gpt-live-1', null),
   }),
   'google-live': Object.freeze({
     'google-live': apiProfile('google-live', 'server_vad', { visual: true }),

@@ -4,10 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { TaskManager } from '../src/task/task-manager.mjs'
+import { isTaskCancellable } from '../src/task/task-state.mjs'
 import { ToolCallHandler } from '../src/frontend/tools/tool-call-handler.mjs'
 import { FrontendNotesStore } from '../src/conversation/frontend-notes.mjs'
 import { PermissionPolicy } from '../src/task/permission-policy.mjs'
 import { TurnTranscripts } from '../src/frontend/tools/turn-transcripts.mjs'
+import { RealtimeTurnState } from '../src/voice/realtime-turn-state.mjs'
 import { REALTIME_PROVIDERS, RealtimeFrontend } from '../src/voice/realtime-provider.mjs'
 import { ClientToolSource } from '../src/frontend/tools/client-tool-source.mjs'
 import { MarkdownContextStore } from '../src/memory/providers/markdown/context-store.mjs'
@@ -3197,3 +3199,125 @@ test('notes: unavailable without a notes store', async () => {
   })
   assert.equal(kit.outputs.at(-1)[1].error_code, 'notes_unavailable')
 })
+
+// Wires the handler to real turn state, as the session runtime does.
+function withTurns(kit, capabilities) {
+  const turns = new RealtimeTurnState()
+  kit.handler.getFrontend().capabilities = capabilities
+  kit.handler.getTurnId = () => turns.committedTurnId
+  kit.handler.getTurnGeneration = () => turns.committedTurnGeneration
+  kit.handler.isUserTurnSinceBoundary = context => turns.isUserTurnSinceBoundary(context)
+  kit.handler.userTurnBeganAfter = (laterId, turnId) => turns.beganAfterTurn(laterId, turnId)
+  return turns
+}
+
+const call = (callId, name, args = {}) => ({ call_id: callId, name, arguments: JSON.stringify(args) })
+const windowTool = 'mcp__car__window'
+
+// A handler with one response-scoped tool whose frontend records continuations.
+function continuingHarness() {
+  const kit = harness({ frontendToolSources: [responseToolSource([windowTool], async () => ({ status: 'ok' }))] })
+  kit.continued = []
+  kit.handler.getFrontend().continueToolResults = async context => { kit.continued.push(context) }
+  // A call in `response-tools` and the end of that response.
+  kit.batch = options => [responseToolCall(kit.handler, 'window', windowTool), kit.handler.finishToolResponse('response-tools', options)]
+  return kit
+}
+
+test('a batch that ends without a follow-up still lets the frontend continue the response that made the calls', async () => {
+  // No follow-up is wanted, its output failed to send, or its guard turned false.
+  const unwanted = continuingHarness()
+  await Promise.all(unwanted.batch({ suppressResponse: true }))
+  assert.equal(unwanted.ensuredResponses.length, 0)
+  const failed = continuingHarness()
+  failed.handler.getFrontend().sendFunctionOutput = async () => { throw new Error('transport failure') }
+  await Promise.allSettled(failed.batch())
+  const skipped = continuingHarness()
+  skipped.handler.getFrontend().ensureResponse = async () => ({ skipped: true })
+  await Promise.all(skipped.batch())
+  for (const kit of [unwanted, failed, skipped]) assert.deepEqual(kit.continued, [{ turnId: 'turn-one', turnGeneration: 1 }])
+  // A follow-up the Gateway does want goes out as before.
+  const voiced = continuingHarness()
+  await Promise.all(voiced.batch())
+  assert.equal(voiced.ensuredResponses.length, 1)
+  assert.deepEqual(voiced.continued, [])
+})
+
+test('with toolOutputsBeforeResponse a call closed as stale joins its response batch, which continues it in its own turn', async () => {
+  const kit = continuingHarness()
+  const turnOne = { turnId: 'turn-one', turnGeneration: 1 }
+  kit.handler.getTurnId = () => 'turn-two'
+  // Without the capability it joins none.
+  await kit.handler.handle(call('stale-off', windowTool), { ...turnOne, responseId: 'response-off' })
+  await kit.handler.finishToolResponse('response-off')
+  assert.deepEqual(kit.continued, [])
+  kit.handler.getFrontend().capabilities = { toolOutputsBeforeResponse: true }
+  await kit.handler.handle(call('stale', windowTool), { ...turnOne, responseId: 'response-stale' })
+  assert.equal(kit.outputs.at(-1)[1].status, 'superseded')
+  assert.deepEqual(kit.continued, [], 'not before its response ends')
+  await kit.handler.finishToolResponse('response-stale')
+  assert.deepEqual(kit.continued, [turnOne])
+})
+
+for (const [label, capabilities] of [['full-duplex', { concurrentVoicePlayback: true }], ['half-duplex', {}]]) {
+  const fullDuplex = Boolean(capabilities.concurrentVoicePlayback)
+
+  test(`${label}: backend work from an earlier user turn ${fullDuplex ? 'outlives' : 'is superseded by'} a later turn`, async () => {
+    const kit = harness()
+    const turns = withTurns(kit, capabilities)
+    const earlier = turns.beginManual('turn-one').context
+    turns.beginManual('turn-two')
+    await kit.handler.handle(call('late-spawn', 'spawn_thinking', { objective: '整理项目目录' }), earlier)
+    assert.equal(kit.manager.list({ ownerId: 'owner' }).length, fullDuplex ? 1 : 0)
+    if (!fullDuplex) assert.equal(kit.outputs.at(-1)[1].status, 'superseded')
+  })
+
+  test(`${label}: a late cancel from an earlier user turn ${fullDuplex ? 'spares' : 'cannot reach'} work a later turn started`, async () => {
+    const manager = new TaskManager()
+    const work = turnId => manager.create({ objective: turnId, ownerId: 'owner', sessionId: 'voice', laneKey: turnId, turnId,
+      runner: (_input, { signal }) => new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })) })
+    const kit = harness({ manager })
+    const turns = withTurns(kit, capabilities)
+    turns.beginManual('turn-zero')
+    const older = work('turn-zero')
+    const earlier = turns.beginManual('turn-one').context
+    turns.beginManual('turn-two')
+    await new Promise(resolve => setTimeout(resolve, 2))
+    // Listed first, as the newest task.
+    const newer = work('turn-two')
+    const series = manager.createScheduled({ objective: 'stretch', ownerId: 'owner', sessionId: 'voice', turnId: 'turn-two',
+      schedule: { at: Date.now() + 60_000, recurrence: 'daily' }, seriesId: 'stretch' })
+    await kit.handler.handle(call('no-id', 'cancel_agent_task'), earlier)
+    assert.equal(isTaskCancellable(manager.get(older.id).status), !fullDuplex, 'an untargeted cancel takes the earlier task')
+    await kit.handler.handle(call('all', 'cancel_agent_task', { all: true }), earlier)
+    await kit.handler.handle(call('by-id', 'cancel_agent_task', { task_id: newer.id }), earlier)
+    await kit.handler.handle(call('by-series', 'cancel_agent_task', { series_id: 'stretch' }), earlier)
+    assert.equal(isTaskCancellable(manager.get(newer.id).status), true, 'the later task keeps running')
+    assert.equal(isTaskCancellable(manager.get(series.id).status), true, 'so does a series it started')
+  })
+
+  test(`${label}: answers from an earlier user turn and calls in a Gateway-sent response or after a stop cannot act`, async () => {
+    const calls = []
+    const kit = await permissionHarness({ answer: '可以', respondPermission: async (...args) => { calls.push(args); return {} } })
+    const turns = withTurns(kit, capabilities)
+    const earlier = turns.beginManual('turn-one').context
+    const user = turns.beginManual('turn-two').context
+    await kit.handler.handle(call('late-answer', 'respond_permission', { decision: 'task' }), earlier)
+    await kit.handler.handle(call('late-update', 'update_agent_task', { task_id: kit.task.id, instruction: '可以' }), earlier)
+    // A result announcement or permission prompt runs under a Gateway turn.
+    const gateway = { turnId: 'gateway-result', turnGeneration: user.turnGeneration }
+    await kit.handler.handle(call('g-answer', 'respond_permission', { decision: 'task' }), gateway)
+    await kit.handler.handle(call('g-spawn', 'spawn_thinking', { objective: '继续下一步' }), gateway)
+    await kit.handler.handle(call('g-cancel', 'cancel_agent_task'), gateway)
+    // An explicit stop keeps the user's turn but closes its calls.
+    turns.advanceBoundary()
+    await kit.handler.handle(call('s-spawn', 'spawn_thinking', { objective: '继续下一步' }), user)
+    await kit.handler.handle(call('s-cancel', 'cancel_agent_task'), user)
+    assert.deepEqual(kit.outputs.map(output => output[1].status), Array(7).fill('superseded'))
+    await new Promise(resolve => setImmediate(resolve))
+    assert.deepEqual(calls, [])
+    assert.equal(kit.manager.list({ ownerId: 'owner' }).length, 1)
+    assert.equal(kit.manager.get(kit.task.id).authorization.status, 'pending')
+    await kit.finish()
+  })
+}

@@ -1,7 +1,7 @@
 // PCM/canvas playback for the self-hosted adapter, not a renderer requirement.
 // AudioContext must be created/resumed by the caller's user gesture.
 export function createBrowserAvatarPlayer({
-  audioContext, canvas, onFrame = () => {},
+  audioContext, canvas, onFrame = () => {}, onIdleFrame = () => {},
   setTimer = setTimeout, clearTimer = clearTimeout,
   maxBufferedSeconds = 10, maxSources = 512, maxFrames = 256,
 } = {}) {
@@ -19,7 +19,7 @@ export function createBrowserAvatarPlayer({
       state.callbacks.onStarted?.()
     }
   }
-  const draw = frame => {
+  const paintCanvas = frame => {
     if (!painter || !canvas) return
     const { width, height, data } = frame
     if (canvas.width !== width) canvas.width = width
@@ -40,6 +40,10 @@ export function createBrowserAvatarPlayer({
       }
     }
     painter.putImageData(image, 0, 0)
+  }
+  const draw = frame => {
+    if (!painter || !canvas) return
+    paintCanvas(frame)
     onFrame(frame)
   }
   const finish = state => {
@@ -134,6 +138,19 @@ export function createBrowserAvatarPlayer({
         source.disconnect?.()
       }
       state.sources.clear()
+    },
+    // Between-reply animation, painted on arrival: the renderer paces it at
+    // realtime and there is no paired audio to gate against. It never enters the
+    // queue, never advances the reply audio clock and never earns a playback
+    // receipt, so queued silence cannot occupy the receipt slot and stall a real
+    // reply. A live reply owns the canvas, so idle yields to it.
+    paintIdle(video) {
+      if (active || !painter || !canvas) return false
+      if (!video?.data?.length) return false
+      // Cosmetic: a bad idle frame must not tear down a working reply path.
+      try { paintCanvas(video) } catch { return false }
+      onIdleFrame(video)
+      return true
     },
   }
 }

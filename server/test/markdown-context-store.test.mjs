@@ -94,6 +94,19 @@ test('real duplicate fragments remain ambiguous even alongside template comments
   assert.equal(readFileSync(filePath, 'utf8'), `${source}\n`)
 })
 
+test('overlapping duplicate fragments are ambiguous too', () => {
+  const { store: memory, filePath } = store()
+  // "- 待办\n- 待办" occurs at the first and the second line; the search used
+  // to resume after the first match and never saw the second one.
+  const source = ['# MEMORY', '- 待办', '- 待办', '- 待办'].join('\n')
+  memory.persist('user_personal', `${source}\n`)
+
+  assert.throws(() => memory.edit('user_personal', {
+    edits: [{ old_text: '- 待办\n- 待办', new_text: '- 已完成' }],
+  }), error => error.code === 'ambiguous_edit')
+  assert.equal(readFileSync(filePath, 'utf8'), `${source}\n`)
+})
+
 for (const comment of [
   '<!-- 示例：- 未保存事实 -->',
   '<!-- 多行示例\n- 未保存事实\n-->',

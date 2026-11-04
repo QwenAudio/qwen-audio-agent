@@ -68,6 +68,7 @@ const entriesByName = new Map(featureEntries.map(entry => [
   entry,
 ]))
 const toolOrder = [
+  'query_backend_capability',
   SPAWN_THINKING_TOOL_NAME,
   UPDATE_AGENT_TASK_TOOL_NAME,
   SCHEDULE_REMINDER_TOOL_NAME,
@@ -165,6 +166,7 @@ export const inputRequestResponseInstructions = [
 export function buildFrontendInstructions(agentContext = {}) {
   return [
     loadFrontendPrompt(),
+    '在声称自己没有某种能力、无法完成某类工作前，必须先调用 query_backend_capability 向后台核实。查询失败只表示暂时无法核实，不能据此断言没有能力。后台明确不能完成时才说明做不到。若工具结果要求澄清，用自然口语说明不确定的名字、拼写或邮箱片段并询问正确内容，不朗读 JSON 或内部字段，不替用户选择。', 
     ...optionalFrontendFeatures.filter(feature => feature.entries.some(entry => (
       frontendToolRegistry.isEnabled(entry.definition.function.name, agentContext)
     ))).map(feature => feature.instructions).filter(Boolean),

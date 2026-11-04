@@ -102,7 +102,17 @@ const respondPermissionTool = {
   },
 }
 
+export const queryBackendCapabilityTool = {
+  type: 'function',
+  function: {
+    name: 'query_backend_capability',
+    description: '在声称没有某种能力前，向后台查询是否能完成。只查询能力，不执行用户操作。',
+    parameters: { type: 'object', properties: { request: { type: 'string' } }, required: ['request'], additionalProperties: false },
+  },
+}
+
 export const agentTaskToolEntries = [
+  { definition: queryBackendCapabilityTool },
   {
     definition: spawnThinkingTool,
     policy: { repeatHandling: 'handler' },
@@ -120,6 +130,7 @@ export const agentTaskToolEntries = [
 
 export function agentTaskToolHandlers(runtime) {
   return {
+    query_backend_capability: context => runtime.executeCapabilityQuery(context),
     spawn_thinking: context => runtime.executeSpawnThinkingToolCall(context),
     [UPDATE_AGENT_TASK_TOOL_NAME]: context => runtime.executeUpdateToolCall(context),
     [CANCEL_AGENT_TASK_TOOL_NAME]: context => runtime.executeCancelToolCall(context),

@@ -13,6 +13,7 @@ import { personalToolHandlers } from './features/personal-tools.mjs'
 import { retrievalToolHandlers } from './features/retrieval-tools.mjs'
 import { scheduleToolHandlers } from './features/schedule-tools.mjs'
 import { AgentTaskRuntime } from './agent-task-runtime.mjs'
+import { randomUUID } from 'node:crypto'
 import { TaskOperations } from '../../orchestration/task-operations.mjs'
 import { isTaskTerminal } from '../../task/task-state.mjs'
 import {
@@ -81,6 +82,7 @@ export class ToolCallHandler {
   constructor({
     taskManager,
     ownerId,
+    getReviewConversation = () => [],
     sessionId,
     transcripts,
     getFrontend,
@@ -110,6 +112,8 @@ export class ToolCallHandler {
     turnCitations = null,
     sessionDigests = null,
   }) {
+    this.getReviewConversation = getReviewConversation
+    this.backendRuntime = backendRuntime || taskOperations?.backendRuntime
     this.taskManager = taskManager
     this.ownerId = ownerId
     this.sessionId = sessionId
@@ -158,6 +162,25 @@ export class ToolCallHandler {
     this.stoppedToolTurns = new Map()
     this.deferredToolResponses = new Map()
     this.submittedBackendPermissions = new Set()
+  }
+
+  async executeCapabilityQuery({ callId, turnId, args }) {
+    let output
+    try {
+      if (this.backendAvailability?.snapshot()?.configured === false) {
+        output = { status: 'ok', supported: false, reason: '当前未配置后台 Agent' }
+      } else {
+        const result = await this.backendRuntime.runIsolated({ objective: [
+          '只查询你目前的工具、权限和能力，不执行任何用户操作，不调用有副作用的工具。',
+          '说明以下请求能否完成、限制及所需条件。不能确定时明确说不能确定，不假装已经执行。',
+          JSON.stringify({ request: args.request }),
+        ].join('\n') }, { ownerId: this.ownerId, taskId: randomUUID(), onEvent: () => {} })
+        output = { status: 'ok', assessment: result.content }
+      }
+    } catch {
+      output = { status: 'unavailable', error: true, user_message: '暂时无法核实后台能力，不能据此断言不具备该能力。' }
+    }
+    await this.sendOutput(callId, output, turnId)
   }
 
   externalTool(name) {

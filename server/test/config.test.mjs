@@ -103,6 +103,24 @@ test('uses a key-free fallback until the user configures a search provider', () 
     mcpToken: 'dashscope-key',
     mcpTool: 'bailian_web_search',
   })
+  assert.deepEqual(resolveWebSearchConfiguration({
+    QWEN_AUDIO_WEB_SEARCH_PROVIDER: 'keenable',
+    QWEN_AUDIO_WEB_SEARCH_MCP_URL: 'https://search.example/mcp',
+    QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN: 'search-key',
+    QWEN_AUDIO_WEB_SEARCH_MCP_TOOL: 'search_web',
+  }), {
+    provider: 'keenable',
+    mcpUrl: 'https://api.keenable.ai/mcp?keenable_title=qwen-audio-agent',
+    mcpToken: '',
+    mcpTool: 'search_web_pages',
+  })
+  assert.equal(resolveWebSearchConfiguration({
+    KEENABLE_API_KEY: 'keenable-key',
+    QWEN_AUDIO_WEB_SEARCH_PROVIDER: 'keenable',
+  }).mcpToken, 'keenable-key')
+  assert.equal(resolveWebSearchConfiguration({
+    KEENABLE_API_KEY: 'keenable-key',
+  }).provider, 'so360')
   assert.equal(resolveWebSearchConfiguration({
     DASHSCOPE_API_KEY: 'dashscope-key',
   }).provider, 'so360')

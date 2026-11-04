@@ -229,10 +229,17 @@ try {
   // Exercise real bridge closure, not just the controller in isolation. A
   // renderer loss may fall back only before playback commits; it must not tear
   // down the healthy Gateway connection or replay a partially heard response.
-  for (const fault of ['first_media_timeout', 'channel_drop']) {
+  const faultCases = [
+    { fault: 'first_media_timeout' },
+    { fault: 'channel_drop' },
+    { fault: null, idleDisconnect: true },
+  ]
+  for (const { fault, idleDisconnect = false } of faultCases) {
     await application.close()
     await renderer.close()
-    renderer = await startMockRendererServer({ host: '127.0.0.1', port: 0, fault })
+    const id = `response-${responseNumber + 1}`
+    renderer = await startMockRendererServer({ host: '127.0.0.1', port: 0, fault, faultResponseId: id })
+    const rendererPort = renderer.port
     application = await startExampleServer({
       host: '127.0.0.1', port: 0,
       gatewayUrl: `ws://127.0.0.1:${gateway.address().port}/api/realtime`, rendererUrl: renderer.url,
@@ -240,14 +247,30 @@ try {
     })
     const faultPage = await browser.newPage()
     faultPage.on('pageerror', error => errors.push(error.message))
+    const inboundStart = inbound.length
     await faultPage.goto(application.origin)
     await faultPage.locator('[data-testid="avatar-connect"]').click()
     await faultPage.waitForFunction(selector => document.querySelector(selector)?.dataset.connection === 'connected', STAGE)
-    const id = `response-${responseNumber + 1}`
-    await faultPage.locator('[data-testid="avatar-input"]').fill(`fault ${fault}`)
+    await faultPage.waitForFunction(selector => document.querySelector(selector)?.dataset.idlePainted === 'true', STAGE)
+    if (idleDisconnect) {
+      // Close only after both Gateway and idle media are live. This tests idle
+      // loss, not a race against the initial dual-connection handshake.
+      await renderer.close()
+      await faultPage.waitForFunction(() => document.querySelector('[data-testid="avatar-connect"]')?.disabled === false)
+    } else {
+      // A user may pause before typing. Idle must not consume the reply-scoped
+      // fault, even after passing the old two-frame disconnect threshold.
+      await delay(300)
+    }
+    assert.deepEqual(inbound.slice(inboundStart).filter(event => event.type.startsWith('playback.')), [],
+      'Idle frames and idle connection loss never produce playback receipts')
+    assert.equal(await faultPage.locator(STAGE).getAttribute('data-connection'), 'connected')
+    await faultPage.locator('[data-testid="avatar-input"]').fill(`fault ${idleDisconnect ? 'idle disconnect' : fault}`)
     await faultPage.locator('[data-testid="avatar-send"]').click()
-    if (fault === 'first_media_timeout') {
+    if (fault === 'first_media_timeout' || idleDisconnect) {
       await finish(id)
+      assert.deepEqual(receipts(id).map(event => event.type), ['playback.started', 'playback.ended'],
+        'Precommit renderer loss falls back to original audio exactly once')
       assert.equal(Number(await faultPage.locator(STAGE).getAttribute('data-frame-count')), 0, 'Precommit fallback is original audio only')
     } else {
       await until(() => receipts(id).some(event => event.type === 'playback.cancelled'), 'postcommit renderer disconnect cancellation')
@@ -262,6 +285,7 @@ try {
     await faultPage.locator('[data-testid="avatar-input"]').fill('audio after renderer loss')
     await faultPage.locator('[data-testid="avatar-send"]').click()
     await finish(nextId)
+    if (idleDisconnect) renderer = await startMockRendererServer({ host: '127.0.0.1', port: rendererPort })
     const connectionCount = connections.length
     await faultPage.locator('[data-testid="avatar-connect"]').click()
     await until(() => connections.length > connectionCount, 'explicit dual connection reconnect')
@@ -270,7 +294,7 @@ try {
     await faultPage.close()
   }
   assert.deepEqual(errors, [])
-  console.log(JSON.stringify({ ...result, faults: ['first_media_timeout', 'channel_drop'], reconnect: true }))
+  console.log(JSON.stringify({ ...result, faults: ['first_media_timeout', 'channel_drop', 'idle_disconnect'], reconnect: true }))
 } catch (error) {
   console.error('Browser errors:', errors)
   console.error('Gateway events:', inbound.map(event => ({ type: event.type, responseId: event.responseId })))

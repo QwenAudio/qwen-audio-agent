@@ -99,6 +99,7 @@ test('capability query uses isolated backend and reports failure without claimin
   runtime.backendRuntime.runIsolated = async () => { throw new Error('offline') }
   await runtime.executeCapabilityQuery({ callId: 'd', turnId: 't3', args: { request: 'send email' } })
   assert.equal(outputs[1][1].status, 'unavailable')
+  assert.equal(outputs[1][1].user_message, '暂时无法做到。')
 })
 
 test('final transcript wait times out explicitly and is released on session close', async () => {

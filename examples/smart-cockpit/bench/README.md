@@ -286,7 +286,8 @@ universal tool sandbox. Backend tools retain their existing authorization rules.
 
 The frontend also has `query_backend_capability`: before claiming an ability is
 unavailable it queries the backend in an isolated capability-only request. An
-unavailable query is reported as uncertainty rather than proof of inability.
+unavailable query is presented as “暂时无法做到” without exposing backend structure
+or claiming a permanent lack of capability. This policy lives in the main frontend prompt.
 
 These changes have offline regression coverage; they do not establish live model
 accuracy. The original cockpit data does not cover the English spelling examples

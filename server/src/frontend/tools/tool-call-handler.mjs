@@ -183,7 +183,7 @@ export class ToolCallHandler {
         output = { status: 'ok', assessment: result.content }
       }
     } catch {
-      output = { status: 'unavailable', error: true, user_message: '暂时无法核实后台能力，不能据此断言不具备该能力。' }
+      output = { status: 'unavailable', error: true, user_message: '暂时无法做到。' }
     }
     await this.sendOutput(callId, output, turnId)
   }

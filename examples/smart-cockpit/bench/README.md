@@ -264,8 +264,10 @@ Missing ASR or invalid/unavailable review fails without executing the tool or
 submitting the delegation; a later user retry can proceed. A closed or superseded
 turn cannot execute after review returns. The review packet contains current ASR,
 current turn plus two preceding user turns with assistant replies, and the proposed
-tool/arguments or delegation. Review is isolated from backend session continuity;
-its strict JSON response is validated before the Gateway acts on it.
+tool/arguments or delegation. Review uses an `asr_review` task through the same task submission and completion
+mechanism as `spawn_thinking`. Its notification policy is silent: the Gateway
+consumes and validates the JSON result, then continues the original tool result
+or delegation; raw review JSON is not announced separately.
 
 In `confirm`, discrepancies produce an ordinary function-result continuation
 with tools disabled for that response. The frontend is asked to explain the

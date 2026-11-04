@@ -12,14 +12,17 @@ function host(decision = 'clarify') {
     ownerId: 'o', sessionId: 's', transcripts,
     asrReview: { enabled: true, delegation: 'confirm' },
     getFrontend: () => ({}), getTurnId: () => 't3', getTurnGeneration: () => 1,
-    backendRuntime: { async runIsolated(input, options) {
+    backendRuntime: { async run(input, options) {
       requests.push({ input, options })
       return { content: JSON.stringify({ decision, differences: decision === 'match' ? [] : [{ field: 'name', asr: 'Yusuf Rossi', frontend: 'Yusuf Razi', possible_asr_error: 'surname' }], question: '姓是 Rossi 还是 Razi？' }) }
     } },
   })
   runtime.sendOutput = async (...args) => outputs.push(args)
-  runtime.createWork = input => { work.push(input); return { id: 'task' } }
-  runtime.taskOperations = { list: () => [] }
+  runtime.createWork = input => { if (input.kind === 'asr_review') { runtime.reviewInput = input; return { id: 'review' } } work.push(input); return { id: 'task' } }
+  runtime.taskOperations = { list: () => [], cancel: async () => {}, taskManager: { wait: async () => {
+    const result = await runtime.backendRuntime.run(runtime.reviewInput, { signal: runtime.signal })
+    return { status: 'completed', result: result.content }
+  } } }
   return { runtime, transcripts, outputs, work, requests }
 }
 
@@ -66,7 +69,7 @@ test('matching frontend tool executes unchanged exactly once', async () => {
 test('malformed backend response fails closed, never executes', async () => {
   const { runtime, transcripts, outputs } = host()
   transcripts.record('t3', 'x')
-  runtime.backendRuntime.runIsolated = async () => ({ content: 'not JSON' })
+  runtime.backendRuntime.run = async () => ({ content: 'not JSON' })
   await runtime.executeExternalToolCall({ tool: { name: 'lookup' }, source: { execute: () => assert.fail('must not execute') } },
     { callId: 'c', turnId: 't3', turnGeneration: 1, args: {} })
   assert.equal(outputs[0][1].error_code, 'asr_review_unavailable')
@@ -144,7 +147,7 @@ test('disconnect during backend review cancels its signal and cannot execute', a
   const controller = new AbortController()
   runtime.signal = controller.signal
   runtime.closeStaleCall = async () => {}
-  runtime.backendRuntime.runIsolated = async (_input, { signal }) => {
+  runtime.backendRuntime.run = async (_input, { signal }) => {
     assert.equal(signal, controller.signal)
     controller.abort()
     return { content: JSON.stringify({ decision: 'match', differences: [], question: '' }) }

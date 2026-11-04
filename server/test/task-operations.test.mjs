@@ -292,3 +292,26 @@ test('capability query uses ordinary task admission, backend execution and final
   assert.equal(completed.status, 'completed')
   assert.equal(completed.result, '可以发送邮件，需要提供收件人并确认发送。')
 })
+
+test('ASR review shares task submission and completion without announcing machine JSON', async t => {
+  const h = harness(t)
+  h.voice.asrReview = { enabled: true, delegation: 'confirm' }
+  h.transcripts.record(context.turnId, 'find Yusuf Rossi')
+  let executions = 0
+  const pending = h.voice.executeExternalToolCall({ tool: { name: 'lookup' }, source: {
+    execute: async () => { executions++; return { found: true } },
+  } }, { callId: 'lookup', turnId: context.turnId, turnGeneration: 1, args: { name: 'Yusuf Rossi' } })
+  await tick()
+  const review = h.operations.list(context).find(task => task.kind === 'asr_review')
+  assert.ok(review)
+  assert.equal(review.notificationPolicy, 'silent')
+  assert.equal(executions, 0)
+  const run = h.runs.get(review.id)
+  assert.match(run.input.objective, /Yusuf Rossi/)
+  run.resolve({ content: JSON.stringify({ decision: 'match', differences: [], question: '' }) })
+  await pending
+  assert.equal(executions, 1)
+  assert.equal(h.operations.get(review.id, context).status, 'completed')
+  assert.equal(h.outputs.length, 1)
+  assert.equal(h.outputs[0][1].found, true)
+})

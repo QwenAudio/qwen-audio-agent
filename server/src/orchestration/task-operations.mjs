@@ -57,12 +57,12 @@ export class TaskOperations {
     return this.taskManager.list({ sessionId, active, ...filters, ownerId: owner(context) })
   }
 
-  submit({ objective, inputParts = [], submissionKey, kind = 'work' }, context) {
+  submit({ objective, inputParts = [], submissionKey, kind = 'work', notificationPolicy }, context) {
     const ownerId = owner(context)
     const { sessionId = 'main', turnId } = context
     const conversation = this.conversationSnapshot?.(context)
     return this.taskManager.create({
-      objective, ownerId, sessionId, turnId, submissionKey, kind,
+      objective, ownerId, sessionId, turnId, submissionKey, kind, notificationPolicy,
       runner: (_objective, execution) => this.run(inputWithUpdates(
         this.taskManager.tasks.get(execution.taskId), {
           objective, inputParts, ...(conversation ? { conversation } : {}),

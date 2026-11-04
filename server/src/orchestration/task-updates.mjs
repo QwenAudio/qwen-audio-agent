@@ -11,7 +11,7 @@ export function updateTask(operations, { taskId, instruction, inputParts = [], s
   const task = manager.tasks.get(visible.id)
   const text = String(instruction || '').trim()
   if (!text || text.length > 16_000) fail('invalid_instruction', '调整要求不能为空或超过 16000 字符。')
-  if (!isUserWork(task) || task.kind !== 'work') fail('update_unsupported', '这种工作类型不支持调整。')
+  if (!isUserWork(task) || !['work', 'capability_query'].includes(task.kind)) fail('update_unsupported', '这种工作类型不支持调整。')
   if (submissionKey && task.updates?.some(entry => entry.submissionKey === submissionKey)) {
     return { status: 'duplicate', taskId: task.id }
   }

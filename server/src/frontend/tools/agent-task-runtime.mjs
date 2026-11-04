@@ -270,7 +270,8 @@ export class AgentTaskRuntime {
     generation,
     args,
     event,
-    callContext,
+    callContext = {},
+    taskKind = 'work',
   }) {
     // A pending request belongs to its Task, not the entire conversation.
     // Independent work can use another execution slot without approving or
@@ -349,7 +350,7 @@ export class AgentTaskRuntime {
       return
     }
 
-    if (this.host.asrReview?.enabled) {
+    if (taskKind !== 'capability_query' && this.host.asrReview?.enabled) {
       try {
         const review = await reviewInterpretation(this.host, { turnId, kind: 'delegation', interpretation: { objective } })
         if (this.host.isStale(turnId, generation)) {
@@ -370,8 +371,17 @@ export class AgentTaskRuntime {
       }
     }
 
+    if (taskKind === 'capability_query') {
+      objective = [
+        '任务类型：能力查询。只查询你目前的工具、权限和能力，不执行用户请求中的实际操作，不调用有副作用的工具。',
+        '说明请求能否完成、限制及所需条件；不能确定时明确说明，不能假装已经执行。',
+        '查询失败时对用户简短说明“暂时无法做到”，不要暴露后台结构或工具名。',
+        JSON.stringify({ request: objective }),
+      ].join('\n')
+    }
+
     const responseId = String(
-      callContext.responseId || event.response_id || '',
+      callContext.responseId || event?.response_id || '',
     ).trim()
     const firstSpawnResponse = turnId
       ? this.host.spawnResponseByTurn.get(turnId)
@@ -418,6 +428,7 @@ export class AgentTaskRuntime {
       task = this.host.createWork({
         turnId,
         objective,
+        kind: taskKind,
         submissionKey,
         inputParts: delegatedInputParts,
       })

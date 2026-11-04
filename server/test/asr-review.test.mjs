@@ -92,14 +92,17 @@ test('dual-query prompt contains both candidates, result precedence and action p
   assert.match(prompt, /禁止.*操作尝试两种参数/)
 })
 
-test('capability query uses isolated backend and reports failure without claiming inability', async () => {
-  const { runtime, outputs, requests } = host()
-  await runtime.executeCapabilityQuery({ callId: 'c', turnId: 't3', args: { request: 'send email' } })
-  assert.match(requests[0].input.objective, /不执行任何用户操作/)
-  runtime.backendRuntime.runIsolated = async () => { throw new Error('offline') }
-  await runtime.executeCapabilityQuery({ callId: 'd', turnId: 't3', args: { request: 'send email' } })
-  assert.equal(outputs[1][1].status, 'unavailable')
-  assert.equal(outputs[1][1].user_message, '暂时无法做到。')
+test('capability query shares delegation submission and receipt, with a capability task kind', async () => {
+  const { runtime, outputs, work, requests } = host()
+  await runtime.executeCapabilityQuery({ callId: 'c', turnId: 't3', generation: 1,
+    args: { request: 'send email' }, event: {}, callContext: {} })
+  assert.equal(work.length, 1)
+  assert.equal(work[0].kind, 'capability_query')
+  assert.match(work[0].objective, /不执行用户请求中的实际操作/)
+  assert.match(work[0].objective, /send email/)
+  assert.equal(outputs[0][1].status, 'accepted')
+  assert.equal(outputs[0][1].task_id, 'task')
+  assert.equal(requests.length, 0, 'no separate isolated backend call or ASR review')
 })
 
 test('final transcript wait times out explicitly and is released on session close', async () => {

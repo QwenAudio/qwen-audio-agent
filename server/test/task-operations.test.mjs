@@ -275,3 +275,20 @@ test('closing a frontend transcript does not cancel accepted work; a replacement
   assert.equal(replacement.getTask(task.id, context).notificationStatus, 'pending')
   assert.equal(h.runs.size, 1)
 })
+
+test('capability query uses ordinary task admission, backend execution and final result state', async t => {
+  const h = harness(t)
+  await h.voice.executeCapabilityQuery({ callId: 'capability', turnId: context.turnId, generation: 1,
+    args: { request: 'Can you send email?' }, event: {}, callContext: {} })
+  const receipt = h.outputs[0][1]
+  assert.equal(receipt.status, 'accepted')
+  const task = h.operations.get(receipt.task_id, context)
+  assert.equal(task.kind, 'capability_query')
+  await tick()
+  const run = h.runs.get(task.id)
+  assert.match(run.input.objective, /不执行用户请求中的实际操作/)
+  run.resolve({ content: '可以发送邮件，需要提供收件人并确认发送。' })
+  const completed = await h.manager.wait(task.id)
+  assert.equal(completed.status, 'completed')
+  assert.equal(completed.result, '可以发送邮件，需要提供收件人并确认发送。')
+})

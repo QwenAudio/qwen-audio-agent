@@ -112,7 +112,7 @@ export const queryBackendCapabilityTool = {
 }
 
 export const agentTaskToolEntries = [
-  { definition: queryBackendCapabilityTool },
+  { definition: queryBackendCapabilityTool, policy: { repeatHandling: 'handler' } },
   {
     definition: spawnThinkingTool,
     policy: { repeatHandling: 'handler' },

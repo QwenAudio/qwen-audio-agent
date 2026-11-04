@@ -14,7 +14,6 @@ import { personalToolHandlers } from './features/personal-tools.mjs'
 import { retrievalToolHandlers } from './features/retrieval-tools.mjs'
 import { scheduleToolHandlers } from './features/schedule-tools.mjs'
 import { AgentTaskRuntime } from './agent-task-runtime.mjs'
-import { randomUUID } from 'node:crypto'
 import { TaskOperations } from '../../orchestration/task-operations.mjs'
 import { isTaskTerminal } from '../../task/task-state.mjs'
 import {
@@ -61,7 +60,7 @@ function compactDebugResult(output) {
 }
 
 function debugSurface(toolName) {
-  return toolName === SPAWN_THINKING_TOOL_NAME ? 'backend' : 'frontend'
+  return [SPAWN_THINKING_TOOL_NAME, 'query_backend_capability'].includes(toolName) ? 'backend' : 'frontend'
 }
 
 function needsToolResultSummary(toolName, args) {
@@ -73,6 +72,7 @@ function needsToolResultSummary(toolName, args) {
   }
   return ![
     SPAWN_THINKING_TOOL_NAME,
+    'query_backend_capability',
     UPDATE_AGENT_TASK_TOOL_NAME,
     RESPOND_PERMISSION_TOOL_NAME,
     CANCEL_AGENT_TASK_TOOL_NAME,
@@ -169,23 +169,12 @@ export class ToolCallHandler {
     this.submittedBackendPermissions = new Set()
   }
 
-  async executeCapabilityQuery({ callId, turnId, args }) {
-    let output
-    try {
-      if (this.backendAvailability?.snapshot()?.configured === false) {
-        output = { status: 'ok', supported: false, reason: '当前未配置后台 Agent' }
-      } else {
-        const result = await this.backendRuntime.runIsolated({ objective: [
-          '只查询你目前的工具、权限和能力，不执行任何用户操作，不调用有副作用的工具。',
-          '说明以下请求能否完成、限制及所需条件。不能确定时明确说不能确定，不假装已经执行。',
-          JSON.stringify({ request: args.request }),
-        ].join('\n') }, { ownerId: this.ownerId, taskId: randomUUID(), signal: this.signal, onEvent: () => {} })
-        output = { status: 'ok', assessment: result.content }
-      }
-    } catch {
-      output = { status: 'unavailable', error: true, user_message: '暂时无法做到。' }
-    }
-    await this.sendOutput(callId, output, turnId)
+  executeCapabilityQuery(context) {
+    return this.agentTaskRuntime.executeSpawnThinkingToolCall({
+      ...context,
+      args: { objective: context.args.request },
+      taskKind: 'capability_query',
+    })
   }
 
   externalTool(name) {

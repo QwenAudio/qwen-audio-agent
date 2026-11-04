@@ -285,7 +285,9 @@ prompt policy; it does not infer read-only safety from tool names or enforce a
 universal tool sandbox. Backend tools retain their existing authorization rules.
 
 The frontend also has `query_backend_capability`: before claiming an ability is
-unavailable it queries the backend in an isolated capability-only request. An
+unavailable it submits a `capability_query` task through the same submission, intake receipt,
+and final-result notification flow as `spawn_thinking`. Its prompt asks only for
+capability assessment and forbids actual operations. An
 unavailable query is presented as “暂时无法做到” without exposing backend structure
 or claiming a permanent lack of capability. This policy lives in the main frontend prompt.
 

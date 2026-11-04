@@ -33,7 +33,16 @@ export class TurnTranscripts {
     return (this.inputParts.get(turnId) || []).map(part => ({ ...part }))
   }
 
+  async finalTranscript(turnId, waitMs = 15_000) {
+    if (this.values.has(turnId)) return this.values.get(turnId)
+    return this.waitForTranscript(turnId, waitMs)
+  }
+
   async transcript(turnId) {
+    return this.waitForTranscript(turnId, this.waitMs)
+  }
+
+  async waitForTranscript(turnId, waitMs) {
     if (this.values.has(turnId)) return this.values.get(turnId)
     return new Promise(resolve => {
       const waiters = this.waiters.get(turnId) || []
@@ -53,7 +62,7 @@ export class TurnTranscripts {
         if (pending.length) this.waiters.set(turnId, pending)
         else this.waiters.delete(turnId)
         finish('')
-      }, this.waitMs)
+      }, waitMs)
     })
   }
 

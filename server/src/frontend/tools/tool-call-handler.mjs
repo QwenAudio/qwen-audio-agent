@@ -1,3 +1,4 @@
+import { asrReviewOptions, reviewInterpretation, CLARIFICATION_INSTRUCTIONS } from './asr-review.mjs'
 import {
   CANCEL_AGENT_TASK_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
@@ -83,6 +84,7 @@ export class ToolCallHandler {
     taskManager,
     ownerId,
     getReviewConversation = () => [],
+    asrReview = asrReviewOptions(),
     sessionId,
     transcripts,
     getFrontend,
@@ -112,6 +114,7 @@ export class ToolCallHandler {
     turnCitations = null,
     sessionDigests = null,
   }) {
+    this.asrReview = asrReview
     this.getReviewConversation = getReviewConversation
     this.backendRuntime = backendRuntime || taskOperations?.backendRuntime
     this.taskManager = taskManager
@@ -243,6 +246,26 @@ export class ToolCallHandler {
     if (!limit.admitted) {
       await this.stopToolLoop(context, limit.reason)
       return { handled: true, executed: false, limit }
+    }
+    if (this.asrReview.enabled) {
+      try {
+        const review = await reviewInterpretation(this, {
+          turnId: context.turnId, kind: 'frontend-tool',
+          interpretation: { tool: tool.name, arguments: context.args },
+        })
+        if (this.isStale(context.turnId, context.turnGeneration)) {
+          await this.closeStaleCall(context.callId, context.turnId)
+          return { handled: true, executed: false }
+        }
+        if (review.decision === 'clarify') {
+          await this.sendOutput(context.callId, { status: 'clarification_required', ...review }, context.turnId, null,
+            { response: { instructions: CLARIFICATION_INSTRUCTIONS, tool_choice: 'none' } })
+          return { handled: true, executed: false }
+        }
+      } catch {
+        await this.sendOutput(context.callId, failure('asr_review_unavailable', '本轮转写或核对暂时不可用，尚未执行，请稍后重试。', { retryable: true }), context.turnId)
+        return { handled: true, executed: false }
+      }
     }
     const output = await this.executeExternalSource(external, context.args, context)
     const silent = tool.policy?.responseOnSuccess === 'none' && output?.error !== true && output?.isError !== true

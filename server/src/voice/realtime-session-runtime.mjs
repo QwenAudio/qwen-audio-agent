@@ -383,6 +383,7 @@ export function createRealtimeSessionRuntime({
       })
     : () => {}
   const toolCalls = new ToolCallHandler({
+    signal: toolScope.signal,
     getReviewConversation: () => conversationSync.list({ ownerId, sessionId }),
     taskManager,
     taskOperations,

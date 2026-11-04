@@ -20,6 +20,7 @@ import { loadFrontendPrompt } from '../src/conversation/frontend-agent-context.m
 
 const DEFAULT_TOOL_NAMES = [
   'spawn_thinking',
+  'query_backend_capability',
   'update_agent_task',
   'schedule_reminder',
   'cancel_agent_task',
@@ -34,6 +35,7 @@ function names(tools) {
 
 // Prompt-maintenance convention, not a runtime tool classification.
 const CORE_PROMPT_TOOLS = new Set([
+  'query_backend_capability',
   'update_agent_task',
   'spawn_thinking', 'get_agent_task_status', 'cancel_agent_task',
   'respond_permission', 'get_current_time',
@@ -379,9 +381,9 @@ test('exposes the knowledge tool only with the frontend knowledge capability', (
   assert.deepEqual(
     names(frontendTools({ frontend: { capabilities: ['knowledge'] } })),
     [
-      ...DEFAULT_TOOL_NAMES.slice(0, 7),
+      ...DEFAULT_TOOL_NAMES.slice(0, 8),
       KNOWLEDGE_TOOL_NAME,
-      ...DEFAULT_TOOL_NAMES.slice(7),
+      ...DEFAULT_TOOL_NAMES.slice(8),
     ],
   )
   assert.deepEqual(

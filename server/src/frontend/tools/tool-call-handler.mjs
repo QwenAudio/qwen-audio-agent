@@ -85,6 +85,7 @@ export class ToolCallHandler {
     ownerId,
     getReviewConversation = () => [],
     asrReview = asrReviewOptions(),
+    signal,
     sessionId,
     transcripts,
     getFrontend,
@@ -114,6 +115,7 @@ export class ToolCallHandler {
     turnCitations = null,
     sessionDigests = null,
   }) {
+    this.signal = signal
     this.asrReview = asrReview
     this.getReviewConversation = getReviewConversation
     this.backendRuntime = backendRuntime || taskOperations?.backendRuntime
@@ -177,7 +179,7 @@ export class ToolCallHandler {
           '只查询你目前的工具、权限和能力，不执行任何用户操作，不调用有副作用的工具。',
           '说明以下请求能否完成、限制及所需条件。不能确定时明确说不能确定，不假装已经执行。',
           JSON.stringify({ request: args.request }),
-        ].join('\n') }, { ownerId: this.ownerId, taskId: randomUUID(), onEvent: () => {} })
+        ].join('\n') }, { ownerId: this.ownerId, taskId: randomUUID(), signal: this.signal, onEvent: () => {} })
         output = { status: 'ok', assessment: result.content }
       }
     } catch {
@@ -329,7 +331,8 @@ export class ToolCallHandler {
 
   isStale(turnId, generation) {
     return (
-      generation !== this.getTurnGeneration()
+      this.signal?.aborted
+      || generation !== this.getTurnGeneration()
       || Boolean(turnId && this.getTurnId() && turnId !== this.getTurnId())
     )
   }

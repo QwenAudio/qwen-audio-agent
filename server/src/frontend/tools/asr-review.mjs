@@ -36,7 +36,9 @@ export function reviewWindow(messages, turnId, asr) {
 }
 
 export async function reviewInterpretation(runtime, { turnId, interpretation, kind }) {
+  if (runtime.signal?.aborted) throw new Error('review_cancelled')
   const asr = await runtime.transcripts.finalTranscript(turnId)
+  if (runtime.signal?.aborted) throw new Error('review_cancelled')
   if (!asr) throw new Error('final_asr_unavailable')
   const packet = { ...reviewWindow(runtime.getReviewConversation(), turnId, asr), kind, interpretation }
   const result = await runtime.backendRuntime.runIsolated({ objective: [
@@ -46,9 +48,10 @@ export async function reviewInterpretation(runtime, { turnId, interpretation, ki
     '严格只返回JSON：{"decision":"match"或"clarify","differences":[{"field":"字段","asr":"ASR候选","frontend":"前台候选","possible_asr_error":"可能的ASR错误"}],"question":"简短口语确认问题"}。',
     '差异不代表ASR一定正确；不要自行改写参数。无法确定时返回clarify。',
     JSON.stringify(packet),
-  ].join('\n') }, { ownerId: runtime.ownerId, taskId: randomUUID(), onEvent: () => {} })
+  ].join('\n') }, { ownerId: runtime.ownerId, taskId: randomUUID(), signal: runtime.signal, onEvent: () => {} })
   const value = JSON.parse(result.content)
   if (!['match', 'clarify'].includes(value.decision) || !Array.isArray(value.differences)
+    || value.differences.some(item => !item || ['field', 'asr', 'frontend', 'possible_asr_error'].some(key => typeof item[key] !== 'string'))
     || typeof value.question !== 'string' || (value.decision === 'match' && value.differences.length)) {
     throw new Error('invalid_asr_review')
   }

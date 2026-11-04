@@ -133,3 +133,37 @@ test('delegation dual-query submits both interpretations and current ASR', async
   assert.match(work[0].objective, /Yusuf Razi/)
   assert.match(work[0].objective, /两种均查不到/)
 })
+
+test('disconnect during backend review cancels its signal and cannot execute', async () => {
+  const { runtime, transcripts } = host('match')
+  transcripts.record('t3', 'find Yusuf Rossi')
+  const controller = new AbortController()
+  runtime.signal = controller.signal
+  runtime.closeStaleCall = async () => {}
+  runtime.backendRuntime.runIsolated = async (_input, { signal }) => {
+    assert.equal(signal, controller.signal)
+    controller.abort()
+    return { content: JSON.stringify({ decision: 'match', differences: [], question: '' }) }
+  }
+  await runtime.executeExternalToolCall({ tool: { name: 'lookup' }, source: { execute: () => assert.fail('disconnected operation') } },
+    { callId: 'c', turnId: 't3', turnGeneration: 1, args: {} })
+})
+
+test('email spellings survive review verbatim, neither candidate is silently normalized', async () => {
+  const { runtime, transcripts, requests } = host()
+  transcripts.record('t3', 'email fatima.wilson5721@example.com')
+  await reviewInterpretation(runtime, { turnId: 't3', kind: 'frontend-tool',
+    interpretation: { tool: 'find_contact', arguments: { email: 'fathima.wilson5721@example.com' } } })
+  assert.match(requests[0].input.objective, /fatima\.wilson5721@example\.com/)
+  assert.match(requests[0].input.objective, /fathima\.wilson5721@example\.com/)
+})
+
+test('review off preserves ordinary frontend execution without ASR or backend', async () => {
+  const { runtime, requests } = host()
+  runtime.asrReview.enabled = false
+  let executions = 0
+  await runtime.executeExternalToolCall({ tool: { name: 'lookup' }, source: { execute: async () => { executions++; return {} } } },
+    { callId: 'c', turnId: 't3', turnGeneration: 1, args: {} })
+  assert.equal(executions, 1)
+  assert.equal(requests.length, 0)
+})

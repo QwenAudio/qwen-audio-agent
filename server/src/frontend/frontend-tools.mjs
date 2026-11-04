@@ -68,8 +68,8 @@ const entriesByName = new Map(featureEntries.map(entry => [
   entry,
 ]))
 const toolOrder = [
-  'query_backend_capability',
   SPAWN_THINKING_TOOL_NAME,
+  'query_backend_capability',
   UPDATE_AGENT_TASK_TOOL_NAME,
   SCHEDULE_REMINDER_TOOL_NAME,
   CANCEL_AGENT_TASK_TOOL_NAME,

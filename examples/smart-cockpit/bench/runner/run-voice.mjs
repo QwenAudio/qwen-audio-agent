@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { configureAsrReview } from './asr-review-options.mjs'
 import { once } from 'node:events'
 import { appendFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -508,6 +509,7 @@ async function waitForServerListening(server) {
 async function main() {
   loadCockpitEnvironment()
   const args = parseArgs(process.argv.slice(2))
+  const asrReview = configureAsrReview(args)
   if (args.get('realtime-model')) {
     process.env.QWEN_AUDIO_REALTIME_MODEL = String(args.get('realtime-model'))
   }
@@ -602,7 +604,8 @@ async function main() {
     const scores = cases.map((caseItem, index) => scoreTrace(caseItem, traces[index]))
     const report = {
       suite: 'smart-cockpit/cockpit',
-      mode: 'voice-realtime',
+      mode: asrReview.enabled ? 'voice-realtime-asr-review' : 'voice-realtime',
+      asr_review: asrReview,
       benchmark_suite: suite,
       domains,
       realtime_model: process.env.QWEN_AUDIO_REALTIME_MODEL || null,

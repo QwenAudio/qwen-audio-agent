@@ -253,13 +253,14 @@ export class RealtimeFrontend {
         this.onError?.(error)
         finish(error)
       })
-      ws.on('close', () => {
+      ws.on('close', (code, reason) => {
         this.ready = false
         this.sessionConfigured = false
         this.recentContextInjected = false
         this.resetResponses()
-        finish(new Error(`${this.provider.label} 连接已关闭`))
-        this.onClose?.()
+        const reasonText = reason ? reason.toString() : ''
+        finish(new Error(reasonText ? `${this.provider.label} 连接已关闭 (${code}: ${reasonText})` : `${this.provider.label} 连接已关闭`))
+        this.onClose?.({ code, reason: reasonText })
       })
       ws.on('message', raw => {
         let providerEvent

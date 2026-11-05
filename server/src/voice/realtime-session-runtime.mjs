@@ -1,9 +1,10 @@
+import { FrontendPolicyReview, policyReviewOptions } from './frontend-policy-review.mjs'
 import { randomUUID } from 'node:crypto'
 import { normalizeInputParts } from '../../../shared/input-parts.mjs'
 import { GatewayClientEvent, GatewayServerEvent } from '../../../shared/protocol/realtime-events.mjs'
 import { GatewayClientCapability } from '../../../shared/protocol/gateway-client-protocol.mjs'
 import { AnnouncementWindow } from './announcement/announcement-window.mjs'
-import { normalizeClientContext } from '../conversation/frontend-agent-context.mjs'
+import { loadFrontendPrompt, normalizeClientContext } from '../conversation/frontend-agent-context.mjs'
 import { realtimeEventErrorMessage } from './realtime-provider.mjs'
 import { SessionTaskCoordinator } from '../orchestration/session-task-coordinator.mjs'
 import { createRealtimeTaskPresentation } from './realtime-task-presentation.mjs'
@@ -80,10 +81,12 @@ export function createRealtimeSessionRuntime({
   defaultRealtimeProvider, realtimeFrontendFactory,
   frontendRetrieval, frontendKnowledge, frontendToolSources,
   spawnThinkingDescription, taskAnnouncementFactory,
+  policyReviewSettings = policyReviewOptions(), policyReviewDecide,
 }) {
   let closed = false
   let started = false
   let presentationRuntime
+  const policyToolEvidence = []
   const emit = event => {
     if (closed) return
     if (event.type === GatewayServerEvent.PLAYBACK_CLEAR) {
@@ -442,6 +445,10 @@ export function createRealtimeSessionRuntime({
       presentationRuntime.failToolResponse(context)
     },
     onToolCallDebug: event => {
+      if (policyReviewSettings.enabled) {
+        policyToolEvidence.push({ ...event })
+        if (policyToolEvidence.length > 100) policyToolEvidence.shift()
+      }
       const { startedAt: _startedAt, ...publicEvent } = event || {}
       emit({
         type: GatewayServerEvent.TOOL_CALL,
@@ -580,16 +587,45 @@ export function createRealtimeSessionRuntime({
 
   taskCoordinator.start()
 
+  const policyReviewConfig = policyReviewSettings
+  const policyReview = policyReviewConfig.enabled ? new FrontendPolicyReview({
+    options: policyReviewConfig,
+    getPrompt: () => loadFrontendPrompt(),
+    getTools: () => policyToolEvidence,
+    decide: policyReviewDecide,
+    getHistory: () => conversationSync.list({ ownerId, sessionId }),
+    getTasks: () => taskOperations?.list({ ownerId, sessionId }) || [],
+    getFrontend: () => realtimeSession.frontend,
+    getTurn: () => ({
+      turnId: turns.committedTurnId || turns.turnId,
+      turnGeneration: turns.committedTurnId ? turns.committedTurnGeneration : turns.turnGeneration,
+      userSpeaking: turns.userSpeaking,
+    }),
+    onError: error => connectionLogger.warn('realtime.policy_review.failed', { message: error.message }),
+  }) : null
+
   const handleEvent = event => {
     if (closed) return
     if (isSleepActivityEvent(event)) sleepController?.recordActivity()
-    if (isResponseActivityEvent(event)) presentationRuntime.begin(event)
+    if (isResponseActivityEvent(event)) {
+      const context = presentationRuntime.begin(event)
+      if (policyReview?.intercept(event, context)) {
+        if (context) context.suppressed = true
+        if (event.type === 'response.done') presentationRuntime.handle(event)
+        return
+      }
+    }
     if (inputs.handleProviderEvent(event)) return
     if (event.type === 'response.done') {
       const responseId = realtimeResponseId(event)
       const context = presentationRuntime.get(responseId)
       if (event.response?.status === 'completed' && context?.origin === 'model') {
         realtimeRecoveryContext.recordSuccessfulTurn()
+      }
+      if (policyReview && event.response?.status === 'completed' && context && !context.suppressed) {
+        const text = context.assistantTranscript || (event.response?.output || [])
+          .flatMap(item => item.content || []).map(part => part.transcript || part.text || '').join('')
+        policyReview.review({ responseId, context, text })
       }
       connectionLogger.info('realtime.response.done', {
         responseId,
@@ -1209,6 +1245,7 @@ export function createRealtimeSessionRuntime({
     close() {
       if (closed) return
       closed = true
+      policyReview?.close()
       toolScope.abort(new Error('Client disconnected'))
       releaseVoiceClient()
       taskCoordinator.close()

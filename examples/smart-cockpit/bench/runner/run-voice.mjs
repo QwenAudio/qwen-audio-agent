@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { policyReviewOptions } from '../../../../server/src/voice/frontend-policy-review.mjs'
 import { once } from 'node:events'
 import { appendFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -603,6 +604,7 @@ async function main() {
     const report = {
       suite: 'smart-cockpit/cockpit',
       mode: 'voice-realtime',
+      policy_review: { enabled: policyReviewOptions().enabled, timeout_ms: policyReviewOptions().timeoutMs, model: 'jev-omni' },
       benchmark_suite: suite,
       domains,
       realtime_model: process.env.QWEN_AUDIO_REALTIME_MODEL || null,

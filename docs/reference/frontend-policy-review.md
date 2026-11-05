@@ -1,11 +1,14 @@
 # Optional JEV frontend policy review
 
-This opt-in monitor checks completed frontend reply text asynchronously. It does
-not delay or buffer the reply being checked. It checks backend-interaction rules
-from the actual main system prompt (`Routing`, `Background work`, and relevant
-`Role` restrictions) and whether a reply repeats an error the user previously
-explicitly corrected. Each rule receives a content-derived ID; there is no second
-copy of system policy to maintain.
+This opt-in monitor currently checks **one issue only**: the frontend claims it
+cannot carry out an actual user request without trying a relevant dedicated tool
+or delegating it to the backend. It derives one rule from the first `Routing`
+paragraph of the main system prompt, beginning “仅当直接回答就能满足用户请求时”.
+The main prompt itself is unchanged. Other system rules and repeated-user-
+correction checks are currently excluded.
+
+The reply under review is not buffered. Review runs asynchronously and can correct
+the following response using the existing cancellation and notification mechanisms.
 
 ## Configure
 
@@ -36,15 +39,18 @@ support `choice` questions with `violation`, `ok`, and `uncertain` options.
 1. Completed reply text, response/turn IDs, retained user/assistant history,
    backend task state/results and recent frontend tool events form the review
    packet. The current reply continues playing normally.
-2. Each applicable rule is a separate JEV question. Another question checks
-   repeated user corrections. The Gateway validates model identity, input hash,
+2. There is exactly one JEV choice question about unattempted refusal. It does
+   not judge other violations in that paragraph, business/task cancellation,
+   repeated corrections or exposure of internal structure. The Gateway validates model identity, input hash,
    question IDs, primitive and option order. Only explicit `violation` answers
    produce corrections; uncertain answers do not.
 3. Before presenting any later response audio/text **or dispatching its tools**,
    the Gateway checks outstanding reviews. If necessary, it cancels the
    speculative response using the existing frontend cancellation mechanism and
    suppresses all its subsequent events.
-4. After review settles, the Gateway injects the violated rules and bound evidence
+4. After review settles, the Gateway injects the original routing paragraph, bound conversation evidence, and an actionable
+   instruction to try a relevant dedicated tool or submit the request through
+   `spawn_thinking` instead of merely apologizing or repeating the refusal
    with the existing `injectDelivery(route=context)` mechanism. It then requests
    regeneration for the latest user turn using `ensureResponse`. It does not
    read the review JSON aloud or edit the system prompt. Stale/disconnected
@@ -64,6 +70,12 @@ If context injection fails, an error is logged and the correction is also suppli
 as response instructions to the regeneration request.
 
 ## Scope and limits
+
+Positive examples include “I cannot access or change your booking” with no
+related tool/delegation evidence. Necessary clarification, knowledge answers,
+truthful actual tool failure or backend inability, explicit policy restrictions,
+and refused authorization are not this issue. An empty lookup result is not
+proof of lacking capability. Only attempts relevant to this request count.
 
 This is a model judgment, not proof of compliance. The reviewer sees the main
 system rules and retained session history, not arbitrary prior sessions or

@@ -11,7 +11,7 @@ function harness(decide, timeoutMs = 100) {
     ensureResponse: async (...args) => calls.push({ resume: args }),
   }
   const review = new FrontendPolicyReview({ options: { enabled: true, timeoutMs }, decide,
-    getPrompt: () => '# Routing\n\n不得虚构完成。\n\n# Background work\n\n先提交任务。',
+    getPrompt: () => '# Routing\n\n仅当直接回答就能满足用户请求时，才直接回答。不要未经尝试就声称做不到。',
     getHistory: () => [{ role: 'user', content: '我刚才说了不要再说已经发出', turnId: 't0' }],
     getTools: () => [{ name: 'send', status: 'failed' }], getTasks: () => [],
     getFrontend: () => frontend, getTurn: () => ({ turnId: 't2', turnGeneration: 2 }),
@@ -30,10 +30,10 @@ test('default off leaves all review hooks inert', () => {
   assert.deepEqual(calls, [])
 })
 
-test('rules derive from system routing/background sections, not persona text', () => {
-  const rules = interactionRules('# Role\n\n人设\n# Routing\n\n规则1\n\n规则2\n# Context\n\n其他')
-  assert.equal(rules.length, 2)
-  assert.deepEqual(rules.map(rule => rule.text), ['规则1', '规则2'])
+test('only refusal routing paragraph is extracted; other rules are excluded', () => {
+  const rules = interactionRules('# Role\n\n不要暴露后台。\n# Routing\n\n仅当直接回答就能满足用户请求时，才直接回答。\n\n规则2\n# Background work\n\n取消任务。')
+  assert.equal(rules.length, 1)
+  assert.deepEqual(rules.map(rule => rule.text), ['仅当直接回答就能满足用户请求时，才直接回答。'])
 })
 
 test('current reply is unbuffered, next generation is cancelled until correction is injected', async () => {
@@ -92,23 +92,27 @@ test('JEV adapter sends choice questions and validates model, input hash and opt
   }
   const fetchImpl = async (_url, options) => {
     const input = JSON.parse(options.body)
+    assert.equal(input.questions.length, 1)
+    assert.match(input.questions[0].instructions, /只检查.*未经尝试就声称做不到/)
+    assert.notEqual(input.questions[0].id, 'repeated_correction')
     const result = { backend: 'jev_omni', model: 'Jev-Omni/unified',
       input_hash: createHash('sha256').update(JSON.stringify(canonical(input))).digest('hex'),
       answers: input.questions.map(q => ({ question_id: q.id, primitive: q.primitive, option_ids: q.options.map(o => o.id), choice: 'violation' })) }
     return { ok: true, json: async () => result }
   }
   const result = await decidePolicy({ endpoint: 'http://local/decide', state: { text: '文本' }, rules: [{ id: 'r', text: '规则' }], fetchImpl })
-  assert.equal(result.length, 2)
+  assert.equal(result.length, 1)
+  assert.match(result[0].correction, /spawn_thinking/)
   await assert.rejects(decidePolicy({ endpoint: 'http://local/decide', state: {}, rules: [],
     fetchImpl: async () => ({ ok: true, json: async () => ({ backend: 'other' }) }) }))
 })
 
-test('system Role restrictions about internal backend structure are reviewed', () => {
-  assert.match(interactionRules('# Role\n\n不要暴露后台结构。')[0].text, /不要暴露/)
+test('Role and repeated user correction are outside the current scope', () => {
+  assert.deepEqual(interactionRules('# Role\n\n不要暴露后台结构。'), [])
 })
 
 test('ready violation waits for the next response, and newer user turn owns regeneration', async () => {
-  const { review, calls, start } = harness(async () => [{ id: 'repeated_correction', rule: '不要重复用户纠正的错误' }])
+  const { review, calls, start } = harness(async () => [{ id: 'routing', rule: '不要未经尝试就声称做不到' }])
   start()
   await tick()
   assert.deepEqual(calls, [])

@@ -106,7 +106,7 @@ export const queryBackendCapabilityTool = {
   type: 'function',
   function: {
     name: 'query_backend_capability',
-    description: '在声称没有某种能力前，向后台查询是否能完成。只查询能力，不执行用户操作。',
+    description: '在对用户说“做不到”“无法完成”或“没有这种能力”之前，必须先调用本工具查询后台是否确实做不到；不能仅凭当前工具列表就拒绝。只查询能力，不执行用户操作。收到受理回执不代表已有能力结论，应等待后台最终结果再答复。',
     parameters: { type: 'object', properties: { request: { type: 'string' } }, required: ['request'], additionalProperties: false },
   },
 }

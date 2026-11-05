@@ -49,6 +49,8 @@ async function service(t, key) {
           this.send({ type: 'response.text.delta', response_id: id, delta: 'reply' })
           if (key === 'dashscope') {
             this.send({ type: 'response.audio.delta', response_id: id, delta: PCM_REPLY })
+          } else if (key === 'gpt-live') {
+            this.send({ type: 'response.output_audio.delta', response_id: id, delta: PCM_REPLY })
           }
         }
         if (this.autoComplete) this.finish()
@@ -94,8 +96,18 @@ async function service(t, key) {
         if (key === 'doubao-seeduplex') {
           if (message.items?.some(item => item.role === 'tool')) peer.start()
         } else {
-          const item = key === 'stepfun' ? { ...message.item, id: 'server_item' } : message.item
-          peer.send({ type: 'conversation.item.created', item })
+          if (key === 'gpt-live' && message.item.id.length > 32) {
+            peer.send({ type: 'error', error: {
+              event_id: message.event_id,
+              code: 'string_above_max_length',
+              message: "Invalid 'item.id': maximum length is 32",
+            } })
+            return
+          }
+          const item = key === 'gpt-live'
+            ? { ...message.item, id: `server_item_${peer.messages.length}` }
+            : key === 'stepfun' ? { ...message.item, id: 'server_item' } : message.item
+          peer.send({ type: key === 'gpt-live' ? 'conversation.item.added' : 'conversation.item.created', item })
         }
       } else if (message.type === 'response.create') peer.start(message.response?.metadata)
       else if (message.type === 'speech_text_buffer.commit' || message.realtimeInput?.text || message.toolResponse) peer.start()
@@ -220,6 +232,13 @@ for (const { key, model } of cases) {
       assert.equal(peer.replies, before + 1)
       assert.ok(peer.messages.some(message => JSON.stringify(message).includes('call_contract') && JSON.stringify(message).includes('42')))
       assert.equal(frontend.pendingResponses.length, 0)
+      if (key === 'gpt-live') {
+        assert.ok(events.some(event => event.type === 'response.output_audio.delta' && event.delta === PCM_REPLY))
+        const outputIndex = peer.messages.findIndex(message => message.item?.type === 'function_call_output')
+        const continuationIndex = peer.messages.findIndex(message => message.type === 'response.create')
+        assert.ok(outputIndex >= 0 && continuationIndex > outputIndex)
+        assert.equal(frontend.conversationItemWaiters.size, 0)
+      }
     })
 
     await t.test('permission identity reaches context before the spoken question completes', async t => {

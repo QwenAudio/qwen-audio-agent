@@ -47,6 +47,8 @@ export const gptLiveProvider = {
     responseMetadataCorrelation: true,
     perResponseInstructions: true,
     sessionOutputVoice: true,
+    // GA receipts may use a server-assigned id; serialize writes and match their content/call_id.
+    conversationItemIdEcho: false,
   },
 
   model: () => connection.model,

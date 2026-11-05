@@ -601,6 +601,15 @@ export function createRealtimeSessionRuntime({
       turnGeneration: turns.committedTurnId ? turns.committedTurnGeneration : turns.turnGeneration,
       userSpeaking: turns.userSpeaking,
     }),
+    onSuppressed: (responseId, context) => {
+      if (context) context.suppressed = true
+      // Providers may finish tool-only output without a native response.done.
+      // Publish the existing semantic cancellation event so clients can retire
+      // the discarded response while waiting for its replacement.
+      emit({ type: GatewayServerEvent.RESPONSE_INTERRUPTED, responseId,
+        turnId: context?.turnId, turnGeneration: context?.turnGeneration,
+        reason: 'policy_review' })
+    },
     onError: error => connectionLogger.warn('realtime.policy_review.failed', { message: error.message }),
   }) : null
 

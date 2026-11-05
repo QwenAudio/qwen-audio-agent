@@ -768,6 +768,7 @@ test('policy review injects correction before regenerated next-turn audio and to
   f.emit({ type: 'response.audio.delta', response_id: 'speculative', delta: 'DISCARD=' })
   f.emit({ type: 'response.function_call_arguments.done', response_id: 'speculative', call_id: 'bad', name: 'spawn_thinking', arguments: '{"objective":"must not run"}' })
   assert.equal(h.events.filter(e => e.audio).length, audioBefore)
+  assert.equal(h.events.filter(e => e.type === 'response.interrupted' && e.responseId === 'speculative').length, 1)
   assert.equal(h.manager.list({}).length, 0)
   resolveReview([{ id: 'rule_no_false_completion', rule: '没有执行不得声称完成' }])
   await until(() => resumed.length > 0)

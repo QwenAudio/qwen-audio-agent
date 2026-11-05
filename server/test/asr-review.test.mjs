@@ -27,7 +27,7 @@ function host(decision = 'clarify') {
 }
 
 test('configuration is explicit, off by default, rejects misspellings', () => {
-  assert.deepEqual(asrReviewOptions({}), { enabled: false, delegation: 'confirm' })
+  assert.deepEqual(asrReviewOptions({}), { enabled: false, frontend: false, backend: false, delegation: 'confirm' })
   assert.throws(() => asrReviewOptions({ QWEN_AUDIO_ASR_REVIEW: 'true' }))
 })
 
@@ -173,4 +173,23 @@ test('review off preserves ordinary frontend execution without ASR or backend', 
     { callId: 'c', turnId: 't3', turnGeneration: 1, args: {} })
   assert.equal(executions, 1)
   assert.equal(requests.length, 0)
+})
+
+test('frontend-only review leaves backend delegation untouched', async () => {
+  const { runtime, requests, work } = host()
+  runtime.asrReview = { enabled: true, frontend: true, backend: false, delegation: 'dual-query' }
+  await runtime.executeSpawnThinkingToolCall({ callId: 'c', turnId: 't3', generation: 1,
+    args: { objective: 'find Yusuf Razi' }, event: {}, callContext: {} })
+  assert.equal(requests.length, 0)
+  assert.equal(work[0].objective, 'find Yusuf Razi')
+})
+
+test('delegation-only review leaves frontend tool execution untouched', async () => {
+  const { runtime, requests } = host()
+  runtime.asrReview = { enabled: true, frontend: false, backend: true, delegation: 'confirm' }
+  let executions = 0
+  await runtime.executeExternalToolCall({ tool: { name: 'lookup' }, source: { execute: async () => { executions++; return {} } } },
+    { callId: 'c', turnId: 't3', turnGeneration: 1, args: {} })
+  assert.equal(requests.length, 0)
+  assert.equal(executions, 1)
 })

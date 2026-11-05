@@ -12,7 +12,10 @@ export function asrReviewOptions(env = process.env) {
   const delegation = env.QWEN_AUDIO_ASR_DELEGATION || 'confirm'
   if (!['off', 'on'].includes(mode)) throw new Error('QWEN_AUDIO_ASR_REVIEW must be off or on')
   if (!['confirm', 'dual-query'].includes(delegation)) throw new Error('QWEN_AUDIO_ASR_DELEGATION must be confirm or dual-query')
-  return { enabled: mode === 'on', delegation }
+  const frontend = env.QWEN_AUDIO_ASR_FRONTEND_REVIEW || mode
+  const backend = env.QWEN_AUDIO_ASR_DELEGATION_REVIEW || mode
+  if (![frontend, backend].every(value => ['off', 'on'].includes(value))) throw new Error('ASR review switches must be off or on')
+  return { enabled: frontend === 'on' || backend === 'on', frontend: frontend === 'on', backend: backend === 'on', delegation }
 }
 
 // Select by user turn, not message count; retain assistant replies and execution

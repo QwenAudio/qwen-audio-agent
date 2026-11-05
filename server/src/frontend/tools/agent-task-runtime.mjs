@@ -350,7 +350,7 @@ export class AgentTaskRuntime {
       return
     }
 
-    if (taskKind !== 'capability_query' && this.host.asrReview?.enabled) {
+    if (taskKind !== 'capability_query' && (this.host.asrReview?.backend ?? this.host.asrReview?.enabled)) {
       try {
         const review = await reviewInterpretation(this.host, { turnId, kind: 'delegation', interpretation: { objective } })
         if (this.host.isStale(turnId, generation)) {

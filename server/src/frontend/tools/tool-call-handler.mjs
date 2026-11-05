@@ -238,7 +238,7 @@ export class ToolCallHandler {
       await this.stopToolLoop(context, limit.reason)
       return { handled: true, executed: false, limit }
     }
-    if (this.asrReview.enabled) {
+    if (this.asrReview.frontend ?? this.asrReview.enabled) {
       try {
         const review = await reviewInterpretation(this, {
           turnId: context.turnId, kind: 'frontend-tool',
@@ -320,7 +320,7 @@ export class ToolCallHandler {
 
   isStale(turnId, generation) {
     return (
-      this.signal?.aborted
+      (this.asrReview.enabled && this.signal?.aborted)
       || generation !== this.getTurnGeneration()
       || Boolean(turnId && this.getTurnId() && turnId !== this.getTurnId())
     )

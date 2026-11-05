@@ -20,7 +20,8 @@
 - 更新 body-parser、Zod、Electron、undici、fast-uri 和 ip-address 的安全修复版本，修复依赖审计阻塞 CI 发布检查的问题；保留现有审计门槛。
 
 - 统一语音前台的供应商、模型、API Key、地址和音色配置，兼容读取旧变量；桌面设置按供应商选择模型，前台凭据与后台及其他模块隔离。
-- 新增 `frontend-models.json` 模型登记：与现有接入协议兼容的新模型可通过配置添加，无需修改 Provider 代码。
+- 语音前台模型支持列表按供应商集中在框架代码维护，用户只选择已有模型，适配参数不对外开放；新增内置 Qwen Audio 3.1 Realtime Flash，使用 `longanqian_v3.1` 和 `smart_turn_v2`，默认模型仍为 3.1 Plus。
+- 实时回复失败详情进入日志及既有错误提示，并记录 WebSocket 关闭码和原因，避免生成失败时没有明确反馈。
 - 默认前台升级为 Qwen Audio 3.1 Realtime Plus，音色随模型选择；生成的 `config.env` 直接展示常用默认值与待填写的 API Key。
 
 - 更新残留的根 Vite 至 7.3.7，并将 VitePress 的 Vite 固定到已修复的 6.4.4，消除生产与文档构建链的安全审计失败；移除已不再需要的构建依赖漏洞例外。

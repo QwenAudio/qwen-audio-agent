@@ -19,6 +19,7 @@ import { inputRequestResponseInstructions } from '../src/frontend/frontend-tools
 import {
   DASHSCOPE_AUDIO_30_REALTIME_MODEL,
   DASHSCOPE_AUDIO_31_REALTIME_MODEL,
+  DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL,
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
@@ -240,6 +241,31 @@ test('preserves provider error codes in the user-facing realtime error', () => {
       message: 'The free tier of the model has been exhausted.',
     },
   }), 'AllocationQuota.FreeTierOnly: insufficient_quota: The free tier of the model has been exhausted.')
+})
+
+test('extracts failed response status details without requiring a top-level error event', () => {
+  assert.equal(realtimeEventErrorMessage({
+    type: 'response.done',
+    response: {
+      status: 'failed',
+      status_details: {
+        type: 'failed',
+        error: { code: 'ServerError', type: 'server_error', message: 'Generation failed.' },
+      },
+    },
+  }), 'ServerError: server_error: Generation failed.')
+  assert.equal(realtimeEventErrorMessage({
+    type: 'response.done',
+    response: { status: 'failed', status_details: { reason: 'provider unavailable' } },
+  }), 'provider unavailable')
+  assert.equal(realtimeEventErrorMessage({
+    type: 'response.done',
+    response: { status: 'failed', status_details: null },
+  }), '实时语音服务生成回复失败')
+  assert.equal(realtimeEventErrorMessage({
+    type: 'response.done',
+    response: { status: 'cancelled', status_details: { reason: 'turn_detected' } },
+  }, 'fallback'), 'fallback')
 })
 
 test('classifies non-recoverable DashScope account errors as fatal', () => {
@@ -571,6 +597,13 @@ test('resolves exact DashScope model profiles for sessions and responses', t => 
       { type: 'smart_turn_v2' },
     ],
     [
+      DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL,
+      'Qwen Audio 3.1 Realtime Flash',
+      'audio',
+      'longanqian_v3.1',
+      { type: 'smart_turn_v2' },
+    ],
+    [
       DASHSCOPE_AUDIO_30_REALTIME_MODEL,
       'Qwen Audio 3.0 Realtime Plus',
       'audio',
@@ -798,6 +831,7 @@ test('publishes the active DashScope profile without assigning one to s2s', t =>
       DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
       DASHSCOPE_OMNI_PLUS_REALTIME_MODEL,
       DASHSCOPE_AUDIO_31_REALTIME_MODEL,
+      DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL,
       DASHSCOPE_AUDIO_30_REALTIME_MODEL,
       DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
     ],
@@ -2634,6 +2668,47 @@ test('connects to an OpenAI Realtime-compatible speech-to-speech server', async 
     rate: 24000,
   })
 })
+
+for (const [source, code, reason] of [
+  ['client', 1000, ''],
+  ['server', 1000, 'session complete'],
+  ['server', 1011, 'synthetic upstream failure'],
+  ['terminated', 1006, ''],
+]) {
+  test(`transport diagnostics preserve ${source} close code ${code} and reason`, { timeout: 5000 }, async t => {
+    const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+    await new Promise(resolve => server.once('listening', resolve))
+    let peer
+    server.once('connection', socket => {
+      peer = socket
+      socket.send(JSON.stringify({ type: 'session.created' }))
+    })
+    const diagnostics = []
+    const frontend = new RealtimeFrontend({
+      provider: {
+        ...REALTIME_PROVIDERS['speech-to-speech'],
+        isConfigured: () => true,
+        url: () => `ws://127.0.0.1:${server.address().port}/v1/realtime`,
+      },
+      onDiagnostic: event => diagnostics.push(event),
+    })
+    t.after(async () => {
+      frontend.close()
+      for (const socket of server.clients) socket.terminate()
+      await new Promise(resolve => server.close(resolve))
+    })
+    await frontend.connect()
+    const closed = new Promise(resolve => { frontend.onClose = resolve })
+    if (source === 'client') frontend.close()
+    else if (source === 'terminated') peer.terminate()
+    else peer.close(code, reason)
+    await closed
+    assert.deepEqual(diagnostics.filter(event => event.event === 'realtime.transport_closed'), [{
+      event: 'realtime.transport_closed', provider: 'speech-to-speech', code, reason,
+    }])
+    assert.equal(frontend.ready, false)
+  })
+}
 
 test('sends provider connection messages before regular realtime traffic', async t => {
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })

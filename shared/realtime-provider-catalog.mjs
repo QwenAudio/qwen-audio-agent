@@ -1,15 +1,16 @@
 import { createHash } from 'node:crypto'
 import {
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
+  BUILTIN_REALTIME_MODEL_CATALOGS,
   resolveDashScopeRealtimeModelProfile,
   realtimeModelCatalog,
   resolveRealtimeModelProfile,
 } from './realtime-model-catalog.mjs'
-import { loadRealtimeModelCatalogs } from './realtime-models/config-file.mjs'
 
 export {
   DASHSCOPE_AUDIO_30_REALTIME_MODEL,
   DASHSCOPE_AUDIO_31_REALTIME_MODEL,
+  DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL,
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
@@ -68,7 +69,7 @@ export function resolveDashScopeRealtimeVoiceOverride(
   model = DEFAULT_DASHSCOPE_REALTIME_MODEL,
   env = process.env,
 ) {
-  const family = resolveDashScopeRealtimeModelProfile(model, loadRealtimeModelCatalogs(env)).family
+  const family = resolveDashScopeRealtimeModelProfile(model).family
   if (family !== 'audio' && family !== 'omni') return ''
   const settings = realtimeSettingsFromEnvironment({
     ...env,
@@ -105,19 +106,19 @@ export function assertRealtimeFrontendModel(active) {
   const catalog = realtimeModelCatalog(active.provider)
   const profile = active.modelProfile || resolveRealtimeModelProfile(active.model, active.provider)
   if (catalog && (profile.id !== active.model || profile.family === 'unknown')) {
-    throw new Error(`${catalog.environment}=${active.model} 不属于 ${active.provider} 的已注册模型；请选择目录中的模型，或在 frontend-models.json 注册其 API 配置`)
+    throw new Error(`${catalog.environment}=${active.model} 不属于 ${active.provider} 支持的模型；请选择列表中的模型，或升级框架以获取新模型支持`)
   }
 }
 
 export function resolveRealtimeFrontendConfiguration(env = process.env, {
-  modelCatalogs = loadRealtimeModelCatalogs(env),
+  modelCatalogs = BUILTIN_REALTIME_MODEL_CATALOGS,
 } = {}) {
   const provider = normalizeRealtimeProvider(env.QWEN_AUDIO_REALTIME_PROVIDER)
   const settings = realtimeSettingsFromEnvironment({
     ...env,
     QWEN_AUDIO_REALTIME_PROVIDER: provider,
   })
-  const connection = realtimeSettingsConnection(settings, modelCatalogs)
+  const connection = realtimeSettingsConnection(settings)
   const runtime = realtimeRuntimeEnvironment(settings)
   const endpoint = withoutTrailing(connection.endpoint, /[/?]+$/)
   const model = connection.model

@@ -74,6 +74,7 @@ test('PORT=0 binds a random port and reports the origin to the parent host', asy
         'qwen3.5-omni-flash-realtime',
         'qwen3.5-omni-plus-realtime',
         'qwen-audio-3.1-realtime-plus',
+        'qwen-audio-3.1-realtime-flash',
         'qwen-audio-3.0-realtime-plus',
         'qwen-audio-3.0-realtime-flash',
       ],

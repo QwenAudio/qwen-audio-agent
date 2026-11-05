@@ -10,6 +10,7 @@ import { defaultRealtimeProviderRegistry } from '../src/voice/providers/registry
 import {
   DASHSCOPE_AUDIO_30_REALTIME_MODEL,
   DASHSCOPE_AUDIO_31_REALTIME_MODEL,
+  DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL,
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
   realtimeModelCatalog,
 } from '../../shared/realtime-model-catalog.mjs'
@@ -149,7 +150,8 @@ async function connect(t, key) {
 }
 
 const cases = defaultRealtimeProviderRegistry.list().flatMap(({ key }) => key === 'dashscope'
-  ? [DASHSCOPE_AUDIO_30_REALTIME_MODEL, DASHSCOPE_AUDIO_31_REALTIME_MODEL, DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL].map(model => ({ key, model }))
+  ? [DASHSCOPE_AUDIO_30_REALTIME_MODEL, DASHSCOPE_AUDIO_31_REALTIME_MODEL,
+    DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL, DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL].map(model => ({ key, model }))
   : [{ key }])
 
 for (const { key, model } of cases) {
@@ -163,9 +165,10 @@ for (const { key, model } of cases) {
       await t.test('audio session configures PCM and streams input and spoken output', async t => {
         const { frontend, peer, events, flush } = await connect(t, key)
         const setup = peer.messages.find(message => message.type === 'session.update').session
-        assert.equal(setup.voice, model === DASHSCOPE_AUDIO_31_REALTIME_MODEL ? 'longanqian_v3.1' : 'longanqian')
+        const audio31 = [DASHSCOPE_AUDIO_31_REALTIME_MODEL, DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL].includes(model)
+        assert.equal(setup.voice, audio31 ? 'longanqian_v3.1' : 'longanqian')
         assert.deepEqual(setup.turn_detection, {
-          type: model === DASHSCOPE_AUDIO_31_REALTIME_MODEL ? 'smart_turn_v2' : 'smart_turn',
+          type: audio31 ? 'smart_turn_v2' : 'smart_turn',
         })
         assert.deepEqual(setup.modalities, ['text', 'audio'])
         assert.equal(setup.input_audio_format, 'pcm')

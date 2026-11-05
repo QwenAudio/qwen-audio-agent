@@ -20,8 +20,7 @@ export function gatewaySetupStatus(env = process.env) {
       ready: false,
       provider: env.QWEN_AUDIO_REALTIME_PROVIDER || null,
       missing: [{
-        key: error.code === 'QWAUDIO_REALTIME_MODEL_CONFIG_INVALID'
-          ? 'QWEN_AUDIO_FRONTEND_MODELS_CONFIG' : 'QWEN_AUDIO_REALTIME_PROVIDER',
+        key: 'QWEN_AUDIO_REALTIME_PROVIDER',
         message: error.message,
       }],
     }

@@ -60,13 +60,21 @@ function matchesConversationItem(expected, received) {
 }
 
 export function realtimeEventErrorMessage(event, fallback = '实时语音服务错误') {
+  const failed = event?.type === 'response.done' && event.response?.status === 'failed'
+  const statusDetails = failed ? event.response.status_details : null
+  const error = event?.error ?? statusDetails?.error
   const details = [
-    event?.error?.code,
-    event?.error?.type,
-    event?.error?.message,
+    error?.code,
+    error?.type,
+    error?.message,
+    statusDetails?.code,
+    statusDetails?.message,
+    statusDetails?.reason,
+    typeof statusDetails === 'string' ? statusDetails : '',
     event?.message,
   ].map(value => String(value || '').trim()).filter(Boolean)
-  return [...new Set(details)].join(': ') || fallback
+  return [...new Set(details)].join(': ')
+    || (failed ? '实时语音服务生成回复失败' : fallback)
 }
 
 // Behavioural capabilities of a provider's Realtime implementation. Defaults
@@ -196,7 +204,7 @@ export class RealtimeFrontend {
     if (this.modelProfile?.family === 'unknown') {
       return Promise.reject(new RealtimeConfigurationError(
         `不支持的 Realtime 模型：${this.modelProfile.id}`
-        + `（${this.provider.label}）；请先在 frontend-models.json 中登记该模型及其 API`,
+        + `（${this.provider.label}）；请选择受支持的模型，或升级框架以获取新增模型支持`,
       ))
     }
     if (!this.provider.isConfigured()) {
@@ -253,7 +261,13 @@ export class RealtimeFrontend {
         this.onError?.(error)
         finish(error)
       })
-      ws.on('close', () => {
+      ws.on('close', (code, reason) => {
+        this.diagnose({
+          event: 'realtime.transport_closed',
+          provider: this.provider.key,
+          code,
+          reason: reason?.toString().slice(0, 512) || '',
+        })
         this.ready = false
         this.sessionConfigured = false
         this.recentContextInjected = false
@@ -1214,7 +1228,7 @@ export class RealtimeFrontend {
     if (this.ws?.readyState === WebSocket.OPEN && this.protocol.sessionClose) {
       this.send(this.protocol.sessionClose('client_closed'))
     }
-    this.ws?.close()
+    this.ws?.close(1000)
     this.ws = null
     this.ready = false
     this.sessionConfigured = false

@@ -95,8 +95,7 @@
 
 | 语音前台 | 部署方式 | 接入准备 | 特点 |
 | --- | --- | --- | --- |
-| [Qwen Audio 3.0 Realtime](docs/voice-frontends/qwen-audio-realtime.zh.md) | 云端 | 百炼 API Key | 双工语音、工具调用 |
-| [Qwen Audio 3.1 Realtime Plus](docs/voice-frontends/qwen-audio-realtime.zh.md) | 云端 | 百炼 API Key | 双工语音、工具调用 |
+| [Qwen Audio 3.0/3.1 Realtime](docs/voice-frontends/qwen-audio-realtime.zh.md) | 云端 | 百炼 API Key | 双工语音、工具调用 |
 | [GPT-Live / OpenAI Realtime](docs/voice-frontends/gpt-live.zh.md) | 云端 | OpenAI API Key | — |
 | [Google Gemini Live](docs/voice-frontends/google-live.zh.md) | 云端 | Google API Key | 实时视频输入 |
 | [Qwen3.5-Omni Realtime](docs/voice-frontends/qwen-omni-realtime.zh.md) | 云端 | 百炼 API Key | 实时视频输入 |
@@ -105,6 +104,9 @@
 | [StepAudio 3 Realtime](docs/voice-frontends/stepfun.zh.md) | 云端 | StepFun API Key | — |
 | [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.zh.md) | 本地 | 启动服务并填写地址 | 可配置 STT / LLM / TTS |
 | [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.zh.md) | 本地或云端 | 提供兼容服务地址 | 实时视频输入、不支持工具调用 |
+
+前台连接统一使用供应商、模型、API Key、服务地址和音色配置；模型支持列表与协议参数
+由框架维护。详见[语音前台配置](docs/configuration/frontend.zh.md)。
 
 需要接入其他语音服务时，可实现 [Realtime Provider 接口](docs/voice-frontends/custom-provider.zh.md)，
 无需修改 Gateway 的核心语音会话与后台任务逻辑。

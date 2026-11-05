@@ -180,6 +180,13 @@ export function createDoubaoSeeduplexProtocol() {
 
     normalizeIncoming(event) {
       if (event?.type === 'error') return event
+      // Seeduplex reports the start of user speech as the audio transcription
+      // start event. qwen-audio's barge-in listens for the OpenAI Realtime
+      // `input_audio_buffer.speech_started`, so map it: without this the
+      // frontend never learns the user began speaking and cannot interrupt.
+      if (event?.type === 'conversation.item.input_audio_transcription.started') {
+        return { ...event, type: 'input_audio_buffer.speech_started' }
+      }
       if (event?.type === 'response.canceled') {
         return normalizeResponseEvent({
           ...event,

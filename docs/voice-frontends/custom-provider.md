@@ -2,7 +2,7 @@
 
 A Realtime Provider adapts a realtime model service to the runtime; it is neither the client nor the Orchestration Runtime itself. A product host can inject a custom provider without changing shared session or backend-work logic. The example below assembles it through the Gateway application entry point.
 
-For another model compatible with an existing API integration preset, [register the model](../configuration/frontend.md#register-an-additional-model) instead. Model registration adds catalog data, not a new Provider or wire protocol.
+For another model using an existing provider, maintain its support in that provider's data file under `shared/realtime-models/` and add tests. Model definitions and adaptation parameters belong to framework code, not user configuration. Users [select from the supported models](../configuration/frontend.md#select-a-supported-model).
 
 ```js
 import { createGatewayApplication } from 'qwen-audio-agent/gateway-application'
@@ -28,7 +28,7 @@ The extension boundary is:
 - `url()`, `headers()`, and `model()` can read the service URL, token, and model from host-owned configuration closures. The Gateway does not require product-specific environment variables.
 - `createProtocol()` runs once for each Realtime connection, so connection IDs and mutable state remain isolated.
 - Optional synchronous `validateSessionOptions({ sessionOptions })` runs before opening the
-  upstream connection. Reject known-invalid service options; other service-specific values still need upstream validation. This does not bypass the catalog check for registered model IDs.
+  upstream connection. Reject known-invalid service options; other service-specific values still need upstream validation. This does not bypass the catalog check for supported model IDs.
 - `connectionMessages()` emits raw handshake frames after the WebSocket opens and before `session.update`.
 - All later events pass through `encodeOutgoing()` and `normalizeIncoming()`, leaving Gateway tools, tasks, and client protocols unchanged.
 - Protocols without transient response instructions can implement `responseInstructionsItem(response)`. Gateway creates and awaits that conversation item before calling `responseCreate(response)`, which strips unsupported wire parameters. Set `perResponseInstructions: false`; these instructions remain in history.
@@ -58,7 +58,7 @@ For [Google Live](https://ai.google.dev/api/live), context-only history uses `cl
 
 ## Desktop settings
 
-Built-in frontend settings live in `shared/realtime-provider-definitions.mjs`, a browser-safe catalog without credentials or connection implementations. Declare a provider's name, configurable fields, and defaults there. All providers share the active connection's `QWEN_AUDIO_REALTIME_*` environment fields; adding a provider does not require another set of credential, model, URL, and voice variables. Model records and reusable API integration presets live in `shared/realtime-models/`; `shared/realtime-model-catalog.mjs` is their public facade. These presets group wire variants, default capability declarations, session defaults, and constraints; they do not assert identical capabilities across every model using an upstream API. The desktop model dropdown consumes the effective catalog. New models must be registered, not inferred from a name or a free-form UI entry.
+Built-in frontend settings live in `shared/realtime-provider-definitions.mjs`, a browser-safe catalog without credentials or connection implementations. Declare a provider's name, configurable fields, and defaults there. All providers share the active connection's `QWEN_AUDIO_REALTIME_*` environment fields; adding a provider does not require another set of credential, model, URL, and voice variables. Provider-specific model and API data live in `shared/realtime-models/dashscope.mjs`, `stepfun.mjs`, `gpt-live.mjs`, `google-live.mjs`, and `doubao-seeduplex.mjs`; `shared/realtime-model-catalog.mjs` is their public facade. These code-owned records define model IDs, API bindings, capabilities, session defaults, and constraints. Aggregation and resolution contain no provider-specific configuration. The desktop model dropdown uses the resulting static supported-model list; it does not accept user-defined model records or infer support from a free-form model name.
 
 The form displays Service URL, API Key, Model, and Voice, mapped to the `endpoint`, `credential`, `model`, and `voice` slots. Providers expose only configurable slots; upstream-owned model and voice controls remain disabled. Bearer tokens use the API Key field. Switching provider must clear or replace the previous connection's values rather than send its credential to another service. Legacy variable names are handled at the configuration-read boundary, not in adapters. A remote Gateway continues to own its frontend configuration.
 

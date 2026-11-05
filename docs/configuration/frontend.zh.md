@@ -2,7 +2,7 @@
 
 语音前台负责实时交流；后台 Agent 负责执行工作。二者可独立选择。
 
-供应商选择、凭据、服务地址和当前模型仍写入 `qwenaudio config` 显示的 `config.env`。桌面版“语音前台”设置修改这些连接信息，并从有效目录中下拉选择模型。额外模型登记使用独立的 `frontend-models.json`。
+供应商选择、凭据、服务地址和当前模型仍写入 `qwenaudio config` 显示的 `config.env`。桌面版“语音前台”设置修改这些连接信息，并从框架支持的模型中下拉选择。模型定义和适配参数由代码维护。
 
 ## 选择服务
 
@@ -67,6 +67,7 @@ DashScope 当前内置以下模型档案：
 | 模型 ID | 实时输入 |
 | --- | --- |
 | `qwen-audio-3.1-realtime-plus`（默认） | 文字、语音 |
+| `qwen-audio-3.1-realtime-flash` | 文字、语音 |
 | `qwen-audio-3.0-realtime-plus` | 文字、语音 |
 | `qwen-audio-3.0-realtime-flash` | 文字、语音 |
 | `qwen3.5-omni-flash-realtime` | 文字、语音、实时视觉帧 |
@@ -75,42 +76,18 @@ DashScope 当前内置以下模型档案：
 
 这些档案均支持工具调用。模型能否接收视觉帧，还取决于客户端和传输通道，见[视觉输入](../guides/vision.zh.md)。
 
-Audio 3.1 Plus 复用现有 `dashscope` Provider，默认音色为 `longanqian_v3.1`；
+Audio 3.1 Plus / Flash 复用现有 `dashscope` Provider，默认音色为 `longanqian_v3.1`；
 Audio 3.0 Plus / Flash 保持 `longanqian`。显式配置 `QWEN_AUDIO_REALTIME_VOICE`
 时，须选择与模型匹配的音色。Audio 模型不支持视觉输入。模型切换和工作区端点覆盖见
 [Audio 使用说明](../voice-frontends/qwen-audio-realtime.zh.md)。
 
-## 登记额外模型
+## 选择受支持模型
 
-有效目录由内置模型和用户登记组成。未登记的模型 ID 会报配置错误，Gateway 不根据名称猜测协议。只有确认服务通过已支持 API 提供该模型后，才应登记。
+模型列表由框架维护，桌面版和 `qwenaudio config show` 使用同一份列表。在桌面版为当前供应商选择模型，或设置 `QWEN_AUDIO_REALTIME_MODEL`；留空使用供应商默认模型。例如，当前供应商为 `dashscope` 时，填写 `qwen-audio-3.1-realtime-flash` 即可切换到内置的 3.1 Flash，默认模型仍为 3.1 Plus。
 
-在 `QWAUDIO_CONFIG_DIR`（通常为 `~/.config/qwaudio`）中创建与 `config.env` 同级的 `frontend-models.json`。如需其他文件，在 `config.env` 设置 `QWEN_AUDIO_FRONTEND_MODELS_CONFIG`；相对路径以该配置目录为基准，不以当前工作目录为基准。默认文件不存在时只加载内置模型；显式指定的文件不存在或 JSON 无效时会报错，不会静默回退。
+未支持的模型 ID 会报配置错误。用户配置不能新增模型、重定义已有模型，也不能修改其 API 绑定、能力、话轮检测或接入约束；这些参数由框架的模型适配固定。现有 `QWEN_AUDIO_REALTIME_VOICE` 和会话级音色覆盖仍然有效，但须选择与当前模型兼容的音色。
 
-以下是占位示例，不是已验证的线上模型。将 `replace-with-supported-model-id` 换成实际 API 模型 ID；不要在此文件填写 API Key 或服务地址：
-
-```json
-{
-  "providers": {
-    "dashscope": {
-      "models": {
-        "replace-with-supported-model-id": {
-          "api": "audio",
-          "label": "My Audio Model",
-          "voice": null
-        }
-      }
-    }
-  }
-}
-```
-
-`api` 必填，用于选择可复用的接入预设：线协议变体、默认能力声明、会话默认参数（含话轮检测）和接入约束。这些是当前接入的共用默认值，不保证使用同一上游 API 的所有模型能力一致。只应登记与所选预设兼容的模型；登记不会探测模型能力，也不能覆盖预设。`label` 可省略，默认展示模型 ID。省略 `voice` 或设为 `null` 时，由服务决定默认音色；`config.env` 中显式配置的音色仍优先。
-
-DashScope 支持 `audio`、`omni`（3.5）和 `omni-v2`（3.8，仍需业务空间专属地址）。`stepfun`、`gpt-live`、`google-live`、`doubao-seeduplex` 的 `api` 必须与 Provider key 相同。登记仅可追加：不能覆盖同一供应商的内置模型，不能添加未支持的供应商/API，也不能填写未声明字段。模型 ID 区分大小写，以字母或数字开头，其余字符还可包含 `. _ : / @ + -`。无效条目会报配置错误。
-
-加载目录后，可在桌面下拉框选择已登记 ID，也可设置 `QWEN_AUDIO_REALTIME_MODEL`，再按下文应用配置。目录不代表服务端授权：账号、地域、服务地址、音色和模型实际兼容性仍需验证。speech-to-speech 与 MiniCPM-o 的模型继续在外部服务中配置。
-
-与已有接入预设兼容的新模型只需登记；如果模型的能力、会话要求或线协议行为不同，需要先明确调整接入实现并补充测试。新的线协议需要实现 Provider adapter。此 JSON 不加载 SDK 或可执行插件。
+列表表示代码已实现的支持，不代表线上服务可用性或账号授权。请确认所选模型的账号、地域、服务地址和音色，再按下文应用并验证连接。speech-to-speech 与 MiniCPM-o 的模型继续在外部服务中配置。
 
 ## 应用并验证
 
@@ -118,11 +95,11 @@ DashScope 支持 `audio`、`omni`（3.5）和 `omni-v2`（3.8，仍需业务空�
 2. 连接客户端，确认“语音前台”已连接。
 3. 说一句话，确认能听到回答。需要工具时，再测试搜索或一个简单后台请求。
 
-CLI 可查看当前配置及有效模型目录：
+CLI 可查看当前配置及受支持模型列表：
 
 ```bash
 qwenaudio config show
-qwenaudio config set --realtime-model qwen-audio-3.0-realtime-flash
+qwenaudio config set --realtime-model qwen-audio-3.1-realtime-flash
 ```
 
 `config set` 修改当前 Provider 的模型，不切换 Provider，也不自动重启 Gateway。远程客户端沿用远端配置；不能通过本机配置切换远端模型。

@@ -8,18 +8,11 @@ import {
   realtimeSettingsValues,
 } from '../../shared/realtime-provider-definitions.mjs'
 import { createRealtimeSettingsForm, realtimeSettingsFields } from '../src/realtime-settings-form.mjs'
-import { createRealtimeModelCatalogs } from '../../shared/realtime-model-catalog.mjs'
+import { BUILTIN_REALTIME_MODEL_CATALOGS, DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL } from '../../shared/realtime-model-catalog.mjs'
 import { normalizeSettings, parseSettings } from '../src/settings-config.mjs'
 import { desktopTranslator } from '../src/i18n.mjs'
 
-const customCatalogs = () => createRealtimeModelCatalogs({
-  providers: { dashscope: { models: {
-    'private-audio': { label: 'Private Audio', api: 'audio', voice: null },
-    'private-omni': { label: 'Private Omni', api: 'omni', voice: 'Ethan' },
-  } } },
-})
-
-function formFixture(settings = {}, catalogs, translate) {
+function formFixture(settings = {}, catalogs = BUILTIN_REALTIME_MODEL_CATALOGS, translate) {
   const descendants = node => node.children.flatMap(child => [child, ...descendants(child)])
   const document = {
     addEventListener() {},
@@ -129,38 +122,68 @@ test('Audio 3.1 is rendered as a model option with the Audio family voice bindin
   form.load({
     realtimeModel: 'qwen-audio-3.1-realtime-plus',
     realtimeVoice: 'custom-audio',
-  })
+  }, BUILTIN_REALTIME_MODEL_CATALOGS)
   assert.equal(field('realtimeVoice').value, 'custom-audio')
   assert.equal(form.values().realtimeVoice, 'custom-audio')
-  form.load({})
+  form.load({}, BUILTIN_REALTIME_MODEL_CATALOGS)
   assert.equal(form.values().realtimeModel, 'qwen-audio-3.1-realtime-plus')
   assert.equal(field('realtimeVoice').placeholder, 'longanqian_v3.1')
 })
 
+test('built-in Flash renders from the fixed IPC catalog without mutating other form snapshots', () => {
+  const plus = 'qwen-audio-3.1-realtime-plus'
+  const flash = DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL
+  const catalogs = BUILTIN_REALTIME_MODEL_CATALOGS
+  // Desktop receives a JSON snapshot across IPC, not the registry's live objects.
+  const snapshot = JSON.parse(JSON.stringify(catalogs))
+  const current = formFixture({ realtimeModel: plus, realtimeVoice: 'explicit-voice' }, snapshot)
+  const defaults = formFixture({ realtimeModel: plus })
+  const option = (fixture, id) => fixture.field('realtimeModel').options.find(item => item.value === id)
+  assert.equal(option(current, plus).textContent, 'Qwen Audio 3.1 Realtime Plus')
+  assert.equal(current.field('realtimeVoice').placeholder, 'longanqian_v3.1')
+  assert.equal(current.field('realtimeVoice').value, 'explicit-voice')
+  assert.equal(option(defaults, plus).textContent, 'Qwen Audio 3.1 Realtime Plus')
+  assert.equal(option(defaults, flash).textContent, 'Qwen Audio 3.1 Realtime Flash')
+
+  current.change('realtimeModel', flash)
+  assert.equal(option(current, flash).textContent, 'Qwen Audio 3.1 Realtime Flash')
+  assert.equal(current.field('realtimeModel').validationMessage, '')
+  assert.equal(current.field('realtimeVoice').placeholder, 'longanqian_v3.1')
+  assert.equal(current.form.values().realtimeVoice, '')
+  current.form.render()
+  assert.equal(current.field('realtimeModel').value, flash)
+  assert.equal(current.field('realtimeVoice').placeholder, 'longanqian_v3.1')
+  current.change('realtimeModel', plus)
+  assert.equal(current.field('realtimeVoice').placeholder, 'longanqian_v3.1')
+  assert.equal(current.form.values().realtimeVoice, '')
+  assert.deepEqual(snapshot, catalogs)
+  assert.equal('turnDetection' in current.form.values(), false)
+})
+
 test('model changes reset voice and provider drafts remain isolated in memory', () => {
   const { form, field, change, selectProvider, changes } = formFixture({
-    realtimeModel: 'private-audio', realtimeVoice: 'audio-draft', realtimeApiKey: 'dashscope-only',
-  }, customCatalogs())
+    realtimeModel: DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL, realtimeVoice: 'audio-draft', realtimeApiKey: 'dashscope-only',
+  })
   assert.equal(field('realtimeModel').tagName, 'select')
-  assert.equal(field('realtimeModel').value, 'private-audio')
+  assert.equal(field('realtimeModel').value, DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL)
   assert.equal(field('realtimeModel').validationMessage, '')
-  assert.equal(field('realtimeModel').options.find(option => option.value === 'private-audio').textContent, 'Private Audio')
+  assert.equal(field('realtimeModel').options.find(option => option.value === DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL).textContent, 'Qwen Audio 3.1 Realtime Flash')
   assert.ok(field('realtimeModel').options.some(option => option.value === 'qwen-audio-3.1-realtime-plus'))
   assert.equal(field('realtimeVoice').value, 'audio-draft')
-  change('realtimeModel', 'private-omni')
+  change('realtimeModel', 'qwen3.5-omni-plus-realtime')
   assert.equal(field('realtimeVoice').value, '')
   assert.equal(field('realtimeVoice').placeholder, 'Ethan')
-  assert.equal(changes.at(-1).realtimeModel, 'private-omni')
+  assert.equal(changes.at(-1).realtimeModel, 'qwen3.5-omni-plus-realtime')
   change('realtimeVoice', '')
   selectProvider('stepfun')
   assert.equal(field('realtimeApiKey').value, '')
   assert.equal(field('realtimeUrl').value, 'wss://api.stepfun.com/v1/realtime')
-  assert.equal(field('realtimeModel').options.some(option => option.value === 'private-omni'), false)
+  assert.equal(field('realtimeModel').options.some(option => option.value === 'qwen3.5-omni-plus-realtime'), false)
   change('realtimeVoice', 'step-draft')
   selectProvider('dashscope')
-  assert.equal(field('realtimeModel').value, 'private-omni')
+  assert.equal(field('realtimeModel').value, 'qwen3.5-omni-plus-realtime')
   assert.equal(field('realtimeVoice').value, '')
-  change('realtimeModel', 'private-audio')
+  change('realtimeModel', DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL)
   assert.equal(field('realtimeVoice').value, '')
   assert.equal(form.values().realtimeApiKey, 'dashscope-only')
   selectProvider('stepfun')
@@ -168,74 +191,87 @@ test('model changes reset voice and provider drafts remain isolated in memory', 
   assert.equal('realtimeModelCatalogs' in form.values(), false)
 })
 
-test('non-DashScope registered default voices are shown without creating an override', () => {
-  const catalogs = createRealtimeModelCatalogs({ providers: {
-    stepfun: { models: { 'private-step': { api: 'stepfun', voice: 'private-step-voice' } } },
-    'gpt-live': { models: { 'private-gpt': { api: 'gpt-live', voice: 'private-gpt-voice' } } },
-  } })
-  const { form, field, selectProvider, change } = formFixture({
-    realtimeProvider: 'stepfun', realtimeModel: 'private-step',
-  }, catalogs)
-  assert.equal(field('realtimeVoice').placeholder, 'private-step-voice')
+test('non-DashScope defaults are shown without creating a voice override', () => {
+  const { form, field, selectProvider } = formFixture({ realtimeProvider: 'doubao-seeduplex' })
+  assert.equal(field('realtimeVoice').placeholder, 'zh_female_vv_jupiter_bigtts')
   assert.equal(field('realtimeVoice').value, '')
   assert.equal(form.values().realtimeVoice, '')
   selectProvider('gpt-live')
-  change('realtimeModel', 'private-gpt')
-  assert.equal(field('realtimeVoice').placeholder, 'private-gpt-voice')
+  assert.equal(field('realtimeModel').value, BUILTIN_REALTIME_MODEL_CATALOGS['gpt-live'].defaultModel)
+  assert.ok(field('realtimeVoice').placeholder)
   assert.equal(field('realtimeVoice').value, '')
 })
 
-test('unregistered saved models stay selected, literal and invalid instead of changing to a default', () => {
+test('unsupported saved models stay selected, literal and invalid instead of changing to a default', () => {
   const unknown = '<img src=x onerror=alert(1)>custom-model'
-  const { form, field, slot, change, selectProvider } = formFixture({ realtimeModel: unknown }, customCatalogs())
+  const { form, field, slot, change, selectProvider } = formFixture({ realtimeModel: unknown })
   const model = field('realtimeModel')
   assert.equal(model.value, unknown)
   const option = model.options.find(option => option.value === unknown)
-  assert.equal(option.textContent, unknown + '（未登记）')
+  assert.ok(option.textContent.startsWith(unknown))
   assert.equal(option.children.length, 0)
-  assert.match(model.validationMessage, /frontend-models\.json/)
+  assert.match(model.validationMessage, /模型不受支持/)
+  assert.doesNotMatch(model.validationMessage, /frontend-models\.json/)
   assert.equal(slot('voice').disabled, true)
   assert.equal(form.values().realtimeModel, unknown)
   selectProvider('stepfun')
   assert.equal(field('realtimeModel').validationMessage, '')
   selectProvider('dashscope')
   assert.equal(field('realtimeModel').value, unknown)
-  change('realtimeModel', 'private-omni')
+  change('realtimeModel', 'qwen3.5-omni-plus-realtime')
   assert.equal(field('realtimeModel').validationMessage, '')
   assert.equal(slot('voice').dataset.setting, 'realtimeVoice')
 })
 
-test('catalog snapshots stay isolated and language rerender preserves registered models and drafts', () => {
+test('catalog snapshots stay isolated and language rerender preserves supported models and drafts', () => {
   let translate = desktopTranslator('zh-CN')
-  const current = formFixture({ realtimeModel: 'private-audio', realtimeVoice: 'my-voice' },
-    customCatalogs(), text => translate(text))
-  const builtins = formFixture({ realtimeModel: 'private-audio' })
+  const current = formFixture({ realtimeModel: DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL, realtimeVoice: 'my-voice' },
+    JSON.parse(JSON.stringify(BUILTIN_REALTIME_MODEL_CATALOGS)), text => translate(text))
+  const builtins = formFixture({ realtimeModel: DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL })
   assert.equal(current.field('realtimeModel').validationMessage, '')
-  assert.match(builtins.field('realtimeModel').validationMessage, /frontend-models\.json/)
+  assert.equal(builtins.field('realtimeModel').validationMessage, '')
   translate = desktopTranslator('en')
   current.form.render()
-  assert.equal(current.field('realtimeModel').value, 'private-audio')
+  assert.equal(current.field('realtimeModel').value, DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL)
   assert.equal(current.field('realtimeModel').validationMessage, '')
   assert.equal(current.field('realtimeVoice').value, 'my-voice')
   assert.equal(current.panel.children[0].children[0].textContent, 'Model')
-  current.form.load({ realtimeModel: 'not-registered' }, customCatalogs())
-  assert.match(current.field('realtimeModel').validationMessage, /^Model is not registered/)
-  current.form.load({ realtimeModel: 'private-audio' })
-  assert.match(current.field('realtimeModel').validationMessage, /^Model is not registered/)
+  current.form.load({ realtimeModel: 'unsupported-model' }, BUILTIN_REALTIME_MODEL_CATALOGS)
+  assert.match(current.field('realtimeModel').validationMessage, /^Model is not supported/)
+  current.form.load({ realtimeModel: DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL }, BUILTIN_REALTIME_MODEL_CATALOGS)
+  assert.equal(current.field('realtimeModel').validationMessage, '')
 })
 
-test('catalog read failures preserve the form and distinguish unavailable from unregistered models', () => {
-  const { form, field, selectProvider } = formFixture()
-  form.load({ realtimeModel: 'private-audio' }, null, 'Invalid JSON in frontend model catalog')
-  assert.equal(field('realtimeModel').value, 'private-audio')
-  assert.equal(field('realtimeModel').options[0].textContent, 'private-audio（目录不可用）')
-  assert.match(field('realtimeModel').validationMessage, /目录不可用/)
-  form.render()
+test('an unavailable IPC catalog preserves the form until the fixed snapshot is restored', () => {
+  const { form, field, slot, selectProvider } = formFixture()
+  for (const snapshot of [undefined, null, {}, { dashscope: { profiles: [] } }]) {
+    form.load({ realtimeModel: DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL, realtimeVoice: 'saved-voice' }, snapshot)
+    assert.equal(field('realtimeModel').value, DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL)
+    assert.equal(field('realtimeModel').options[0].textContent, DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL + '（目录不可用）')
+    assert.match(field('realtimeModel').validationMessage, /目录不可用/)
+    assert.equal(form.values().realtimeVoice, 'saved-voice')
+    form.render()
+    assert.match(field('realtimeModel').validationMessage, /目录不可用/)
+    selectProvider('stepfun')
+    assert.match(field('realtimeModel').validationMessage, /目录不可用/)
+    for (const provider of ['minicpm-o', 'speech-to-speech']) {
+      selectProvider(provider)
+      assert.equal(slot('model').disabled, true)
+      assert.equal(slot('model').validationMessage, undefined)
+      assert.equal(slot('endpoint').disabled, undefined)
+    }
+  }
+  form.load({ realtimeModel: DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL }, BUILTIN_REALTIME_MODEL_CATALOGS)
+  assert.equal(field('realtimeModel').validationMessage, '')
+})
+
+test('missing provider snapshots do not block providers whose model snapshots are present', () => {
+  const { field, selectProvider } = formFixture({}, { stepfun: BUILTIN_REALTIME_MODEL_CATALOGS.stepfun })
   assert.match(field('realtimeModel').validationMessage, /目录不可用/)
   selectProvider('stepfun')
-  assert.match(field('realtimeModel').validationMessage, /目录不可用/)
-  form.load({ realtimeModel: 'private-audio' }, customCatalogs())
   assert.equal(field('realtimeModel').validationMessage, '')
+  selectProvider('dashscope')
+  assert.match(field('realtimeModel').validationMessage, /目录不可用/)
 })
 
 test('service-owned model and voice rows stay visible but have no writable binding', () => {

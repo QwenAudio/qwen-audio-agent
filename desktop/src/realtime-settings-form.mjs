@@ -33,8 +33,7 @@ export function createRealtimeSettingsForm({ pickerRoot, panel, onChange, openEx
     ) }
   }
   let state = draft()
-  let modelCatalogs
-  let modelCatalogError = ''
+  let modelCatalogs = null
   const values = () => realtimeSettingsFromProfileState(state)
   const currentProvider = () => REALTIME_PROVIDERS.find(provider => provider.key === state.activeProvider) || REALTIME_PROVIDERS[0]
   const picker = createSettingsPicker(pickerRoot, {
@@ -87,9 +86,10 @@ export function createRealtimeSettingsForm({ pickerRoot, panel, onChange, openEx
       return row
     }
     input.dataset.setting = field.key
+    const modelProfiles = field.type === 'model'
+      ? realtimeModelCatalog(provider.key, modelCatalogs)?.profiles || [] : []
     if (field.type === 'model') {
-      const catalog = realtimeModelCatalog(provider.key, modelCatalogs)
-      for (const profile of catalog?.profiles || []) {
+      for (const profile of modelProfiles) {
         const option = make('option', '', profile.label)
         option.value = profile.id
         input.append(option)
@@ -97,7 +97,7 @@ export function createRealtimeSettingsForm({ pickerRoot, panel, onChange, openEx
       if (![...input.options].some(option => option.value === values()[field.key])) {
         // Retain stale persisted IDs visibly, never silently select a default.
         const option = make('option')
-        option.textContent = `${values()[field.key]}${translate(modelCatalogError ? '（目录不可用）' : '（未登记）')}`
+        option.textContent = `${values()[field.key]}${translate(modelProfiles.length ? '（不支持）' : '（目录不可用）')}`
         option.value = values()[field.key]
         option.dataset.unregistered = ''
         input.append(option)
@@ -111,13 +111,12 @@ export function createRealtimeSettingsForm({ pickerRoot, panel, onChange, openEx
     input.value = values()[field.key]
     const validateModel = () => {
       if (field.type !== 'model') return
-      if (modelCatalogError) {
-        input.setCustomValidity(translate('模型目录不可用，请修复目录配置后重新打开设置'))
+      if (!modelProfiles.length) {
+        input.setCustomValidity(translate('模型目录不可用，请重新打开设置或重启应用'))
         return
       }
-      const registered = realtimeModelCatalog(provider.key, modelCatalogs)?.profiles
-        .some(profile => profile.id === input.value)
-      input.setCustomValidity(registered ? '' : translate('模型未登记，请选择列表中的模型，或先在 frontend-models.json 中登记'))
+      const supported = modelProfiles.some(profile => profile.id === input.value)
+      input.setCustomValidity(supported ? '' : translate('模型不受支持，请选择列表中的模型'))
     }
     validateModel()
     input.addEventListener('input', () => {
@@ -146,7 +145,7 @@ export function createRealtimeSettingsForm({ pickerRoot, panel, onChange, openEx
       row.append(wrapper)
     } else row.append(input)
     if (field.type === 'model') {
-      const hint = make('p', 'setting-hint', '选择内置或已登记的模型；新增模型请在 frontend-models.json 中登记')
+      const hint = make('p', 'setting-hint', '请选择当前供应商支持的模型')
       hint.id = `${input.id}-hint`
       input.setAttribute('aria-describedby', hint.id)
       row.append(hint)
@@ -165,10 +164,10 @@ export function createRealtimeSettingsForm({ pickerRoot, panel, onChange, openEx
   }
 
   return {
-    load(settings, catalogs, catalogError = '') {
+    load(settings, catalogs) {
       state = draft(settings)
-      modelCatalogs = catalogs
-      modelCatalogError = catalogError
+      // Missing IPC snapshots must not silently fall back to renderer defaults.
+      modelCatalogs = catalogs ?? null
       render()
     },
     values,

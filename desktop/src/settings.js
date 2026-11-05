@@ -54,7 +54,6 @@ const applyNodePath = document.querySelector('#apply-node-path')
 const nodePathRow = document.querySelector('.node-path-row')
 const message = document.querySelector('#message')
 const currentRealtime = document.querySelector('#current-realtime')
-const realtimeModelCatalogNotice = document.querySelector('#realtime-model-catalog-error')
 const currentGateway = document.querySelector('#current-gateway')
 const currentBackend = document.querySelector('#current-backend')
 const updaterStatus = document.querySelector('#updater-status')
@@ -79,7 +78,6 @@ applyLanguage('auto')
 let settings
 // Read-only main-process snapshot, separate from editable settings/drafts.
 let realtimeModelCatalogs
-let realtimeModelCatalogError = ''
 let realtimeConfigurationPending = false
 let skins = []
 let runtime
@@ -959,13 +957,6 @@ function renderSkinOptions(selected) {
   updateRemoveSkinState()
 }
 
-function renderRealtimeModelCatalogError() {
-  realtimeModelCatalogNotice.hidden = !realtimeModelCatalogError
-  realtimeModelCatalogNotice.textContent = realtimeModelCatalogError
-    ? t('本地模型目录读取失败：{error}。请修复目录后重新打开设置；远端 Gateway 配置不受影响。', { error: realtimeModelCatalogError })
-    : ''
-}
-
 function render() {
   gatewayUrl.value = settings.gatewayUrl
   renderSkinOptions(settings.orbSkin)
@@ -987,8 +978,7 @@ function render() {
   applyLanguage(desktopLanguage.value)
   recordingWakeShortcut = false
   renderWakeShortcut()
-  realtimeForm.load(settings, realtimeModelCatalogs, realtimeModelCatalogError)
-  renderRealtimeModelCatalogError()
+  realtimeForm.load(settings, realtimeModelCatalogs)
   renderBackendOptions(settings.agentProtocol || 'none')
   backendModel.value = settings.backendModel || ''
   backendOwnership.value = settings.backendOwnership || 'owned'
@@ -1025,7 +1015,6 @@ for (const control of [
       renderBackendOptions(selectedBackend())
       renderSkinOptions(orbSkinSelect.value)
       realtimeForm.render()
-      renderRealtimeModelCatalogError()
       renderRuntime()
     }
     updateApplyState()
@@ -1111,7 +1100,7 @@ applyNodePath.addEventListener('click', async () => {
 })
 
 // Constraint validation runs before submit; reveal a hidden invalid model so
-// the browser can focus its selector and show the registration error.
+// the browser can focus its selector and show the model validation error.
 form.addEventListener('invalid', event => {
   if (event.target.matches('[data-realtime-slot="model"]')) selectSettingsTab('voice')
 }, true)
@@ -1125,7 +1114,6 @@ form.addEventListener('submit', async event => {
     const result = await window.qwenAudioAgentDesktop.saveSettings(formSettings())
     settings = result.settings
     realtimeModelCatalogs = result.realtimeModelCatalogs
-    realtimeModelCatalogError = result.realtimeModelCatalogError || ''
     realtimeConfigurationPending = result.realtimeConfigurationPending === true
     runtime = result.runtime
     renderWakeShortcutStatus(result.wakeShortcutRegistered)
@@ -1157,7 +1145,6 @@ form.addEventListener('submit', async event => {
 window.qwenAudioAgentDesktop.loadSettings().then(value => {
   settings = value.settings
   realtimeModelCatalogs = value.realtimeModelCatalogs
-  realtimeModelCatalogError = value.realtimeModelCatalogError || ''
   realtimeConfigurationPending = value.realtimeConfigurationPending === true
   settings.agentProtocol = initialBackendSelection({
     configuredBackend: settings.agentProtocol,

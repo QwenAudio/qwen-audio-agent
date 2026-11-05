@@ -20,7 +20,9 @@ module.exports = async function customAcpSettingsSmoke({ BrowserWindow, ipcMain 
   let ready = true
   const runtime = () => ({ gatewayConnected: true, backend: { connected: ready } })
   const handlers = {
-    'settings-load': () => ({ settings, runtime: runtime(), skins: [], wakeShortcutRegistered: true }),
+    'settings-load': () => ({
+      settings, realtimeModelCatalogs: store.modelCatalogs(), runtime: runtime(), skins: [], wakeShortcutRegistered: true,
+    }),
     'settings-runtime-status': runtime,
     'settings-detect-backends': () => ({ backends: [{
       id: 'acp', label: 'ACP Agent', ready, selected: settings.agentProtocol === 'acp',
@@ -30,7 +32,7 @@ module.exports = async function customAcpSettingsSmoke({ BrowserWindow, ipcMain 
     'settings-save': (_event, draft) => {
       settings = store.save(draft)
       saves += 1
-      return { settings, runtime: runtime(), wakeShortcutRegistered: true }
+      return { settings, realtimeModelCatalogs: store.modelCatalogs(), runtime: runtime(), wakeShortcutRegistered: true }
     },
   }
   for (const [name, handler] of Object.entries(handlers)) {

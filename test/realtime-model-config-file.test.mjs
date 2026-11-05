@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { loadRealtimeModelCatalogs, realtimeModelConfigPath } from '../shared/realtime-models/config-file.mjs'
+import {
+  BUILTIN_REALTIME_MODEL_CATALOGS,
+  DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL,
+  resolveRealtimeModelProfile,
+} from '../shared/realtime-model-catalog.mjs'
 import { assertRealtimeFrontendModel, resolveRealtimeFrontendConfiguration } from '../shared/realtime-provider-catalog.mjs'
 import { gatewaySetupStatus } from '../shared/gateway/setup.mjs'
 import { createSettingsStore } from '../desktop/src/settings-store.mjs'
@@ -11,69 +15,21 @@ import { realtimeSettingsChanged, realtimeSettingsConfiguration } from '../deskt
 import { resolveConfigModel, showConfig, updateRealtimeModelConfig } from '../cli/src/config-command.mjs'
 
 function fixture(t) {
-  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-model-catalog-'))
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-supported-models-'))
   t.after(() => rmSync(directory, { recursive: true, force: true }))
   return { directory, env: { QWAUDIO_CONFIG_DIR: directory } }
 }
 
-function writeCatalog(directory, models, file = 'frontend-models.json') {
-  writeFileSync(join(directory, file), JSON.stringify({ providers: { dashscope: { models } } }))
-}
-
-test('absent default catalog uses builtins without creating directories', t => {
+test('reading fixed model defaults never creates a catalog or configuration directory', t => {
   const { directory } = fixture(t)
   const absent = join(directory, 'absent')
-  const catalogs = loadRealtimeModelCatalogs({ QWAUDIO_CONFIG_DIR: absent })
-  assert.equal(catalogs.dashscope.defaultModel, 'qwen-audio-3.1-realtime-plus')
+  const configuration = resolveRealtimeFrontendConfiguration({ QWAUDIO_CONFIG_DIR: absent })
+  assert.equal(configuration.modelCatalogs, BUILTIN_REALTIME_MODEL_CATALOGS)
+  assert.equal(configuration.active.model, 'qwen-audio-3.1-realtime-plus')
   assert.equal(existsSync(absent), false)
 })
 
-test('relative catalog paths resolve against configuration directory, not launch directory', t => {
-  const { directory, env } = fixture(t)
-  writeCatalog(directory, { 'custom-omni': { api: 'omni', voice: 'test-voice' } }, 'models.json')
-  env.QWEN_AUDIO_FRONTEND_MODELS_CONFIG = 'models.json'
-  assert.equal(realtimeModelConfigPath(env), join(directory, 'models.json'))
-  const resolved = resolveRealtimeFrontendConfiguration({
-    ...env, DASHSCOPE_API_KEY: 'test-key', QWEN_AUDIO_REALTIME_MODEL: 'custom-omni',
-    QWEN_AUDIO_REALTIME_VOICE: 'omni-override',
-  })
-  assert.equal(resolved.active.modelProfile.api, 'omni')
-  assert.equal(resolved.active.voice, 'omni-override')
-  assert.doesNotThrow(() => assertRealtimeFrontendModel(resolved.active))
-  assert.equal(gatewaySetupStatus({ ...env, DASHSCOPE_API_KEY: 'test', QWEN_AUDIO_REALTIME_MODEL: 'custom-omni' }).ready, true)
-})
-
-test('explicit missing, malformed, invalid and oversized catalogs fail clearly', t => {
-  const { directory, env } = fixture(t)
-  assert.throws(() => loadRealtimeModelCatalogs({ ...env, QWEN_AUDIO_FRONTEND_MODELS_CONFIG: 'missing.json' }), /Cannot read.*missing.json/)
-  const path = join(directory, 'frontend-models.json')
-  writeFileSync(path, '{ broken')
-  assert.throws(() => loadRealtimeModelCatalogs(env), /Invalid JSON/)
-  assert.equal(gatewaySetupStatus(env).ready, false)
-  assert.equal(gatewaySetupStatus(env).missing[0].key, 'QWEN_AUDIO_FRONTEND_MODELS_CONFIG')
-  writeCatalog(directory, { typo: { api: 'unknown-protocol' } })
-  assert.throws(() => loadRealtimeModelCatalogs(env), /unsupported API/)
-  writeFileSync(path, ' '.repeat(1024 * 1024 + 1))
-  assert.throws(() => loadRealtimeModelCatalogs(env), /exceeds 1 MiB/)
-})
-
-test('model metadata participates in runtime identity without leaking credentials', t => {
-  const { directory, env } = fixture(t)
-  const activeEnv = { ...env, QWEN_AUDIO_REALTIME_MODEL: 'custom-audio', DASHSCOPE_API_KEY: 'secret-test-value' }
-  writeCatalog(directory, { 'custom-audio': { api: 'audio', voice: 'voice-a' } })
-  const first = resolveRealtimeFrontendConfiguration(activeEnv)
-  writeCatalog(directory, { 'custom-audio': { api: 'audio', voice: 'voice-b' } })
-  const second = resolveRealtimeFrontendConfiguration(activeEnv)
-  assert.notEqual(first.active.signature, second.active.signature)
-  assert.equal(JSON.stringify(first.active).includes('secret-test-value'), false)
-  assert.equal(first.modelCatalogs.dashscope.profiles.at(-1).sessionDefaults.voice, 'voice-a')
-  const settings = { realtimeModel: 'custom-audio', realtimeApiKey: 'secret-test-value' }
-  const runningSignature = realtimeSettingsConfiguration(settings, first.modelCatalogs).active.signature
-  assert.equal(realtimeSettingsChanged(settings, settings, first.modelCatalogs, runningSignature), false)
-  assert.equal(realtimeSettingsChanged(settings, settings, second.modelCatalogs, runningSignature), true)
-})
-
-test('CLI, fresh desktop settings and runtime share the Audio 3.1 default without rewriting explicit choices', t => {
+test('CLI, desktop and runtime share the Audio 3.1 default without rewriting explicit choices', t => {
   const { directory, env } = fixture(t)
   const configPath = join(directory, 'config.env')
   const store = createSettingsStore({ configDir: directory, clientDir: join(directory, 'client'), env: {} })
@@ -81,10 +37,11 @@ test('CLI, fresh desktop settings and runtime share the Audio 3.1 default withou
   assert.match(showConfig({ configPath }), /Realtime 模型：qwen-audio-3\.1-realtime-plus/)
   assert.equal(store.load().realtimeModel, 'qwen-audio-3.1-realtime-plus')
   const configuration = resolveRealtimeFrontendConfiguration(env)
-  assert.equal(configuration.active.model, 'qwen-audio-3.1-realtime-plus')
   assert.equal(configuration.active.modelProfile.sessionDefaults.voice, 'longanqian_v3.1')
+  assert.deepEqual(configuration.active.modelProfile.sessionDefaults.turnDetection, { type: 'smart_turn_v2' })
   assert.equal(configuration.active.voice, '', 'a model default is not an explicit voice override')
-  assert.equal(existsSync(configPath), false, 'reading defaults must not rewrite configuration')
+  assert.equal(existsSync(configPath), false)
+  assert.equal(existsSync(join(directory, 'frontend-models.json')), false)
 
   const content = 'QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus\nQWEN_AUDIO_REALTIME_VOICE=custom-voice\n'
   writeFileSync(configPath, content)
@@ -94,43 +51,76 @@ test('CLI, fresh desktop settings and runtime share the Audio 3.1 default withou
   assert.equal(readFileSync(configPath, 'utf8'), content)
 })
 
-test('CLI lists and selects registered models, rejecting unknown IDs without changing configuration', t => {
+test('CLI lists and selects built-in Audio 3.1 Flash and rejects unsupported IDs without writing', t => {
   const { directory } = fixture(t)
-  writeCatalog(directory, { 'custom-audio': { api: 'audio', label: 'My Audio' } })
   const configPath = join(directory, 'config.env')
-  assert.match(showConfig({ configPath }), /custom-audio（My Audio）/)
-  updateRealtimeModelConfig(configPath, 'custom-audio')
+  assert.match(showConfig({ configPath }), /qwen-audio-3\.1-realtime-flash（Qwen Audio 3\.1 Realtime Flash）/)
+  const selected = updateRealtimeModelConfig(configPath, DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL)
+  assert.equal(selected.profile, resolveRealtimeModelProfile(DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL))
+  assert.deepEqual(selected.profile.sessionDefaults, {
+    voice: 'longanqian_v3.1', turnDetection: { type: 'smart_turn_v2' },
+  })
   const content = readFileSync(configPath, 'utf8')
-  assert.match(content, /QWEN_AUDIO_REALTIME_MODEL=custom-audio/)
-  assert.throws(() => updateRealtimeModelConfig(configPath, 'unregistered'), /frontend-models.json/)
+  assert.match(content, /QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.1-realtime-flash/)
+  assert.throws(() => updateRealtimeModelConfig(configPath, 'unsupported-model'), error => {
+    assert.match(error.message, /不支持的 Realtime 模型/)
+    assert.doesNotMatch(error.message, /frontend-models\.json/)
+    return true
+  })
   assert.equal(readFileSync(configPath, 'utf8'), content)
 })
 
-test('desktop uses its explicit config directory and never trusts an editable catalog payload', t => {
-  const { directory } = fixture(t)
-  const configDir = join(directory, 'gateway')
-  mkdirSync(configDir)
-  writeCatalog(configDir, { 'custom-audio': { api: 'audio' } }, 'custom.json')
-  writeFileSync(join(configDir, 'config.env'), 'QWEN_AUDIO_FRONTEND_MODELS_CONFIG=custom.json\n')
-  const store = createSettingsStore({ configDir, clientDir: join(directory, 'client'), env: {} })
-  assert.equal(store.modelCatalogs().dashscope.profiles.at(-1).id, 'custom-audio')
-  store.save({ realtimeModel: 'custom-audio', realtimeApiKey: 'test-key' })
+test('desktop saves built-in Flash and resolves the same fixed profile as the runtime', t => {
+  const { directory, env } = fixture(t)
+  const store = createSettingsStore({ configDir: directory, clientDir: join(directory, 'client'), env: {} })
+  store.save({ realtimeModel: DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL, realtimeApiKey: 'test-only-key' })
   assert.equal(store.ready(), true)
+  assert.equal(store.modelCatalogs(), BUILTIN_REALTIME_MODEL_CATALOGS)
+  const desktop = realtimeSettingsConfiguration(store.load(), store.modelCatalogs())
+  const runtime = resolveRealtimeFrontendConfiguration({
+    ...env, QWEN_AUDIO_REALTIME_MODEL: DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL,
+    QWEN_AUDIO_REALTIME_API_KEY: 'test-only-key',
+  })
+  assert.deepEqual(desktop.active, runtime.active)
+  assert.equal(runtime.active.voice, '')
+  assert.equal(existsSync(join(directory, 'frontend-models.json')), false)
   const before = readFileSync(store.path, 'utf8')
-  assert.throws(() => store.save({ realtimeModel: 'unregistered', realtimeModelCatalogs: { dashscope: {} } }), /已注册模型/)
-  assert.equal(readFileSync(store.path, 'utf8'), before)
-  // Client-only settings remain independent of local model configuration.
-  assert.doesNotThrow(() => store.save({ autoHideSeconds: 60 }))
+  assert.throws(() => store.save({ realtimeModel: 'unsupported-model', realtimeModelCatalogs: { dashscope: {} } }), /模型/)
   assert.equal(readFileSync(store.path, 'utf8'), before)
 })
 
-test('invalid local catalog remains visible without blocking remote client settings', t => {
-  const { directory } = fixture(t)
-  writeFileSync(join(directory, 'frontend-models.json'), 'invalid JSON')
+test('legacy JSON and its path override cannot add models, change Plus defaults or block settings', t => {
+  const { directory, env } = fixture(t)
+  const configPath = join(directory, 'config.env')
+  const legacyPath = join(directory, 'frontend-models.json')
+  const initialSnapshot = JSON.stringify(BUILTIN_REALTIME_MODEL_CATALOGS)
+  const settings = { realtimeModel: 'qwen-audio-3.1-realtime-plus', realtimeApiKey: 'test-only-key' }
+  const initial = realtimeSettingsConfiguration(settings)
   const store = createSettingsStore({ configDir: directory, clientDir: join(directory, 'client'), env: {} })
-  assert.doesNotThrow(() => store.load())
-  assert.equal(store.modelCatalogStatus().realtimeModelCatalogs, null)
-  assert.match(store.modelCatalogStatus().realtimeModelCatalogError, /Invalid JSON/)
+  for (const content of [
+    JSON.stringify({ providers: { dashscope: { models: {
+      'custom-audio': { api: 'audio', voice: 'untrusted-voice' },
+      'qwen-audio-3.1-realtime-plus': { voice: 'untrusted-voice', turnDetection: 'smart_turn' },
+    } } } }),
+    'invalid JSON',
+  ]) {
+    writeFileSync(legacyPath, content)
+    const legacyEnv = { ...env, QWEN_AUDIO_FRONTEND_MODELS_CONFIG: legacyPath, QWEN_AUDIO_REALTIME_API_KEY: 'test-only-key' }
+    assert.equal(resolveRealtimeFrontendConfiguration(legacyEnv).modelCatalogs, BUILTIN_REALTIME_MODEL_CATALOGS)
+    assert.equal(gatewaySetupStatus(legacyEnv).ready, true)
+    assert.doesNotMatch(showConfig({ configPath, env: legacyEnv }), /custom-audio|untrusted-voice/)
+    assert.throws(() => updateRealtimeModelConfig(configPath, 'custom-audio', { env: legacyEnv }), /不支持/)
+    assert.equal(store.modelCatalogs(), BUILTIN_REALTIME_MODEL_CATALOGS)
+    store.save(settings)
+    assert.equal(realtimeSettingsChanged(settings, settings, store.modelCatalogs(), initial.active.signature), false)
+    assert.equal(readFileSync(legacyPath, 'utf8'), content)
+  }
   assert.doesNotThrow(() => store.save({ gatewayUrl: 'https://remote.example', language: 'en' }))
-  assert.throws(() => store.save({ realtimeModel: 'qwen-audio-3.0-realtime-plus' }), /Invalid JSON/)
+  assert.doesNotThrow(() => resolveRealtimeFrontendConfiguration({
+    ...env, QWEN_AUDIO_FRONTEND_MODELS_CONFIG: join(directory, 'missing.json'),
+  }))
+  assert.equal(JSON.stringify(BUILTIN_REALTIME_MODEL_CATALOGS), initialSnapshot)
+  const unknown = resolveRealtimeFrontendConfiguration({ ...env, QWEN_AUDIO_REALTIME_MODEL: 'custom-audio' })
+  assert.equal(unknown.active.modelProfile.family, 'unknown')
+  assert.throws(() => assertRealtimeFrontendModel(unknown.active), /模型/)
 })

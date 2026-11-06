@@ -44,25 +44,39 @@ support `choice` questions with `violation`, `ok`, and `uncertain` options.
    repeated corrections or exposure of internal structure. The Gateway validates model identity, input hash,
    question IDs, primitive and option order. Only explicit `violation` answers
    produce corrections; uncertain answers do not.
-3. Before presenting any later response audio/text **or dispatching its tools**,
-   the Gateway checks outstanding reviews. If necessary, it cancels the
-   speculative response using the existing frontend cancellation mechanism and
-   suppresses all its subsequent events. Policy cancellation retains the cancelled
-   response ID until response/connection reset. Late created, text/audio, tool,
-   done or ID-bound error events cannot reactivate it, consume the replacement
-   waiter, or release the replacement response slot. Ordinary cancellation
-   behavior is unchanged when this policy-specific retirement option is unused.
-4. After review settles, the Gateway injects the original routing paragraph, bound conversation evidence, and an actionable
-   instruction to try a relevant dedicated tool or submit the request through
-   `spawn_thinking` instead of merely apologizing or repeating the refusal
-   with the existing `injectDelivery(route=context)` mechanism. It then requests
-   regeneration for the latest user turn using `ensureResponse`. It does not
-   read the review JSON aloud or edit the system prompt. Stale/disconnected
-   sessions cannot resume. A turn superseded while waiting cannot resume later.
-5. Review timeout, endpoint error, or invalid response fails open. A timed-out
-   request is aborted and any late verdict is discarded. If generation was
-   already cancelled, it is regenerated without that verdict. Timeout does not
-   erase corrections from other successful reviews.
+3. Before presenting a later response (including its start, audio/text, completion
+   and tool calls), the Gateway buffers its events until outstanding reviews finish.
+   An `ok`/`uncertain`, timeout or reviewer error releases the original buffered
+   events in order, without cancelling or regenerating that response. A review
+   started by replaying a buffered completion gates the following response too.
+   User interruption discards superseded buffered output.
+4. Only a validated violation discards speculative output and uses existing
+   cancellation. The correction packet contains the original turn/response IDs,
+   full reviewed assistant text and retained conversation history. Problem and
+   remediation text are fixed Gateway templates selected by rule ID, never
+   free-form JEV instructions. The Gateway immediately injects it through
+   `injectDelivery(route=context)` and requests a replacement with `ensureResponse`.
+   Response instructions require a short, natural acknowledgement that the earlier
+   answer will be corrected, actual tool/backend attempts for that request, then
+   an answer to the latest request. They forbid exposing the reviewer, backend
+   structure or tool names and repeating operations already completed.
+5. If the user is speaking, replacement waits for native `speech_stopped`.
+   Only this JEV replacement opts into event-driven recovery of an input/speech-busy
+   response refusal. The provider requires a unique pending local request (no
+   response already assigned to its waiter), waits for native `speech_stopped`,
+   then uses the existing response retry mechanism and its existing three-retry
+   limit. A stop received after submission but before the rejection also qualifies.
+   It rechecks connection/queue generation and the original current-turn gate;
+   cancellation/reset invalidates the wait. It never resends a business tool or
+   context item and adds no backoff timer. Ordinary agent/tool notifications keep
+   their existing refusal behavior. Unassociated errors are not silently retried.
+6. If a user interrupts an in-flight repair, its correction remains required for
+   the latest turn after speech stops. A correlated repair response claims only
+   its matching input candidate, preventing a false no-response watchdog for
+   that input. Disconnected sessions cannot replay buffers or start replacements.
+7. Review timeout, endpoint error, or invalid verdict fails open. Timed-out
+   requests are aborted and late verdicts ignored; valid corrections from other
+   reviews are retained.
 
 No explicit playback-clear is required for speculative audio: the guard runs
 before that response's audio is forwarded. Audio already heard from the reviewed
@@ -102,7 +116,14 @@ node --test server/test/frontend-policy-review.test.mjs server/test/realtime-ses
 ```
 
 Tests use a deterministic decision mock and a protocol-compatible fake endpoint
-response: current output is unbuffered, next speculative audio/tools are blocked,
-correction precedes regeneration, timeout/error fails open, late verdicts are
-ignored, newer user turns win, and disabled mode has no review side effects.
+response: current output is unbuffered; next response events are held and replayed in order
+on ok/uncertain/timeout/error; violations inject fixed remediation before
+regeneration; user interruption retains repair for the latest turn; input-busy
+recovery waits for native speech-stopped and respects cancellation/reset; late
+verdicts are ignored; disabled mode has no review side effects.
 These tests do not measure JEV accuracy or live inference latency.
+
+The lifecycle repair branch also contains earlier tool-result queue and old-socket
+isolation fixes. This playback-gate change has deterministic tests; it does not
+certify recovery of the historical 144 failed cases or fix all same-ID reuse and
+adapter completion issues. Keep new evaluations separate from frozen results.

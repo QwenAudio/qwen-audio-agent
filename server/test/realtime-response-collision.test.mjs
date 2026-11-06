@@ -5,6 +5,74 @@ import { RealtimeFrontend, REALTIME_PROVIDERS } from '../src/voice/realtime-prov
 const flush = () => new Promise(resolve => setImmediate(resolve))
 const busyMessage = 'Conversation already has a pending response request'
 
+test('JEV regeneration input_busy waits for native speech_stopped, not a backoff timer', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const h = harness(t)
+  const outcome = h.frontend.ensureResponse({ turnId: 'latest' }, { waitForSpeechStopped: true, shouldCreate: () => true })
+  await flush()
+  const error = { type: 'error', error: { code: 'speech_busy', message: 'Cannot create response while user is speaking.' } }
+  h.frontend.handleLifecycle(error)
+  assert.equal(error.__voiceRetried, true)
+  t.mock.timers.tick(20_000)
+  await flush()
+  assert.equal(h.responses().length, 1)
+  h.frontend.handleLifecycle({ type: 'input_audio_buffer.speech_stopped', item_id: 'user' })
+  await flush()
+  assert.equal(h.responses().length, 2)
+  h.start('replacement')
+  h.done('replacement')
+  assert.equal((await outcome).completed, true)
+})
+
+test('native stop received while request was in flight also allows JEV recovery', async t => {
+  const h = harness(t)
+  const outcome = h.frontend.ensureResponse({}, { waitForSpeechStopped: true })
+  await flush()
+  h.frontend.handleLifecycle({ type: 'input_audio_buffer.speech_stopped' })
+  h.frontend.handleLifecycle({ type: 'error', error: { message: 'Cannot create response while user is speaking.' } })
+  await flush()
+  assert.equal(h.responses().length, 2)
+  h.start('replacement'); h.done('replacement')
+  assert.equal((await outcome).completed, true)
+})
+
+for (const operation of ['cancel', 'resetResponses']) {
+  test(`JEV input-busy wait is invalidated by ${operation}`, async t => {
+    const h = harness(t)
+    const outcome = h.frontend.ensureResponse({}, { waitForSpeechStopped: true })
+    await flush()
+    h.frontend.handleLifecycle({ type: 'error', error: { message: 'Cannot create response while user is speaking.' } })
+    h.frontend[operation]()
+    h.frontend.handleLifecycle({ type: 'input_audio_buffer.speech_stopped' })
+    await flush()
+    assert.equal(h.responses().length, 1)
+    assert.equal((await outcome).cancelled, true)
+  })
+}
+
+test('ordinary agent refusal keeps original behavior without the JEV option', async t => {
+  const h = harness(t)
+  const outcome = h.frontend.ensureResponse({})
+  await flush()
+  const error = { type: 'error', error: { message: 'Cannot create response while user is speaking.' } }
+  h.frontend.handleLifecycle(error)
+  assert.notEqual(error.__voiceRetried, true)
+  assert.equal((await outcome).failed, true)
+  h.frontend.handleLifecycle({ type: 'input_audio_buffer.speech_stopped' })
+  await flush()
+  assert.equal(h.responses().length, 1)
+})
+
+test('JEV recovery does not claim a refusal explicitly bound to another request', async t => {
+  const h = harness(t)
+  const outcome = h.frontend.ensureResponse({}, { waitForSpeechStopped: true })
+  await flush()
+  const error = { type: 'error', error: { event_id: 'different-request', message: 'Cannot create response while user is speaking.' } }
+  h.frontend.handleLifecycle(error)
+  assert.notEqual(error.__voiceRetried, true)
+  assert.equal((await outcome).failed, true)
+})
+
 function harness(t, options = {}) {
   const sent = [], diagnostics = []
   const frontend = new RealtimeFrontend({

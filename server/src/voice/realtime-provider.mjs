@@ -486,7 +486,7 @@ export class RealtimeFrontend {
     ))
   }
 
-  ensureResponse(context = {}, { shouldCreate, response, afterToolResults = false } = {}) {
+  ensureResponse(context = {}, { shouldCreate, response, afterToolResults = false, waitForSpeechStopped = false } = {}) {
     if (!this.capabilities.clientResponses) {
       return Promise.resolve({ skipped: true, unsupported: true })
     }
@@ -497,6 +497,7 @@ export class RealtimeFrontend {
     }
     return this.enqueueResponse('agent', context, pending => {
       pending.isCurrent = shouldCreate
+      pending.waitForSpeechStopped = waitForSpeechStopped
       if (shouldCreate && !shouldCreate()) return false
       return this.sendResponse(response)
     })
@@ -729,6 +730,7 @@ export class RealtimeFrontend {
     await this.whenIdle()
     if (!this.ready || pending.settled || pending.isCurrent?.() === false) return false
     pending.responseRequested = true
+    pending.speechStopVersion = this.speechStopVersion || 0
     this.send(this.protocol.responseCreate(response))
   }
 
@@ -885,6 +887,10 @@ export class RealtimeFrontend {
   }
 
   handleLifecycle(event) {
+    if (event.type === 'input_audio_buffer.speech_stopped') {
+      this.speechStopVersion = (this.speechStopVersion || 0) + 1
+      for (const pending of this.retryingResponses) pending.resumeOnSpeechStopped?.()
+    }
     const retiredId = realtimeResponseId(event)
     if (retiredId && this.retiredResponses.has(retiredId)
       && (isResponseActivityEvent(event) || event.type === 'error')) {
@@ -1048,12 +1054,17 @@ export class RealtimeFrontend {
   }
 
   handleResponseRefusal(event) {
-    const kind = this.provider.classifyError(realtimeEventErrorMessage(event))
+    const kind = this.pendingResponses.some(pending => pending.waitForSpeechStopped && pending.responseRequested)
+      && ['speech_busy', 'input_busy'].includes(event.error?.code)
+      ? 'input_busy' : this.provider.classifyError(realtimeEventErrorMessage(event))
     if (kind !== 'response_slot_busy' && kind !== 'input_busy') return false
     if (kind === 'response_slot_busy' && this.capabilities.singleResponseSlot && !this.activeResponses.size) {
       this.responseSlot.occupy()
     }
     let pending = this.pendingResponses.find(item => item.responseRequested)
+    const uniquelyPending = pending && this.pendingResponses.filter(item => item.responseRequested).length === 1
+      && !this.responseWaiters.size
+      && (!event.error?.event_id || event.error.event_id === pending.responsePayload?.event_id)
     // Metadata-free providers can announce an automatic response before
     // refusing ours. Undo that FIFO association, but keep the response alive.
     if (!pending && !this.capabilities.responseMetadataCorrelation && this.responseWaiters.size === 1) {
@@ -1070,7 +1081,8 @@ export class RealtimeFrontend {
     }
     const retry = Boolean(pending && !pending.settled && pending.responsePayload
       && (pending.busyRetries || 0) < 3
-      && (kind === 'response_slot_busy' ? this.capabilities.singleResponseSlot : pending.origin === 'model'))
+      && (kind === 'response_slot_busy' ? this.capabilities.singleResponseSlot
+        : pending.origin === 'model' || (pending.waitForSpeechStopped && uniquelyPending)))
     try {
       this.onDiagnostic?.({
         event: 'realtime.response_refused', provider: this.provider.key,
@@ -1170,7 +1182,17 @@ export class RealtimeFrontend {
     const delays = [1200, 2600, 5000]
     const delay = delays[Math.min(pending.busyRetries - 1, delays.length - 1)]
     const attempt = async () => {
-      if (kind === 'response_slot_busy' || this.activeResponses.size) {
+      if (kind === 'input_busy' && pending.waitForSpeechStopped) {
+        if ((this.speechStopVersion || 0) <= pending.speechStopVersion) {
+          await new Promise(resolve => {
+            pending.resumeOnSpeechStopped = resolve
+            pending.cancelRetryDelay = resolve
+          })
+          pending.resumeOnSpeechStopped = null
+          pending.cancelRetryDelay = null
+        }
+        await this.whenIdle()
+      } else if (kind === 'response_slot_busy' || this.activeResponses.size) {
         await this.whenIdle()
       } else {
         await new Promise(resolve => {
@@ -1196,6 +1218,7 @@ export class RealtimeFrontend {
       this.retryingResponses.delete(pending)
       this.pendingResponses.push(pending)
       pending.responseRequested = true
+      pending.speechStopVersion = this.speechStopVersion || 0
       this.send(pending.responsePayload)
       if (!pending.settled && this.pendingResponses.includes(pending)) {
         this.armResponseStartTimeout(pending)

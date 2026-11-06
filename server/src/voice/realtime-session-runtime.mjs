@@ -597,8 +597,7 @@ export function createRealtimeSessionRuntime({
     getTasks: () => taskOperations?.list({ ownerId, sessionId }) || [],
     getFrontend: () => realtimeSession.frontend,
     getTurn: () => ({
-      turnId: turns.committedTurnId || turns.turnId,
-      turnGeneration: turns.committedTurnId ? turns.committedTurnGeneration : turns.turnGeneration,
+      ...turns.current(),
       userSpeaking: turns.userSpeaking,
     }),
     onSuppressed: (responseId, context) => {
@@ -617,14 +616,25 @@ export function createRealtimeSessionRuntime({
     if (closed) return
     if (isSleepActivityEvent(event)) sleepController?.recordActivity()
     if (isResponseActivityEvent(event)) {
-      const context = presentationRuntime.begin(event)
-      if (policyReview?.intercept(event, context)) {
-        if (context) context.suppressed = true
-        if (event.type === 'response.done') presentationRuntime.handle(event)
-        return
+      // Gate before begin(): neither playback nor tool dispatch nor a public
+      // response-start event may escape while the previous transcript is under review.
+      if (policyReview?.intercept(event,
+        { ...(event.__voiceContext || responseTurnCandidate || turns.current()) }, handleEvent)) return
+      presentationRuntime.begin(event)
+      if (policyReview && event.type === 'response.created' && event.__voiceOrigin === 'agent'
+        && event.__voiceContext?.policyRepair && responseTurnCandidate
+        && event.__voiceContext.turnId === responseTurnCandidate.turnId
+        && event.__voiceContext.turnGeneration === responseTurnCandidate.turnGeneration) {
+        // A correlated repair answers this input, even though it is explicitly
+        // requested rather than an automatic model response.
+        turns.commit(responseTurnCandidate)
+        clearResponseCandidate()
       }
     }
-    if (inputs.handleProviderEvent(event)) return
+    if (inputs.handleProviderEvent(event)) {
+      policyReview?.onInputEvent(event)
+      return
+    }
     if (event.type === 'response.done') {
       const responseId = realtimeResponseId(event)
       const context = presentationRuntime.get(responseId)

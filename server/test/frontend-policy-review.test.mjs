@@ -36,52 +36,68 @@ test('only refusal routing paragraph is extracted; other rules are excluded', ()
   assert.deepEqual(rules.map(rule => rule.text), ['仅当直接回答就能满足用户请求时，才直接回答。'])
 })
 
-test('current reply is unbuffered, next generation is cancelled until correction is injected', async () => {
+test('next output is buffered without cancellation, ok replays audio and tools in order', async () => {
   const pending = deferred()
-  const { review, calls, start } = harness(async input => {
-    assert.equal(input.state.tool_events[0].status, 'failed')
-    assert.match(input.state.history[0].content, /不要再说/)
-    return pending.promise
-  })
-  assert.equal(review.intercept({ response: { id: 'r1' } }), false)
+  const { review, calls, start } = harness(() => pending.promise)
+  const replayed = []
   start()
+  for (const type of ['response.created', 'response.audio.delta', 'response.function_call_arguments.done', 'response.done']) {
+    assert.equal(review.intercept({ type, response_id: 'r2' }, {}, e => replayed.push(e.type)), true)
+  }
   assert.deepEqual(calls, [])
-  assert.equal(review.intercept({ response: { id: 'r2' } }), true)
-  assert.equal(review.intercept({ response_id: 'r2', type: 'response.audio.delta' }), true)
-  assert.deepEqual(calls, ['cancel'])
-  pending.resolve([{ id: 'rule', rule: '不得虚构完成' }])
+  assert.deepEqual(replayed, [])
+  pending.resolve([])
   await tick()
-  assert.equal(calls[1].origin, 'policy-review')
-  assert.equal(calls[1].options.route, 'context')
-  assert.equal(calls[2].resume[0].turnId, 't2')
-  assert.equal(review.intercept({ response: { id: 'r3' } }), false)
+  assert.deepEqual(replayed, ['response.created', 'response.audio.delta', 'response.function_call_arguments.done', 'response.done'])
+  assert.deepEqual(calls, [])
 })
 
-test('timeout fails open even if transport ignores abort; late violation is discarded', async () => {
+test('violation discards buffered output, injects original reply and fixed repair before regeneration', async () => {
+  const pending = deferred()
+  const { review, calls, start } = harness(async ({ rules }) => { await pending.promise; return [{ id: rules[0].id, correction: 'UNTRUSTED REMEDY' }] })
+  start()
+  review.intercept({ type: 'response.audio.delta', response_id: 'r2' }, {}, () => assert.fail('discarded'))
+  assert.deepEqual(calls, [])
+  pending.resolve()
+  await tick()
+  assert.equal(calls[0], 'cancel')
+  const correction = calls[1].text.corrections[0]
+  assert.equal(correction.assistant_text, '已经发送了')
+  assert.equal(correction.turn_id, 't1')
+  assert.match(correction.violations[0].correction, /先简短向用户说明/)
+  assert.doesNotMatch(JSON.stringify(correction), /UNTRUSTED/)
+  assert.equal(calls[2].resume[1].waitForSpeechStopped, true)
+  assert.match(calls[2].resume[1].response.instructions, /再回答最新一轮/)
+})
+
+test('timeout replays buffered output without regeneration and ignores late verdict', async () => {
   const pending = deferred()
   const { review, calls, start } = harness(() => pending.promise, 5)
+  const replayed = []
   start()
-  review.intercept({ response: { id: 'r2' } })
+  review.intercept({ response: { id: 'r2' } }, {}, e => replayed.push(e))
   await new Promise(resolve => setTimeout(resolve, 20))
-  assert.equal(calls.length, 2)
-  assert.ok(calls[1].resume)
-  pending.resolve([{ id: 'late', rule: 'late' }])
+  assert.equal(replayed.length, 1)
+  assert.deepEqual(calls, [])
+  pending.resolve([{ id: 'late' }])
   await tick()
   assert.equal(review.violations.length, 0)
 })
 
-test('review errors fail open and disconnect prevents correction or regeneration', async () => {
+test('error fails open; closing discards buffer and forbids later playback', async () => {
   const { review, calls, start } = harness(async () => { throw new Error('offline') })
+  let replayed = 0
   start()
-  review.intercept({ response: { id: 'r2' } })
+  review.intercept({ response: { id: 'r2' } }, {}, () => replayed++)
   await tick()
-  assert.ok(calls[1].resume)
+  assert.equal(replayed, 1)
+  assert.deepEqual(calls, [])
   const other = harness(() => new Promise(() => {}), 5)
   other.start()
-  other.review.intercept({ response: { id: 'r2' } })
+  other.review.intercept({ response: { id: 'r2' } }, {}, () => assert.fail('closed'))
   other.review.close()
   await new Promise(resolve => setTimeout(resolve, 15))
-  assert.deepEqual(other.calls, ['cancel'])
+  assert.deepEqual(other.calls, [])
 })
 
 test('JEV adapter sends choice questions and validates model, input hash and option ordering', async () => {
@@ -111,15 +127,16 @@ test('Role and repeated user correction are outside the current scope', () => {
   assert.deepEqual(interactionRules('# Role\n\n不要暴露后台结构。'), [])
 })
 
-test('ready violation waits for the next response, and newer user turn owns regeneration', async () => {
-  const { review, calls, start } = harness(async () => [{ id: 'routing', rule: '不要未经尝试就声称做不到' }])
+test('violation during user speech waits until stopped and resumes the latest turn', async () => {
+  const { review, calls, start } = harness(async ({ rules }) => [{ id: rules[0].id }])
+  let turn = { turnId: 't2', turnGeneration: 2, userSpeaking: true }
+  review.getTurn = () => turn
   start()
   await tick()
-  assert.deepEqual(calls, [])
-  let turn = { turnId: 't2', turnGeneration: 2 }
-  review.getTurn = () => turn
-  review.intercept({ response: { id: 'r2' } })
-  turn = { turnId: 't3', turnGeneration: 3 }
+  assert.equal(calls.filter(c => c.resume).length, 0)
+  assert.equal(calls[0].origin, 'policy-review')
+  turn = { turnId: 't3', turnGeneration: 3, userSpeaking: false }
+  review.onInputEvent({ type: 'input_audio_buffer.speech_stopped' })
   await tick()
   assert.equal(calls.at(-1).resume[0].turnId, 't3')
   assert.equal(calls.at(-1).resume[1].shouldCreate(), true)
@@ -131,13 +148,64 @@ test('disabled configuration ignores unused endpoint and timeout settings', () =
   assert.equal(policyReviewOptions({ QWEN_AUDIO_POLICY_REVIEW: 'off', QWEN_AUDIO_POLICY_REVIEW_TIMEOUT_MS: 'invalid' }).enabled, false)
 })
 
-test('context injection failure still supplies correction through regeneration instructions', async () => {
-  const { review, calls, start } = harness(async () => [{ id: 'rule', rule: '必须先执行' }])
-  const frontend = review.getFrontend()
-  frontend.injectDelivery = async () => { throw new Error('cannot inject') }
+test('injection failure retains original reply and fixed repair in response instructions', async () => {
+  const { review, calls, start } = harness(async ({ rules }) => [{ id: rules[0].id }])
+  review.getFrontend().injectDelivery = async () => { throw new Error('cannot inject') }
   start()
   await tick()
-  review.intercept({ response: { id: 'r2' } })
+  assert.match(calls.at(-1).resume[1].response.instructions, /已经发送了/)
+  assert.match(calls.at(-1).resume[1].response.instructions, /先用自然/)
+})
+
+test('user speech discards held old output; a successful review cannot replay it later', async () => {
+  const pending = deferred()
+  const { review, start } = harness(() => pending.promise)
+  start()
+  review.intercept({ response_id: 'r2' }, {}, () => assert.fail('superseded output'))
+  review.onInputEvent({ type: 'input_audio_buffer.speech_started' })
+  pending.resolve([])
   await tick()
-  assert.match(calls.at(-1).resume[1].response.instructions, /必须先执行/)
+  assert.equal(review.buffer.length, 0)
+})
+
+test('replayed completion starts another review which holds the following response', async () => {
+  const first = deferred(), second = deferred()
+  let count = 0
+  const { review, start } = harness(() => (++count === 1 ? first.promise : second.promise))
+  const replayed = []
+  start()
+  const replay = event => {
+    if (review.intercept(event, {}, replay)) return
+    replayed.push(event.response_id)
+    if (event.response_id === 'r2') review.review({ responseId: 'r2', context: { turnId: 't2' }, text: 'reply2' })
+  }
+  review.intercept({ type: 'response.done', response_id: 'r2' }, {}, replay)
+  review.intercept({ type: 'response.audio.delta', response_id: 'r3' }, {}, replay)
+  first.resolve([])
+  await tick()
+  assert.deepEqual(replayed, ['r2'])
+  second.resolve([])
+  await tick()
+  assert.deepEqual(replayed, ['r2', 'r3'])
+})
+
+test('an interrupted repair remains required before output for the new user turn', async () => {
+  const { review, calls, start } = harness(async ({ rules }) => [{ id: rules[0].id }])
+  const outcome = deferred()
+  review.getFrontend().ensureResponse = (...args) => { calls.push({ resume: args }); return outcome.promise }
+  let turn = { turnId: 't2', turnGeneration: 2, userSpeaking: false }
+  review.getTurn = () => turn
+  start()
+  await tick()
+  turn = { turnId: 't3', turnGeneration: 3, userSpeaking: true }
+  review.onInputEvent({ type: 'input_audio_buffer.speech_started' })
+  assert.equal(review.intercept({ response_id: 'new-speculation' }, {}, () => assert.fail('unrepaired')), true)
+  outcome.resolve({ cancelled: true })
+  await tick()
+  assert.equal(calls.filter(c => c.resume).length, 1)
+  turn.userSpeaking = false
+  review.onInputEvent({ type: 'input_audio_buffer.speech_stopped' })
+  await tick()
+  assert.equal(calls.filter(c => c.resume).length, 2)
+  assert.equal(calls.at(-1).resume[0].turnId, 't3')
 })

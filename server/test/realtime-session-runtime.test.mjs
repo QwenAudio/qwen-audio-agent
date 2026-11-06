@@ -750,7 +750,7 @@ test('policy review injects correction before regenerated next-turn audio and to
   let resolveReview
   const verdict = new Promise(resolve => { resolveReview = resolve })
   const h = harness(t, { policyReviewSettings: { enabled: true, timeoutMs: 500, endpoint: 'unused' },
-    policyReviewDecide: async () => verdict })
+    policyReviewDecide: async ({ rules }) => { await verdict; return [{ id: rules[0].id }] } })
   const f = await h.connect({}, { capabilitiesNegotiated: true, capabilities: ['input.audio', 'input.text'] })
   const resumed = []
   f.ensureResponse = async (...args) => resumed.push(args)
@@ -768,13 +768,14 @@ test('policy review injects correction before regenerated next-turn audio and to
   f.emit({ type: 'response.audio.delta', response_id: 'speculative', delta: 'DISCARD=' })
   f.emit({ type: 'response.function_call_arguments.done', response_id: 'speculative', call_id: 'bad', name: 'spawn_thinking', arguments: '{"objective":"must not run"}' })
   assert.equal(h.events.filter(e => e.audio).length, audioBefore)
-  assert.equal(h.events.filter(e => e.type === 'response.interrupted' && e.responseId === 'speculative').length, 1)
+  assert.equal(h.events.filter(e => e.type === 'response.interrupted' && e.responseId === 'speculative').length, 0)
   assert.equal(h.manager.list({}).length, 0)
   resolveReview([{ id: 'rule_no_false_completion', rule: '没有执行不得声称完成' }])
   await until(() => resumed.length > 0)
   assert.equal(f.deliveries.at(-1).origin, 'policy-review')
   assert.equal(f.deliveries.at(-1).settings.route, 'context')
-  assert.match(f.deliveries.at(-1).text, /rule_no_false_completion/)
+  assert.match(f.deliveries.at(-1).text, /已经处理好了/)
+  assert.equal(h.events.filter(e => e.type === 'response.interrupted' && e.responseId === 'speculative').length, 1)
   f.emit({ type: 'response.created', response: { id: 'regenerated' } })
   f.emit({ type: 'response.audio.delta', response_id: 'regenerated', delta: 'CORRECT=' })
   assert.ok(h.events.some(e => e.audio === 'CORRECT='))
@@ -797,3 +798,33 @@ test('policy review off does not call reviewer, cancel, inject context or alter 
   assert.equal(f.updates.length, 0)
   assert.ok(h.events.some(e => e.audio === 'PASS='))
 })
+
+for (const verdictKind of ['ok', 'timeout']) {
+  test(`policy ${verdictKind} replays a complete buffered reply without cancelling or regeneration`, async t => {
+    let resolve
+    const verdict = new Promise(done => { resolve = done })
+    const h = harness(t, { policyReviewSettings: { enabled: true, timeoutMs: verdictKind === 'timeout' ? 15 : 500, endpoint: 'unused' },
+      policyReviewDecide: () => verdict })
+    const f = await h.connect({}, { capabilitiesNegotiated: true, capabilities: ['input.audio', 'input.text'] })
+    let regenerated = 0
+    f.ensureResponse = async () => { regenerated++ }
+    h.send({ type: Input.TEXT_MESSAGE, text: 'hello' })
+    await until(() => f.inputs.length === 1)
+    f.emit({ type: 'response.created', response: { id: 'first' } })
+    f.emit({ type: 'response.audio_transcript.done', response_id: 'first', transcript: 'hello' })
+    f.emit({ type: 'response.done', response: { id: 'first', status: 'completed' } })
+    await tick()
+    const cancels = f.cancels
+    f.emit({ type: 'response.created', response: { id: 'buffered' } })
+    f.emit({ type: 'response.audio.delta', response_id: 'buffered', delta: 'HELD=' })
+    f.emit({ type: 'response.audio_transcript.done', response_id: 'buffered', transcript: 'second answer' })
+    f.emit({ type: 'response.done', response: { id: 'buffered', status: 'completed' } })
+    assert.ok(!h.events.some(e => e.audio === 'HELD='))
+    assert.ok(!h.events.some(e => e.type === 'response.started' && e.responseId === 'buffered'))
+    if (verdictKind === 'ok') resolve([])
+    await until(() => h.events.some(e => e.audio === 'HELD='))
+    assert.equal(h.events.filter(e => e.audio === 'HELD=').length, 1)
+    assert.equal(f.cancels, cancels)
+    assert.equal(regenerated, 0)
+  })
+}

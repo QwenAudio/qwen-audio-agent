@@ -1,7 +1,8 @@
 export const GATEWAY_WEBSOCKET_PROTOCOL = 'qwaudio.gcp.v6'
 
 const GATEWAY_WEBSOCKET_BEARER_PREFIX = 'qwaudio.bearer.'
-const TOKEN_PATTERN = /^[A-Za-z0-9_-]{24,256}$/
+// Device tokens the Gateway issues are 128-bit base64url, i.e. 22 characters.
+const TOKEN_PATTERN = /^[A-Za-z0-9_-]{22,256}$/
 
 function protocolValues(header = '') {
   return String(header)

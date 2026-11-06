@@ -48,7 +48,9 @@ function exactEditMatches(content, needle) {
       && !(offset <= comment.start && end >= comment.end)
     ))
     if (!partialComment) matches.push(offset)
-    offset += needle.length
+    // Step by one, not by the needle: "- a\n- a" also starts on the second
+    // line of "- a\n- a\n- a", and that overlap makes the edit ambiguous.
+    offset += 1
   }
   return matches
 }

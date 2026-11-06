@@ -47,7 +47,11 @@ support `choice` questions with `violation`, `ok`, and `uncertain` options.
 3. Before presenting any later response audio/text **or dispatching its tools**,
    the Gateway checks outstanding reviews. If necessary, it cancels the
    speculative response using the existing frontend cancellation mechanism and
-   suppresses all its subsequent events.
+   suppresses all its subsequent events. Policy cancellation retains the cancelled
+   response ID until response/connection reset. Late created, text/audio, tool,
+   done or ID-bound error events cannot reactivate it, consume the replacement
+   waiter, or release the replacement response slot. Ordinary cancellation
+   behavior is unchanged when this policy-specific retirement option is unused.
 4. After review settles, the Gateway injects the original routing paragraph, bound conversation evidence, and an actionable
    instruction to try a relevant dedicated tool or submit the request through
    `spawn_thinking` instead of merely apologizing or repeating the refusal

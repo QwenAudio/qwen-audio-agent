@@ -150,6 +150,7 @@ export class RealtimeFrontend {
     this.restoringContext = false
     this.audioInputStarted = false
     this.activeResponses = new Set()
+    this.retiredResponses = new Set()
     this.pendingResponses = []
     this.retryingResponses = new Set()
     this.responseWaiters = new Map()
@@ -715,9 +716,14 @@ export class RealtimeFrontend {
     this.send(this.protocol.responseCreate(response))
   }
 
-  cancel() {
+  cancel({ retireResponses = false } = {}) {
     this.responseQueueGeneration += 1
     const cancelledResponseIds = [...this.activeResponses]
+    // Policy review owns a replacement response. Keep cancellation tombstones
+    // until the connection resets, so late A events cannot revive A or mutate B.
+    if (retireResponses) {
+      for (const id of cancelledResponseIds) this.retiredResponses.add(id)
+    }
     const hasResponse = cancelledResponseIds.length
       || this.pendingResponses.some(pending => pending.responseRequested)
       || this.responseSlot.blocked
@@ -863,6 +869,14 @@ export class RealtimeFrontend {
   }
 
   handleLifecycle(event) {
+    const retiredId = realtimeResponseId(event)
+    if (retiredId && this.retiredResponses.has(retiredId)
+      && (isResponseActivityEvent(event) || event.type === 'error')) {
+      event.__voiceContext = { ...event.__voiceContext, suppressed: true }
+      // Do not claim a pending response, reoccupy/release its slot, or settle
+      // another response's waiter, even for a duplicate created/done/error.
+      return
+    }
     if (event.type === 'error'
       && this.provider.classifyError(realtimeEventErrorMessage(event)) === 'no_active_response') {
       // This acknowledges cancellation; it must not reject an unrelated item.
@@ -1189,6 +1203,7 @@ export class RealtimeFrontend {
   }
 
   resetResponses() {
+    this.retiredResponses.clear()
     this.responseQueueGeneration += 1
     this.activeResponses.clear()
     this.responseSlot.release()

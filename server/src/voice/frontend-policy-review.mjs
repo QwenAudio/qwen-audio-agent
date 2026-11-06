@@ -94,14 +94,14 @@ export class FrontendPolicyReview {
     if (this.gate) {
       this.blocked.add(id)
       this.onSuppressed(id, context)
-      this.getFrontend()?.cancel()
+      this.getFrontend()?.cancel({ retireResponses: true })
       return true
     }
     if (!this.pending.size && !this.violations.length) return false
     this.blocked.add(id)
     this.onSuppressed(id, context)
     const frontend = this.getFrontend()
-    frontend?.cancel()
+    frontend?.cancel({ retireResponses: true })
     this.gate = this.release(frontend, context).catch(error => this.onError(error)).finally(() => { this.gate = null })
     return true
   }

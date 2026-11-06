@@ -249,3 +249,54 @@ test('task completion does not truncate an acknowledgement already streaming', a
   h.done('receipt')
   await outcome
 })
+
+test('policy-cancelled A cannot revive or consume B through late lifecycle events', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const h = harness(t)
+  h.start('A')
+  h.frontend.cancel({ retireResponses: true })
+  h.frontend.handleLifecycle({ type: 'error', error: { message: 'Conversation has no active response.' } })
+  assert.equal(h.frontend.activeResponses.size, 0)
+  const outcome = h.frontend.ensureResponse({ turnId: 'new-turn' })
+  await flush()
+  assert.equal(h.responses().length, 1)
+  const lateCreated = h.start('A')
+  assert.equal(lateCreated.__voiceContext.suppressed, true)
+  assert.equal(h.frontend.pendingResponses.length, 1, 'late A cannot claim the replacement request')
+  const replacement = h.start('B')
+  assert.equal(replacement.__voiceContext.turnId, 'new-turn')
+  const phase = h.frontend.responseSlot.phase
+  for (const type of ['response.audio_transcript.delta', 'response.audio.delta',
+    'response.function_call_arguments.done', 'response.done', 'error']) {
+    const event = { type, response_id: 'A', delta: 'late', response: { id: 'A', status: 'completed' }, error: { message: 'old response failed' } }
+    h.frontend.handleLifecycle(event)
+    assert.equal(event.__voiceContext.suppressed, true)
+    assert.deepEqual([...h.frontend.activeResponses], ['B'])
+    assert.equal(h.frontend.responseSlot.phase, phase, 'late A cannot release B slot')
+    assert.equal(h.frontend.responseWaiters.has('B'), true)
+  }
+  h.done('B')
+  assert.equal((await outcome).completed, true)
+  const evenLater = { type: 'response.audio_transcript.delta', response_id: 'A', delta: 'late after B' }
+  h.frontend.handleLifecycle(evenLater)
+  assert.equal(evenLater.__voiceContext.suppressed, true)
+  assert.equal(h.frontend.activeResponses.size, 0)
+  await h.frontend.whenIdle()
+  h.frontend.resetResponses()
+  assert.equal(h.frontend.retiredResponses.size, 0)
+})
+
+test('policy tombstones also survive cancel grace expiry without a native done', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const h = harness(t)
+  // A provider that recovers locally after the grace interval, without closing
+  // the connection. A forced disconnect resets all response state instead.
+  h.frontend.capabilities = { ...h.frontend.capabilities, singleResponseSlot: false }
+  h.start('A')
+  h.frontend.cancel({ retireResponses: true })
+  t.mock.timers.tick(h.frontend.responseCancelGraceMs + 1)
+  const event = { type: 'response.audio_transcript.delta', response_id: 'A', delta: 'late' }
+  h.frontend.handleLifecycle(event)
+  assert.equal(event.__voiceContext.suppressed, true)
+  assert.equal(h.frontend.activeResponses.has('A'), false)
+})

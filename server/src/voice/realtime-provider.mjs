@@ -149,6 +149,7 @@ export class RealtimeFrontend {
     this.recentContextInjected = false
     this.restoringContext = false
     this.audioInputStarted = false
+    this.transportGeneration = 0
     this.activeResponses = new Set()
     this.retiredResponses = new Set()
     this.pendingResponses = []
@@ -213,6 +214,8 @@ export class RealtimeFrontend {
         headers: this.provider.headers(),
       })
       this.ws = ws
+      const transportGeneration = ++this.transportGeneration
+      const isCurrentTransport = () => this.ws === ws && this.transportGeneration === transportGeneration
       let settled = false
       const timeout = setTimeout(() => {
         const error = new Error(this.provider.connectTimeoutMessage)
@@ -227,6 +230,7 @@ export class RealtimeFrontend {
         else resolve()
       }
       ws.on('open', () => {
+        if (!isCurrentTransport()) return
         try {
           const messages = normalizedEvents(
             this.protocol.connectionMessages?.({
@@ -251,10 +255,12 @@ export class RealtimeFrontend {
         }
       })
       ws.on('error', error => {
+        if (!isCurrentTransport()) { finish(error); return }
         this.onError?.(error)
         finish(error)
       })
       ws.on('close', () => {
+        if (!isCurrentTransport()) { finish(new Error('Realtime transport superseded')); return }
         this.ready = false
         this.sessionConfigured = false
         this.recentContextInjected = false
@@ -263,6 +269,7 @@ export class RealtimeFrontend {
         this.onClose?.()
       })
       ws.on('message', raw => {
+        if (!isCurrentTransport()) return
         let providerEvent
         try {
           providerEvent = JSON.parse(raw.toString())
@@ -271,6 +278,7 @@ export class RealtimeFrontend {
         }
         try {
           this.handleProviderEvent(providerEvent, {
+            transportGeneration,
             onSessionReady: () => finish(),
             onSessionError: error => {
               if (!error.realtimeEvent) this.onError?.(error)
@@ -287,11 +295,13 @@ export class RealtimeFrontend {
     })
   }
 
-  handleProviderEvent(providerEvent, { onSessionReady, onSessionError } = {}) {
+  handleProviderEvent(providerEvent, { onSessionReady, onSessionError, transportGeneration = this.transportGeneration } = {}) {
+    if (transportGeneration !== this.transportGeneration) return []
     const events = normalizedEvents(
       this.protocol.normalizeIncoming(providerEvent),
     )
     for (const event of events) {
+      if (transportGeneration !== this.transportGeneration) break
       if (event.type === 'error' && this.restoringContext) {
         event.__voiceOrigin = 'restore'
       }
@@ -512,7 +522,13 @@ export class RealtimeFrontend {
       // This acknowledges delivery, not completion of the ensuing speech.
       return sendOutput().then(() => ({ delivered: true, automatic: true }))
     }
-    if (!createResponse) return this.enqueueAction(sendOutput)
+    if (!createResponse) {
+      if (!this.ready) return Promise.resolve({ cancelled: true })
+      // A tool result is a conversation item, not a new inference request.
+      // Keep its existing receipt queue but never wait on the source response
+      // whose completion may itself depend on receiving this result.
+      return sendOutput()
+    }
     return this.enqueueResponse('agent', context, async pending => {
       pending.isCurrent = shouldRespond
       await sendOutput()

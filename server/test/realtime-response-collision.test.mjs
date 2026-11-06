@@ -300,3 +300,38 @@ test('policy tombstones also survive cancel grace expiry without a native done',
   assert.equal(event.__voiceContext.suppressed, true)
   assert.equal(h.frontend.activeResponses.has('A'), false)
 })
+
+test('function output with createResponse=false is acknowledged while source is active', async t => {
+  const h = harness(t)
+  h.start('source')
+  const output = h.frontend.sendFunctionOutput('call', { ok: true }, { turnId: 't' }, { createResponse: false })
+  await flush()
+  const sent = h.sent.filter(event => event.type === 'conversation.item.create')
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].item.type, 'function_call_output')
+  assert.ok(h.frontend.activeResponses.has('source'))
+  h.ack(sent[0].item)
+  await output
+  assert.equal(h.responses().length, 0)
+  h.done('source')
+  await h.frontend.whenIdle()
+})
+
+test('events tagged with an old transport cannot alter new transport state', t => {
+  const seen = []
+  const h = harness(t, { onEvent: event => seen.push(event) })
+  const previous = h.frontend.transportGeneration
+  h.frontend.resetResponses()
+  h.frontend.transportGeneration++
+  h.start('current')
+  const phase = h.frontend.responseSlot.phase
+  for (const event of [
+    { type: 'response.created', response: { id: 'old' } },
+    { type: 'response.audio_transcript.delta', response_id: 'old', delta: 'late' },
+    { type: 'response.done', response: { id: 'current', status: 'completed' } },
+    { type: 'error', error: { message: 'Conversation has no active response.' } },
+  ]) assert.deepEqual(h.frontend.handleProviderEvent(event, { transportGeneration: previous }), [])
+  assert.deepEqual([...h.frontend.activeResponses], ['current'])
+  assert.equal(h.frontend.responseSlot.phase, phase)
+  assert.deepEqual(seen, [])
+})

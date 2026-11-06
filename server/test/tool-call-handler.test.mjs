@@ -3197,3 +3197,45 @@ test('notes: unavailable without a notes store', async () => {
   })
   assert.equal(kit.outputs.at(-1)[1].error_code, 'notes_unavailable')
 })
+
+
+test('universal tool reuses task execution, receipts and cross-alias deduplication', async () => {
+  const calls = []
+  const kit = harness({ coordinator: { run: async (input, options) => {
+    calls.push({ input, options })
+    return { content: '缺少完成此请求所需的能力。', metadata: {} }
+  } } })
+  kit.transcripts.record('turn-one', '执行一次')
+  await kit.handler.handle({ call_id: 'universal-first', name: 'universal_tool',
+    arguments: '{"objective":"执行一次"}' })
+  const receipt = kit.outputs[0][1]
+  assert.equal(receipt.status, 'accepted')
+  assert.equal(typeof kit.outputs[0][3].shouldRespond, 'function')
+  await waitForTask(kit.manager, receipt.task_id)
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].input.objective, '执行一次')
+  assert.equal(calls[0].options.taskId, receipt.task_id)
+  assert.match(taskForId(kit.manager, receipt.task_id).result, /缺少/)
+  await kit.handler.handle({ call_id: 'spawn-replay', name: 'spawn_thinking',
+    arguments: '{"objective":"执行一次"}' })
+  assert.equal(kit.manager.list({ ownerId: 'owner' }).length, 1)
+  assertDuplicateWorkReceipt(kit.outputs.at(-1)[1])
+  assert.equal(calls.length, 1)
+})
+
+test('universal tool preserves backend availability handling', async () => {
+  for (const configured of [false, true]) {
+    const kit = harness({ backendAvailability: {
+      snapshot: () => ({ configured, ok: false, known: true }),
+    } })
+    await kit.handler.handle({ call_id: `universal-offline-${configured}`, name: 'universal_tool',
+      arguments: '{"objective":"修改项目"}' })
+    assert.equal(kit.manager.list({ ownerId: 'owner' }).length, 0)
+    if (configured) {
+      assert.equal(kit.outputs[0][1].error_code, 'backend_unavailable')
+      assert.equal(kit.outputs[0][1].retryable, true)
+    } else {
+      assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
+    }
+  }
+})

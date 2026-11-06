@@ -2,6 +2,7 @@ import {
   CANCEL_AGENT_TASK_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
   SPAWN_THINKING_TOOL_NAME,
+  UNIVERSAL_TOOL_NAME,
   UPDATE_AGENT_TASK_TOOL_NAME,
   frontendToolRegistry,
 } from '../frontend-tools.mjs'
@@ -59,7 +60,7 @@ function compactDebugResult(output) {
 }
 
 function debugSurface(toolName) {
-  return toolName === SPAWN_THINKING_TOOL_NAME ? 'backend' : 'frontend'
+  return [SPAWN_THINKING_TOOL_NAME, UNIVERSAL_TOOL_NAME].includes(toolName) ? 'backend' : 'frontend'
 }
 
 function needsToolResultSummary(toolName, args) {
@@ -71,6 +72,7 @@ function needsToolResultSummary(toolName, args) {
   }
   return ![
     SPAWN_THINKING_TOOL_NAME,
+    UNIVERSAL_TOOL_NAME,
     UPDATE_AGENT_TASK_TOOL_NAME,
     RESPOND_PERMISSION_TOOL_NAME,
     CANCEL_AGENT_TASK_TOOL_NAME,

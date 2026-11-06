@@ -416,7 +416,7 @@ async function runModelMode(cases, { repeats = 1, requestTimeoutMs = 60_000 }) {
           ) / 100,
           backend_tools: backendExec.names,
           delegated: delegationHop.response.tool_calls?.some(
-            call => call?.function?.name === 'spawn_thinking',
+            call => ['spawn_thinking', 'universal_tool'].includes(call?.function?.name),
           ) === true,
         })
       } catch (error) {

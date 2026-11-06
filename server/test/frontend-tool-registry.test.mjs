@@ -19,7 +19,7 @@ import { buildFrontendToolContext } from '../src/frontend/tools/frontend-tool-co
 import { loadFrontendPrompt } from '../src/conversation/frontend-agent-context.mjs'
 
 const DEFAULT_TOOL_NAMES = [
-  'spawn_thinking',
+  'universal_tool',
   'update_agent_task',
   'schedule_reminder',
   'cancel_agent_task',
@@ -35,7 +35,7 @@ function names(tools) {
 // Prompt-maintenance convention, not a runtime tool classification.
 const CORE_PROMPT_TOOLS = new Set([
   'update_agent_task',
-  'spawn_thinking', 'get_agent_task_status', 'cancel_agent_task',
+  'universal_tool', 'spawn_thinking', 'get_agent_task_status', 'cancel_agent_task',
   'respond_permission', 'get_current_time',
 ])
 
@@ -156,18 +156,12 @@ test('work tool descriptions state their own capabilities without cross-tool rou
   }
 })
 
-test('customizes only the spawn_thinking capability description', () => {
-  const description = '只处理座舱车辆、导航、音乐、天气和闪购任务。'
-  const customized = frontendTools({
-    frontend: { spawnThinkingDescription: description },
-  })
-
-  assert.equal(customized[0].function.name, 'spawn_thinking')
-  assert.equal(customized[0].function.description, description)
-  assert.deepEqual(customized[0].function.parameters, TOOLS[0].function.parameters)
-  assert.notEqual(customized[0], TOOLS[0])
-  assert.deepEqual(customized.slice(1), TOOLS.slice(1))
-  assert.notEqual(TOOLS[0].function.description, description)
+test('legacy spawn description cannot restrict the universal tool', () => {
+  const customized = frontendTools({ frontend: { spawnThinkingDescription: '只处理座舱任务。' } })
+  assert.equal(customized, TOOLS)
+  assert.equal(names(customized).includes('spawn_thinking'), false)
+  assert.equal(customized[0].function.name, 'universal_tool')
+  assert.match(customized[0].function.description, /一切情况/)
 })
 
 test('appends namespaced dynamic tools without changing the static registry', () => {
@@ -235,7 +229,7 @@ test('pending input retains update without an available backend but never enable
     backendAvailability: { snapshot: () => ({ configured: false }) },
     inputPending: true,
   })
-  assert.deepEqual(names(frontendTools({ frontend })), DEFAULT_TOOL_NAMES.filter(name => name !== 'spawn_thinking'))
+  assert.deepEqual(names(frontendTools({ frontend })), DEFAULT_TOOL_NAMES.filter(name => !['spawn_thinking', 'universal_tool'].includes(name)))
   assert.deepEqual(frontend.capabilities, [])
   const disabled = buildFrontendToolContext({
     backendAvailability: { snapshot: () => ({ configured: false }) },
@@ -308,7 +302,7 @@ test('frontend-only mode retains reminder controls but not backend execution', (
     backendAvailability: { snapshot: () => ({ configured: false }) },
   }) }
   const tools = frontendTools(context)
-  assert.deepEqual(names(tools), DEFAULT_TOOL_NAMES.filter(name => !['spawn_thinking', 'update_agent_task'].includes(name)))
+  assert.deepEqual(names(tools), DEFAULT_TOOL_NAMES.filter(name => !['spawn_thinking', 'universal_tool', 'update_agent_task'].includes(name)))
   const schedule = tools.find(tool => tool.function.name === 'schedule_reminder')
   assert.deepEqual(schedule.function.parameters.properties.type.enum, ['reminder'])
   // Filtering one session must not mutate another session's schemas.
@@ -332,7 +326,7 @@ test('availability projection combines configured features and pending requests'
   ])
   const visible = names(frontendTools({ frontend }))
   assert.equal(visible.includes('notes'), false)
-  assert.equal(visible.includes('spawn_thinking'), true, 'temporary failure is not no-backend mode')
+  assert.equal(visible.includes('universal_tool'), true, 'temporary failure is not no-backend mode')
   assert.equal(visible.includes('respond_permission'), true)
   assert.equal(visible.includes('update_agent_task'), true)
   assert.equal(visible.includes('respond_agent_input'), false)
@@ -495,4 +489,17 @@ test('enforces the tool loop before invoking a registered handler', async () => 
   assert.equal(limited.executed, false)
   assert.equal(limited.limit.reason, 'call_limit')
   assert.equal(calls, 1)
+})
+
+
+test('universal tool shares delegation schema and keeps its own description', () => {
+  const universal = frontendToolRegistry.get('universal_tool')
+  const spawn = frontendToolRegistry.get('spawn_thinking')
+  assert.equal(universal.definition.function.parameters, spawn.definition.function.parameters)
+  assert.deepEqual(universal.policy, spawn.policy)
+  assert.match(universal.definition.function.description, /万能工具.*一切情况/)
+  assert.match(universal.definition.function.description, /效率较低.*其它工具适用时优先使用其它工具/)
+  const tools = frontendTools({ frontend: { spawnThinkingDescription: '仅处理定制业务。' } })
+  assert.equal(tools.find(t => t.function.name === 'universal_tool').function.description,
+    universal.definition.function.description)
 })

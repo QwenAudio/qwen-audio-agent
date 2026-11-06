@@ -27,7 +27,7 @@ import {
 } from '../../shared/realtime-provider-catalog.mjs'
 
 const FRONTEND_TOOL_NAMES = [
-  'spawn_thinking',
+  'universal_tool',
   'update_agent_task',
   'schedule_reminder',
   'cancel_agent_task',
@@ -55,6 +55,7 @@ test('both realtime schemas omit unavailable tools and keep frontend-only remind
     const definitions = session.tools.map(tool => tool.function || tool)
     const names = definitions.map(tool => tool.name)
     assert.equal(names.includes('spawn_thinking'), false)
+    assert.equal(names.includes('universal_tool'), false)
     assert.equal(names.includes('update_agent_task'), false)
     assert.equal(names.includes('respond_agent_input'), false)
     assert.equal(names.includes('notes'), false)
@@ -78,6 +79,7 @@ test('both realtime schemas expose unified pending replies even without a config
     const definitions = session.tools.map(tool => tool.function || tool)
     const names = definitions.map(tool => tool.name)
     assert.equal(names.includes('spawn_thinking'), false)
+    assert.equal(names.includes('universal_tool'), false)
     assert.equal(names.includes('respond_agent_input'), false)
     const update = definitions.find(tool => tool.name === 'update_agent_task')
     assert.ok(update)
@@ -89,16 +91,16 @@ test('both realtime schemas expose unified pending replies even without a config
   }
 })
 
-test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
+test('exposes universal tool with the existing asynchronous work schema', () => {
   assert.equal(SPAWN_THINKING_TOOL_NAME, 'spawn_thinking')
   assert.equal(
     TOOLS.filter(tool => (
-      tool.function.name === SPAWN_THINKING_TOOL_NAME
+      tool.function.name === 'universal_tool'
     )).length,
     1,
   )
   const spawn = TOOLS.find(tool => (
-    tool.function.name === SPAWN_THINKING_TOOL_NAME
+    tool.function.name === 'universal_tool'
   ))
   assert.deepEqual(spawn.function.parameters.required, ['objective'])
   assert.equal(spawn.function.parameters.properties.input_refs.type, 'array')
@@ -130,7 +132,7 @@ test('both realtime schemas share one faithful handoff rule and preserve request
     assert.equal(session.instructions.match(/转交工作时，/g)?.length, 1)
 
     const definitions = session.tools.map(tool => tool.function || tool)
-    const spawn = definitions.find(tool => tool.name === 'spawn_thinking').parameters
+    const spawn = definitions.find(tool => tool.name === 'universal_tool').parameters
     const update = definitions.find(tool => tool.name === 'update_agent_task').parameters
     assert.deepEqual(spawn.properties.objective, {
       type: 'string',
@@ -164,13 +166,13 @@ for (const lineEnding of ['\n', '\r\n']) {
     assert.match(routing, /仅当直接回答就能满足用户请求时，才直接回答/)
     assert.match(routing, /执行/)
     assert.match(routing, /专用工具/)
-    assert.match(routing, /其余请求必须调用后台工具尝试[^。]*即使不确定后台是否支持/)
+    assert.match(routing, /其余请求调用万能工具 `universal_tool` 处理/)
     assert.match(routing, /新增|新工作|新目标/)
     assert.match(routing, /已有|原目标|原工作/)
     assert.match(routing, /(?:已完成|工作完成后).*续接/)
     assert.match(routing, /update_agent_task/)
-    assert.match(instructions, /调用 `spawn_thinking` 或 `update_agent_task` 前不要口头回应/)
-    assert.match(instructions, /实际限制.*如实说明/)
+    assert.match(instructions, /调用 `universal_tool` 或 `update_agent_task` 前不要口头回应/)
+    assert.match(instructions, /仅当万能工具 `universal_tool` 明确表示做不到时，才向用户说明缺少对应能力/)
     assert.match(instructions, /根据工具结果如实回应.*不把请求受理或执行进展说成已经完成/)
     assert.doesNotMatch(instructions, /`accepted`|`duplicate`|不再调用任何工具/)
   })
@@ -595,7 +597,7 @@ test('resolves exact DashScope model profiles for sessions and responses', t => 
     assert.equal(session.input_audio_format, 'pcm')
     assert.equal(session.output_audio_format, 'pcm')
     assert.equal(Object.hasOwn(session, 'audio'), false)
-    assert.ok(session.tools.some(tool => tool.function?.name === 'spawn_thinking'))
+    assert.ok(session.tools.some(tool => tool.function?.name === 'universal_tool'))
     assert.deepEqual(profile.sessionDefaults.turnDetection, turnDetection)
     assert.deepEqual(session.turn_detection, turnDetection)
     assert.deepEqual(session.modalities, ['text', 'audio'])
@@ -1079,7 +1081,7 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.match(prompt, /“这次”、“今天”或“暂时”[\s\S]*不保存为长期记忆/)
   assert.match(prompt, /清除冲突或归类错误的旧内容/)
   assert.match(prompt, /仅使用本轮实际提供的工具，并遵守其 description 和 schema/)
-  assert.match(prompt, /不要未经尝试就声称做不到/)
+  assert.match(prompt, /仅当万能工具 `universal_tool` 明确表示做不到时，才向用户说明缺少对应能力/)
   assert.match(prompt, /可由工具查明的信息交给工具获取/)
   assert.match(prompt, /不要因一次工具\s*调用而忽略其余请求/)
   assert.match(prompt, /避免空泛承接、重复用户要求/)

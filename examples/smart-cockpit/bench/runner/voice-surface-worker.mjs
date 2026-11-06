@@ -493,7 +493,7 @@ async function measureUtterance({
     // state has to be awaited.
     const delegated = events.slice(eventStart).some(event => (
       event.type === GatewayServerEvent.TOOL_CALL
-      && String(event.name || event.tool || '') === 'spawn_thinking'
+      && ['spawn_thinking', 'universal_tool'].includes(String(event.name || event.tool || ''))
     ))
     const currentCalls = toolLog.slice(toolStart)
     const lastToolActivity = Math.max(0, ...currentCalls.map(call => call.ended_at ?? call.started_at))
@@ -566,7 +566,7 @@ async function measureUtterance({
     )),
     delegated: slice.some(event => (
       event.type === GatewayServerEvent.TOOL_CALL
-      && String(event.name || event.tool || '') === 'spawn_thinking'
+      && ['spawn_thinking', 'universal_tool'].includes(String(event.name || event.tool || ''))
     )),
     // A missed action must distinguish "the model called nothing" from "it called
     // something else", otherwise attribution is guesswork.

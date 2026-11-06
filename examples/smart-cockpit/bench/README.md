@@ -1,5 +1,8 @@
 # Smart Cockpit Benchmark
 
+This experimental branch uses the [universal delegation tool](../../../docs/reference/universal-tool-experiment.zh.md)
+(`universal_tool`, 万能工具). Delegation detection accepts this name and the legacy `spawn_thinking` name.
+
 This guide separates **tool correctness**, **tool-placement latency**, and
 **software regression tests**. They measure different things; a simulated test
 passing is not a live voice or physical-vehicle result.

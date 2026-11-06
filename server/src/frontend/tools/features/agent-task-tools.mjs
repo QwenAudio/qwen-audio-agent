@@ -2,8 +2,10 @@ import { PERMISSION_DECISIONS } from '../../../../../shared/permission-decisions
 import {
   spawnThinkingTool,
 } from '../spawn-thinking-tool.mjs'
+import { universalTool, UNIVERSAL_TOOL_NAME } from '../universal-tool.mjs'
 
 export { SPAWN_THINKING_TOOL_NAME } from '../spawn-thinking-tool.mjs'
+export { UNIVERSAL_TOOL_NAME } from '../universal-tool.mjs'
 export const CANCEL_AGENT_TASK_TOOL_NAME = 'cancel_agent_task'
 export const UPDATE_AGENT_TASK_TOOL_NAME = 'update_agent_task'
 export const GET_AGENT_TASK_STATUS_TOOL_NAME = 'get_agent_task_status'
@@ -104,6 +106,10 @@ const respondPermissionTool = {
 
 export const agentTaskToolEntries = [
   {
+    definition: universalTool,
+    policy: { repeatHandling: 'handler' },
+  },
+  {
     definition: spawnThinkingTool,
     policy: { repeatHandling: 'handler' },
   },
@@ -120,6 +126,7 @@ export const agentTaskToolEntries = [
 
 export function agentTaskToolHandlers(runtime) {
   return {
+    [UNIVERSAL_TOOL_NAME]: context => runtime.executeSpawnThinkingToolCall(context),
     spawn_thinking: context => runtime.executeSpawnThinkingToolCall(context),
     [UPDATE_AGENT_TASK_TOOL_NAME]: context => runtime.executeUpdateToolCall(context),
     [CANCEL_AGENT_TASK_TOOL_NAME]: context => runtime.executeCancelToolCall(context),

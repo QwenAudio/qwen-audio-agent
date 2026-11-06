@@ -1,6 +1,7 @@
 import {
   PERMISSION_RESPONSE_CAPABILITY,
   SPAWN_THINKING_TOOL_NAME,
+  UNIVERSAL_TOOL_NAME,
   UPDATE_AGENT_TASK_TOOL_NAME,
 } from './features/agent-task-tools.mjs'
 import { FRONTEND_RECALL_CAPABILITY } from './features/retrieval-tools.mjs'
@@ -24,7 +25,7 @@ export function buildFrontendToolContext({
     backendConfigured,
     disabledTools: [...new Set([
       ...disabledTools,
-      ...(!backendConfigured ? [SPAWN_THINKING_TOOL_NAME] : []),
+      ...(!backendConfigured ? [SPAWN_THINKING_TOOL_NAME, UNIVERSAL_TOOL_NAME] : []),
       ...(!backendConfigured && !inputPending ? [UPDATE_AGENT_TASK_TOOL_NAME] : []),
     ])],
     capabilities: [...new Set([

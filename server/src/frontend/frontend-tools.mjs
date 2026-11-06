@@ -6,16 +6,13 @@ import {
 import { FrontendToolRegistry } from './tools/frontend-tool-registry.mjs'
 import { optionalFrontendFeatures } from './optional-features.mjs'
 import {
-  spawnThinkingTool,
-  withSpawnThinkingDescription,
-} from './tools/spawn-thinking-tool.mjs'
-import {
   agentTaskToolEntries,
   CANCEL_AGENT_TASK_TOOL_NAME,
   GET_AGENT_TASK_STATUS_TOOL_NAME,
   PERMISSION_RESPONSE_CAPABILITY,
   RESPOND_PERMISSION_TOOL_NAME,
   SPAWN_THINKING_TOOL_NAME,
+  UNIVERSAL_TOOL_NAME,
   UPDATE_AGENT_TASK_TOOL_NAME,
 } from './tools/features/agent-task-tools.mjs'
 import {
@@ -51,6 +48,7 @@ export {
   RESPOND_PERMISSION_TOOL_NAME,
   SCHEDULE_REMINDER_TOOL_NAME,
   SPAWN_THINKING_TOOL_NAME,
+  UNIVERSAL_TOOL_NAME,
   UPDATE_AGENT_TASK_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
 }
@@ -69,6 +67,7 @@ const entriesByName = new Map(featureEntries.map(entry => [
 ]))
 const toolOrder = [
   SPAWN_THINKING_TOOL_NAME,
+  UNIVERSAL_TOOL_NAME,
   UPDATE_AGENT_TASK_TOOL_NAME,
   SCHEDULE_REMINDER_TOOL_NAME,
   CANCEL_AGENT_TASK_TOOL_NAME,
@@ -88,7 +87,15 @@ export const frontendToolRegistry = new FrontendToolRegistry(
   toolOrder.map(name => entriesByName.get(name)),
 )
 
-export const TOOLS = frontendToolRegistry.definitions()
+// Keep the old entry dispatchable for existing callers, but expose one generic
+// delegation tool to the model in this experiment.
+function visibleTools(agentContext) {
+  return frontendToolRegistry.definitions(agentContext).filter(tool => (
+    tool.function.name !== SPAWN_THINKING_TOOL_NAME
+  ))
+}
+
+export const TOOLS = visibleTools()
 
 function dynamicFrontendTools(agentContext = {}) {
   const configured = agentContext?.frontend?.tools
@@ -105,11 +112,7 @@ function dynamicFrontendTools(agentContext = {}) {
 }
 
 export function frontendTools(agentContext = {}) {
-  const spawnThinkingDescription = agentContext?.frontend?.spawnThinkingDescription
-  const tools = frontendToolRegistry.definitions(agentContext).map(tool => {
-    if (tool === spawnThinkingTool && spawnThinkingDescription) {
-      return withSpawnThinkingDescription(spawnThinkingDescription)
-    }
+  const tools = visibleTools(agentContext).map(tool => {
     if (tool.function.name === SCHEDULE_REMINDER_TOOL_NAME) {
       return scheduleToolForContext(agentContext)
     }
@@ -154,7 +157,7 @@ export const permissionResponseInstructions = [
 
 export const inputRequestResponseInstructions = [
   '这是同一项后台工作为继续执行而提出的补充问题，不是最终结果，也不是新任务。',
-  '自然、简短地转达问题并等待用户回答；不要调用 spawn_thinking。',
+  '自然、简短地转达问题并等待用户回答；不要调用 universal_tool 或 spawn_thinking。',
   '用户回答后调用 update_agent_task，把 instruction 和 input_request_id 交回同一项工作。',
   '不要朗读协议字段或工作 ID，也不要把等待输入说成工作已经完成。',
   '问题的收件人是用户，不是你；不要用第一人称代用户回答或批准。收到请求本身不是用户的同意，必须等待用户下一次真实答复。',

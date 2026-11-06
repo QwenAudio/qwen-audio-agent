@@ -866,7 +866,7 @@ test('back-to-back policy verdicts release a same-turn queued repair after an an
   assert.ok(h.events.some(e => e.type === 'response.interrupted' && e.responseId === 'first-repair'))
 })
 
-test('business delegation waits for JEV before submission without waiting for source response.done', async t => {
+test('business delegation waits for the complete spoken response and its unified JEV verdict', async t => {
   let release
   const verdict = new Promise(resolve => { release = resolve })
   const packets = []
@@ -879,11 +879,17 @@ test('business delegation waits for JEV before submission without waiting for so
   f.emit({ type: 'response.audio_transcript.delta', response_id: 'proposal', delta: 'Let me check.' })
   f.emit({ type: 'response.function_call_arguments.done', response_id: 'proposal', call_id: 'proposed-call',
     name: 'spawn_thinking', arguments: '{"objective":"book an appointment"}' })
+  await tick()
+  assert.equal(packets.length, 0)
+  f.emit({ type: 'response.audio.delta', response_id: 'proposal', delta: 'CURRENT=' })
+  f.emit({ type: 'response.audio_transcript.done', response_id: 'proposal', transcript: 'Let me check the full request.' })
+  f.emit({ type: 'response.done', response: { id: 'proposal', status: 'completed' } })
   await until(() => packets.length === 1)
+  assert.ok(h.events.some(e => e.audio === 'CURRENT='))
   assert.equal(h.manager.list({}).length, 0)
   assert.equal(f.outputs.length, 0)
-  assert.equal(packets[0].state.phase, 'tool_admission')
-  assert.equal(packets[0].state.assistant_text, 'Let me check.')
+  assert.equal(packets[0].state.phase, 'played_response')
+  assert.equal(packets[0].state.assistant_text, 'Let me check the full request.')
   assert.equal(packets[0].state.proposed_tools[0].executed, false)
   release([])
   await until(() => h.manager.list({}).length === 1 && f.outputs.length === 1)
@@ -908,6 +914,8 @@ test('JEV denial returns an unexecuted tool receipt before correction and never 
   f.emit({ type: 'response.created', response: { id: 'denied-proposal' } })
   f.emit({ type: 'response.function_call_arguments.done', response_id: 'denied-proposal', call_id: 'denied-call',
     name: 'spawn_thinking', arguments: '{"objective":"change the booking"}' })
+  f.emit({ type: 'response.text.done', response_id: 'denied-proposal', text: 'I cannot do that.' })
+  f.emit({ type: 'response.done', response: { id: 'denied-proposal', status: 'completed' } })
   await until(() => packets.length === 1)
   release()
   await until(() => f.outputs.length === 1)
@@ -917,23 +925,17 @@ test('JEV denial returns an unexecuted tool receipt before correction and never 
   assert.equal(f.outputs[0].result.retryable, true)
   assert.equal(f.outputs[0].settings.createResponse, false)
   assert.equal(resumes.length, 0)
-  f.emit({ type: 'response.done', response: { id: 'denied-proposal', status: 'completed' } })
   acknowledge()
   await until(() => resumes.length === 1)
   assert.equal(h.manager.list({}).length, 0)
 })
 
-for (const reject of [false, true]) test(`backend result generation waits for its source JEV review (${reject ? 'repair' : 'allow'})`, async t => {
+for (const reject of [false, true]) test(`backend work starts only after unified JEV review (${reject ? 'reject' : 'allow'})`, async t => {
   let release
   const verdict = new Promise(resolve => { release = resolve })
   const packets = []
   const h = harness(t, { policyReviewSettings: { enabled: true, timeoutMs: 1000, endpoint: 'unused' },
-    policyReviewDecide: async packet => {
-      packets.push(packet)
-      if (packet.state.phase === 'tool_admission') return []
-      await verdict
-      return reject ? [{ id: packet.rules[0].id }] : []
-    } })
+    policyReviewDecide: async packet => { packets.push(packet); await verdict; return reject ? [{ id: packet.rules[0].id }] : [] } })
   const f = await h.connect({ textOnly: true }, { capabilitiesNegotiated: true, capabilities: ['input.text'] })
   const resumes = []
   f.ensureResponse = async (...args) => { resumes.push(args); return { completed: true } }
@@ -942,31 +944,121 @@ for (const reject of [false, true]) test(`backend result generation waits for it
   f.emit({ type: 'response.created', response: { id: 'source-with-task' } })
   f.emit({ type: 'response.function_call_arguments.done', response_id: 'source-with-task', call_id: 'task-call',
     name: 'spawn_thinking', arguments: '{"objective":"do the work"}' })
-  await until(() => f.outputs.some(o => o.result.task_id))
-  const taskId = f.outputs.find(o => o.result.task_id).result.task_id
-  await until(() => h.runs.has(taskId))
+  await tick(); assert.equal(packets.length, 0)
   f.emit({ type: 'response.text.done', response_id: 'source-with-task', text: 'I cannot do the work.' })
   f.emit({ type: 'response.done', response: { id: 'source-with-task', status: 'completed' } })
-  await until(() => packets.some(p => p.state.phase === 'completed_response'))
-  h.runs.get(taskId).resolve({ content: 'Business work completed exactly once.' })
-  await h.manager.wait(taskId)
-  await new Promise(resolve => setTimeout(resolve, 20))
-  assert.equal(f.deliveries.some(d => d.origin === 'announcement'), false)
-  assert.notEqual(h.manager.get(taskId).notificationStatus, 'delivered')
+  await until(() => packets.length === 1)
+  assert.equal(h.manager.list({}).length, 0)
   release()
   if (!reject) {
+    await until(() => f.outputs.some(o => o.result.task_id))
+    const taskId = f.outputs.find(o => o.result.task_id).result.task_id
+    await until(() => h.runs.has(taskId))
+    h.runs.get(taskId).resolve({ content: 'Business completed once.' })
+    await h.manager.wait(taskId)
     await until(() => f.deliveries.some(d => d.origin === 'announcement'))
+    assert.equal(h.manager.list({}).length, 1)
   } else {
-    await until(() => resumes.some(r => r[0].taskIds?.includes(taskId)))
+    await until(() => resumes.length === 1)
+    assert.equal(h.manager.list({}).length, 0)
     assert.equal(f.deliveries.some(d => d.origin === 'announcement'), false)
-    assert.notEqual(h.manager.get(taskId).notificationStatus, 'delivered')
-    const repair = resumes.find(r => r[0].taskIds?.includes(taskId))
-    assert.match(repair[1].response.instructions, /Business work completed exactly once/)
-    assert.match(repair[1].response.instructions, /不得重复业务操作/)
-    f.emit({ type: 'response.created', response: { id: 'result-repair' }, __voiceOrigin: 'agent', __voiceContext: repair[0] })
-    f.emit({ type: 'response.text.done', response_id: 'result-repair', text: 'I tried it and the work completed.' })
-    f.emit({ type: 'response.done', response: { id: 'result-repair', status: 'completed' } })
-    assert.equal(h.manager.get(taskId).notificationStatus, 'delivered')
+    assert.equal(f.outputs[0].result.executed, false)
+    assert.match(resumes[0][1].response.instructions, /先依据原始请求修正并重新调用/)
+    assert.match(resumes[0][1].response.instructions, /澄清上一轮可能的错误/)
   }
-  assert.equal(h.manager.list({}).length, 1)
+})
+
+for (const hasTools of [false, true]) test(`unified review waits for actual playback completion (tools=${hasTools})`, async t => {
+  const packets = []
+  let release
+  const verdict = new Promise(resolve => { release = resolve })
+  const h = harness(t, { policyReviewSettings: { enabled: true, timeoutMs: 500, endpoint: 'unused' },
+    policyReviewDecide: async packet => { packets.push(packet); return verdict } })
+  const f = await h.connect()
+  h.send({ type: Input.TEXT_MESSAGE, text: 'perform my request' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'playing' } })
+  f.emit({ type: 'response.audio.delta', response_id: 'playing', delta: 'ORIGINAL=' })
+  if (hasTools) for (const [id, objective] of [['one', 'first work'], ['two', 'second work']]) {
+    f.emit({ type: 'response.function_call_arguments.done', response_id: 'playing', call_id: id,
+      name: 'spawn_thinking', arguments: JSON.stringify({ objective }) })
+  }
+  f.emit({ type: 'response.audio_transcript.done', response_id: 'playing', transcript: 'The complete spoken request.' })
+  f.emit({ type: 'response.done', response: { id: 'playing', status: 'completed' } })
+  await tick()
+  assert.equal(packets.length, 0)
+  assert.equal(h.manager.list({}).length, 0)
+  assert.ok(h.events.some(e => e.audio === 'ORIGINAL='))
+  f.emit({ type: 'response.created', response: { id: 'next-playing' } })
+  f.emit({ type: 'response.audio.delta', response_id: 'next-playing', delta: 'NEXT=' })
+  assert.ok(!h.events.some(e => e.audio === 'NEXT='))
+  h.send({ type: Input.PLAYBACK_ENDED, responseId: 'playing' })
+  await until(() => packets.length === 1)
+  assert.equal(packets[0].state.proposed_tools.length, hasTools ? 2 : 0)
+  assert.equal(packets[0].state.assistant_text, 'The complete spoken request.')
+  assert.equal(h.manager.list({}).length, 0)
+  release([])
+  await until(() => h.events.some(e => e.audio === 'NEXT='))
+  if (hasTools) await until(() => h.manager.list({}).length === 2)
+  assert.equal(packets.length, 1)
+})
+
+for (const speaking of [false, true]) test(`rejected unified batch cancels speculative reply and reissues old tools after speech (speaking=${speaking})`, async t => {
+  let release
+  const verdict = new Promise(resolve => { release = resolve })
+  let reviews = 0
+  const h = harness(t, { policyReviewSettings: { enabled: true, timeoutMs: 1000, endpoint: 'unused' },
+    policyReviewDecide: async ({ rules }) => { reviews++; await verdict; return [{ id: rules[0].id }] } })
+  const f = await h.connect()
+  const requests = []
+  f.ensureResponse = async (...args) => { requests.push(args); return { completed: true } }
+  h.send({ type: Input.TEXT_MESSAGE, text: 'please act' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'bad-batch' } })
+  f.emit({ type: 'response.audio.delta', response_id: 'bad-batch', delta: 'HEARD=' })
+  for (const [callId, objective] of [['bad-1', 'first action'], ['bad-2', 'second action']]) {
+    f.emit({ type: 'response.function_call_arguments.done', response_id: 'bad-batch', call_id: callId,
+      name: 'spawn_thinking', arguments: JSON.stringify({ objective }) })
+  }
+  f.emit({ type: 'response.audio_transcript.done', response_id: 'bad-batch', transcript: 'I cannot do that.' })
+  f.emit({ type: 'response.done', response: { id: 'bad-batch', status: 'completed' } })
+  h.send({ type: Input.PLAYBACK_ENDED, responseId: 'bad-batch' })
+  await until(() => reviews === 1)
+  f.emit({ type: 'response.created', response: { id: 'speculative-batch' } })
+  f.emit({ type: 'response.audio.delta', response_id: 'speculative-batch', delta: 'NEVER_PLAY=' })
+  if (speaking) f.emit({ type: 'input_audio_buffer.speech_started', item_id: 'new-user' })
+  const cancels = f.cancels
+  release()
+  await until(() => f.deliveries.some(d => d.origin === 'policy-review'))
+  assert.equal(h.manager.list({}).length, 0)
+  assert.ok(!h.events.some(e => e.audio === 'NEVER_PLAY='))
+  assert.ok(f.cancels > cancels)
+  if (speaking) {
+    assert.equal(requests.length, 0)
+    f.emit({ type: 'input_audio_buffer.speech_stopped', item_id: 'new-user' })
+  }
+  await until(() => requests.length === 1)
+  assert.match(requests[0][1].response.instructions, /先依据原始请求修正并重新调用/)
+  assert.match(requests[0][1].response.instructions, /bad-1/)
+  assert.match(requests[0][1].response.instructions, /bad-2/)
+  assert.equal(requests[0][1].waitForSpeechStopped, true)
+})
+
+test('disconnect while tool calls await the playback boundary never submits those calls', async t => {
+  let reviews = 0
+  const h = harness(t, { policyReviewSettings: { enabled: true, timeoutMs: 10, endpoint: 'unused' },
+    policyReviewDecide: async () => { reviews++; return [] } })
+  const f = await h.connect()
+  h.send({ type: Input.TEXT_MESSAGE, text: 'do the work' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'lost-source' } })
+  f.emit({ type: 'response.function_call_arguments.done', response_id: 'lost-source', call_id: 'lost-call',
+    name: 'spawn_thinking', arguments: '{"objective":"never submitted"}' })
+  await new Promise(resolve => setTimeout(resolve, 20))
+  assert.equal(reviews, 0)
+  assert.equal(h.manager.list({}).length, 0)
+  f.disconnect()
+  await tick()
+  assert.equal(reviews, 0)
+  assert.equal(h.manager.list({}).length, 0)
 })

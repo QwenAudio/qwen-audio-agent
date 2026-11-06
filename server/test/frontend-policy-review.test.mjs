@@ -262,6 +262,7 @@ test('tool admission timeout/error allows dispatch and holds speculative output 
     const replayed = []
     assert.equal(review.intercept({ type: 'response.audio.delta', response_id: 'next' }, { turnGeneration: 2 }, e => replayed.push(e)), true)
     assert.equal(replayed.length, 0)
+    review.completeResponse({ responseId: 'tool', context: { turnId: 't2', turnGeneration: 2 }, text: 'Trying now.' })
     assert.equal((await pending).allowed, true)
     await tick()
     assert.equal(replayed.length, 1)
@@ -305,4 +306,72 @@ test('missing source terminal times out open, close releases waiters, and reused
   const closing = review.admitDelivery(delivery('closing'))
   review.close()
   assert.equal((await closing).cancelled, true)
+})
+
+test('unified batch waits for final transcripts and playback; timeout budget starts only with JEV', async () => {
+  const packets = []
+  const { review } = harness(async packet => { packets.push(packet); return [] }, 5)
+  const context = { turnId: 't2', turnGeneration: 2 }
+  const pending = review.authorizeTool({ responseId: 'spoken', callId: 'c', toolName: 'spawn_thinking', args: {}, context })
+  review.observe({ type: 'response.audio.delta', response_id: 'spoken', delta: 'audio' }, context)
+  review.observe({ type: 'response.audio_transcript.delta', response_id: 'spoken', output_index: 0, delta: 'first partial' }, context)
+  review.completeResponse({ responseId: 'spoken', context, waitForPlayback: true })
+  await new Promise(resolve => setTimeout(resolve, 15))
+  assert.equal(packets.length, 0, 'waiting for playback is not an automatic approval')
+  review.playbackEnded('spoken', context)
+  await tick(); assert.equal(packets.length, 0, 'final transcript still missing')
+  review.observe({ type: 'response.audio_transcript.done', response_id: 'spoken', output_index: 0, transcript: 'first complete. ' }, context)
+  assert.equal((await pending).allowed, true)
+  assert.equal(packets.length, 1)
+  assert.equal(packets[0].state.assistant_text, 'first complete. ')
+  review.close()
+})
+
+test('all spoken content parts and all deferred calls are reviewed once, rejection waits for both receipts before regeneration', async () => {
+  const packets = []
+  const { review, calls } = harness(async packet => { packets.push(packet); return [{ id: packet.rules[0].id }] })
+  const context = { turnId: 't2', turnGeneration: 2 }
+  const first = review.authorizeTool({ responseId: 'batch', callId: 'c1', toolName: 'first', args: {}, context })
+  const second = review.authorizeTool({ responseId: 'batch', callId: 'c2', toolName: 'second', args: {}, context })
+  for (const [index, transcript] of [[1, 'second.'], [0, 'first.']]) review.observe({ type: 'response.audio_transcript.done', response_id: 'batch', output_index: index, transcript }, context)
+  review.completeResponse({ responseId: 'batch', context })
+  const [one, two] = await Promise.all([first, second])
+  assert.equal(packets.length, 1)
+  assert.equal(packets[0].state.assistant_text, 'first.second.')
+  assert.equal(packets[0].state.proposed_tools.length, 2)
+  assert.equal(one.allowed, false); assert.equal(two.allowed, false)
+  assert.ok(calls.includes('cancel'), 'cancel must not wait for function-result acknowledgements')
+  one.finish()
+  await tick(); assert.equal(calls.filter(c => c?.resume).length, 0)
+  two.finish()
+  await tick(); assert.equal(calls.filter(c => c?.resume).length, 1)
+  review.close()
+})
+
+test('missing source terminal cannot bypass review; disconnect releases unexecuted calls', async () => {
+  let reviews = 0
+  const { review } = harness(async () => { reviews++; return [] }, 5)
+  const pending = review.authorizeTool({ responseId: 'missing-terminal', callId: 'c', toolName: 'first', args: {}, context: { turnId: 't2' } })
+  let settled = false
+  pending.then(() => { settled = true })
+  await new Promise(resolve => setTimeout(resolve, 15))
+  assert.equal(reviews, 0); assert.equal(settled, false)
+  review.abortResponses()
+  assert.equal((await pending).cancelled, true)
+  review.close()
+})
+
+test('completed native output supplies final text without transcript.done, and closed/suppressed calls never wait', async () => {
+  const packets = []
+  const { review } = harness(async packet => { packets.push(packet); return [] })
+  const context = { turnId: 't2', turnGeneration: 2 }
+  review.observe({ type: 'response.audio.delta', response_id: 'native-full', delta: 'audio' }, context)
+  review.observe({ type: 'response.audio_transcript.delta', response_id: 'native-full', output_index: 0, delta: 'partial' }, context)
+  const pending = review.authorizeTool({ responseId: 'native-full', callId: 'c', toolName: 'first', args: {}, context })
+  review.completeResponse({ responseId: 'native-full', context, output: [{ type: 'message', content: [{ type: 'audio', transcript: 'Final transcript from native done.' }] }] })
+  assert.equal((await pending).allowed, true)
+  assert.equal(packets[0].state.assistant_text, 'Final transcript from native done.')
+  assert.equal((await review.authorizeTool({ responseId: 'suppressed', callId: 's', context: { suppressed: true } })).cancelled, true)
+  review.close()
+  assert.equal((await review.authorizeTool({ responseId: 'closed', callId: 's', context })).cancelled, true)
 })

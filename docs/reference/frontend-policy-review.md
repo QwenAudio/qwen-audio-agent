@@ -7,8 +7,9 @@ paragraph of the main system prompt, beginning “仅当直接回答就能满足
 The main prompt itself is unchanged. Other system rules and repeated-user-
 correction checks are currently excluded.
 
-The reply under review is not buffered. Review runs asynchronously and can correct
-the following response using the existing cancellation and notification mechanisms.
+The reply under review streams normally. After its playback/output-completion boundary,
+one asynchronous review releases or rejects all of its tools and guards the following
+response using existing cancellation and notification mechanisms.
 
 ## Configure
 
@@ -25,7 +26,7 @@ node cli/bin/qwenaudio.mjs gateway
 | --- | --- | --- |
 | `QWEN_AUDIO_POLICY_REVIEW` | `off` | Enable the monitor (`on` or `off`). |
 | `QWEN_AUDIO_POLICY_REVIEW_ENDPOINT` | empty | Full URL of the JEV-Omni `/decide` service; required when enabled. |
-| `QWEN_AUDIO_POLICY_REVIEW_TIMEOUT_MS` | `1500` | Positive budget in milliseconds for each JEV request and for waiting for a missing source terminal; timeout fails open. |
+| `QWEN_AUDIO_POLICY_REVIEW_TIMEOUT_MS` | `1500` | Positive budget in milliseconds for each JEV request; timeout fails open after the playback boundary, never during boundary collection. |
 
 The endpoint must be reachable **from the Gateway**. A remote worker's loopback
 address is not the local Gateway's loopback. This feature does not deploy a model,
@@ -34,105 +35,70 @@ existing Jarvis-compatible JEV-Omni decision service with its own dependencies a
 model weights; this repository does not bundle those weights. The service must
 support `choice` questions with `violation`, `ok`, and `uncertain` options.
 
-## Tool admission and backend-result generation
+## One review after playback, with all tools deferred
 
-With the same opt-in switch enabled, Gateway now audits frontend tool calls
-**before dispatch**, including `spawn_thinking` submission and inline business
-MCP calls. The current validation target is Qwen; other providers have not been
-validated for this admission/cancellation flow. No ASR-review code or main system
-prompt is changed.
+When enabled, Gateway holds every frontend tool call belonging to one response,
+including `spawn_thinking` and inline MCP business tools. It does not review or
+execute each tool at its argument-complete boundary. The response's own audio
+continues streaming normally while all of its calls remain queued.
 
-At `response.function_call_arguments.done`, Gateway sends the received text
-prefix, history, existing execution evidence and the parsed proposed call to JEV
-with `phase=tool_admission`, `text_is_final` and `proposed_tools[].executed=false`.
-This boundary does not require source `response.done`: Qwen logs contain missing
-source terminals, and waiting for them would strand a proposed tool indefinitely.
-The reviewer must not treat the pending call as completed work or mark a genuine
-attempt invalid merely because it awaits admission. The reviewed rule remains
-only unattempted refusal, not general business correctness or parameter review.
+Gateway waits for the completed native response and final received transcript.
+For audio clients with playback receipts it additionally waits for the accepted
+`playback.ended` event, not merely `response.audio.done` or `response.done`.
+Clients without playback receipts (including the current whole-response benchmark)
+use completed output reception as their boundary; Gateway cannot certify actual
+speaker playback for such a client. Text/tool-only replies need no audio receipt.
+A native completed output containing final text can substitute for a separate
+transcript-done event. Different content parts are accumulated in output order.
 
-An allowed verdict dispatches normally. A rejected verdict creates no backend
-task and invokes no business tool for that call. Its existing function result
-returns `policy_review_rejected`, `executed=false`, `retryable=true`, the call ID
-and fixed rule/remediation fields. Gateway then uses existing JEV cancellation,
-retirement and correction-generation mechanisms to require a modified new call.
-Output produced while this is pending is held before presentation/dispatch.
-Timeout, uncertain or reviewer error fails open as before; these are not explicit
-JEV approvals. A stale turn or replaced session must not execute a delayed call.
+The one JEV packet has `phase=played_response`, the response/turn IDs, full retained
+text/history, real execution evidence and **all** queued calls in `proposed_tools`
+marked `executed=false`. Only the existing unattempted-refusal routing rule is
+checked. A pending relevant attempt must not itself be treated as a refusal just
+because Gateway is waiting for approval. This is not an ASR parameter check or a
+business-authorization audit. Current validation targets Qwen only.
 
-Completed reply text is still reviewed separately: admission cannot evaluate
-future speech. Final backend notifications and progress generation wait only for
-their own source reply's review, using the task ID and source turn/response
-association. Unrelated notifications are not a global barrier. If the source
-terminal never arrives, that wait uses the configured timeout and fails open;
-interruption/close also releases outstanding waits.
+An explicit approval releases the queued calls through existing validation and
+execution. `uncertain`, reviewer error and **JEV-request** timeout still fail open
+as previously configured. The review budget starts at the review request, not at
+the first tool argument or during audio playback. Waiting for missing response,
+transcript or playback completion is never interpreted as approval. No deferred
+call executes without first obtaining this shared review outcome. Interrupted or
+obsolete calls are not executed; connection close releases unexecuted waiters.
+Missing native terminals or playback receipts remain an incomplete boundary until
+interruption/disconnection; they are not silently repaired or marked complete.
 
-If completed-source review rejects an announcement, the old announcement is not
-requested. The correction receives the factual backend result and notification
-IDs so its actual presentation can acknowledge the original task notification.
-Work already executed after an earlier admission remains executed: frontend must
-not claim it was unexecuted or repeat it merely because later speech was rejected.
-In a multi-call response each call is admitted separately; a later rejection does
-not roll back previously completed calls. This adds JEV calls/latency per tool as
-well as per completed reply; it is not an atomic transaction across a whole turn.
+A rejected verdict stops/retire-protects speculative next-response generation
+immediately. None of this response's queued calls executes. Each existing tool
+result reports `policy_review_rejected`, `executed=false`, `retryable=true` and the
+fixed rule/remedy. After those results settle, Gateway reuses its correction
+context and response-generation mechanisms. Instructions require the frontend to
+first fix and re-call the old unexecuted tools, then briefly clarify the earlier
+possible error to the user, and finally address the latest request. The model
+chooses the corrected calls; Gateway does not automatically repeat old arguments.
+If the user is speaking, regeneration waits for native `speech_stopped`. A new
+input preserves the correction requirement; obsolete buffered audio is discarded.
+For a violation without tools, the existing clarify/attempt/latest-request remedy
+applies. The reviewed audio already heard by the user is not recalled.
 
-## Ordering and notification
+While a source is awaiting playback or review, later response events (start,
+audio/text, completion and tool calls) are buffered before presentation/dispatch.
+The source itself remains allowed to finish streaming, preventing a client-side
+cycle where held tools block collection of its remaining audio/transcript. On a
+passing/fail-open result, subsequent output is replayed in order; only violations
+cause cancellation/regeneration. Context and cancellation continue using existing
+provider mechanisms, including native speech-busy recovery.
 
-1. Completed reply text, response/turn IDs, retained user/assistant history,
-   backend task state/results and recent frontend tool events form the review
-   packet. The current reply continues playing normally.
-2. There is exactly one JEV choice question about unattempted refusal. It does
-   not judge other violations in that paragraph, business/task cancellation,
-   repeated corrections or exposure of internal structure. The Gateway validates model identity, input hash,
-   question IDs, primitive and option order. Only explicit `violation` answers
-   produce corrections; uncertain answers do not.
-3. Before presenting a later response (including its start, audio/text, completion
-   and tool calls), the Gateway buffers its events until outstanding reviews finish.
-   An `ok`/`uncertain`, timeout or reviewer error releases the original buffered
-   events in order, without cancelling or regenerating that response. A review
-   started by replaying a buffered completion gates the following response too.
-   User interruption discards superseded buffered output.
-4. Only a validated violation discards speculative output and uses existing
-   cancellation. The correction packet contains the original turn/response IDs,
-   full reviewed assistant text and retained conversation history. Problem and
-   remediation text are fixed Gateway templates selected by rule ID, never
-   free-form JEV instructions. The Gateway immediately injects it through
-   `injectDelivery(route=context)` and requests a replacement with `ensureResponse`.
-   Response instructions require a short, natural acknowledgement that the earlier
-   answer will be corrected, actual tool/backend attempts for that request, then
-   an answer to the latest request. They forbid exposing the reviewer, backend
-   structure or tool names and repeating operations already completed.
-   If another verdict arrives while a repair is in flight, its correction is
-   queued and merged with unheard prior corrections. Completion of the current
-   repair drains that queue even within the same user turn. Cancellation or a
-   skipped older request cannot overwrite the newer correction. A skipped
-   request alone does not cause an immediate retry loop.
-5. If the user is speaking, replacement waits for native `speech_stopped`.
-   Only this JEV replacement opts into event-driven recovery of an input/speech-busy
-   response refusal. The provider requires a unique pending local request (no
-   response already assigned to its waiter), waits for native `speech_stopped`,
-   then uses the existing response retry mechanism and its existing three-retry
-   limit. A stop received after submission but before the rejection also qualifies.
-   It rechecks connection/queue generation and the original current-turn gate;
-   cancellation/reset invalidates the wait. It never resends a business tool or
-   context item and adds no backoff timer. Ordinary agent/tool notifications keep
-   their existing refusal behavior. Unassociated errors are not silently retried.
-6. If a user interrupts an in-flight repair, its correction remains required for
-   the latest turn after speech stops. A correlated repair response claims only
-   its matching input candidate, preventing a false no-response watchdog for
-   that input. Disconnected sessions cannot replay buffers or start replacements.
-7. Review timeout, endpoint error, or invalid verdict fails open. Timed-out
-   requests are aborted and late verdicts ignored; valid corrections from other
-   reviews are retained.
+Backend progress/result generation retains source task/turn/response association.
+For newly submitted tasks the shared source verdict already exists before their
+submission. Legacy/already-executed results remain factual if routed into a
+correction: they must not be described as unexecuted or repeated due to later
+speech rejection. Notification delivery is acknowledged only by actual result
+presentation. Unrelated notifications are not a global source-review barrier.
 
-No explicit playback-clear is required for speculative audio: the guard runs
-before that response's audio is forwarded. Audio already heard from the reviewed
-reply cannot be recalled. Input reception continues while review is pending.
-Models/providers must support cancellation, context item injection and client
-response creation for the full correction-and-regeneration flow. This monitor
-uses the existing provider mechanisms; it does not add a separate voice transport.
-If context injection fails, an error is logged and the correction is also supplied
-as response instructions to the regeneration request.
+The default switch remains off, no main prompt or ASR-review code is changed.
+The cancellation handling from this branch remains JEV-specific; this change does
+not certify all ordinary user interruption, same-ID reuse or adapter issues.
 
 ## Scope and limits
 
@@ -168,7 +134,7 @@ on ok/uncertain/timeout/error; violations inject fixed remediation before
 regeneration; user interruption retains repair for the latest turn; input-busy
 recovery waits for native speech-stopped and respects cancellation/reset; late
 verdicts are ignored; disabled mode has no review side effects.
-Tests also cover pre-dispatch side-effect protection, no source-done dependency, rejected-call receipts, stale turns, timeout/error fail-open, and source-bound result notification approval/repair. These tests do not measure JEV accuracy or live inference latency; this commit has not been validated by a live Qwen evaluation.
+Tests also cover multi-tool shared admission after playback, complete transcript aggregation, rejected-call receipts, stale turns, immediate next-response cancellation, user-speaking waits, disconnect cleanup, and reviewer timeout/error fail-open. These tests do not measure JEV accuracy or live inference latency; this commit has not been validated by a live Qwen evaluation.
 
 The lifecycle repair branch also contains earlier tool-result queue and old-socket
 isolation fixes. This playback-gate change has deterministic tests; it does not

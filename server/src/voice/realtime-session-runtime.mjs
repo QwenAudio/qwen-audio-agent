@@ -279,6 +279,7 @@ export function createRealtimeSessionRuntime({
       }
     },
     onDisconnected: () => {
+      policyReview?.abortResponses()
       taskCoordinator.resetPresentation()
       clearVisualInput()
       clearResponseCandidate()
@@ -651,7 +652,8 @@ export function createRealtimeSessionRuntime({
       if (policyReview && event.response?.status === 'completed' && context && !context.suppressed) {
         const text = context.assistantTranscript || (event.response?.output || [])
           .flatMap(item => item.content || []).map(part => part.transcript || part.text || '').join('')
-        policyReview.review({ responseId, context, text })
+        policyReview.completeResponse({ responseId, context, text, output: event.response?.output || [],
+          waitForPlayback: playbackReceipts && !nonVoiceClient && outputEnabled })
       } else if (policyReview) {
         policyReview.endSource(responseId, context?.turnId)
       }
@@ -1186,7 +1188,11 @@ export function createRealtimeSessionRuntime({
         responseKnown: presentationRuntime.has(id),
       })
       connectionLogger.info('realtime.playback.ended', { responseId: id, accepted })
-      if (accepted) presentationRuntime.finishPlayback(id)
+      if (accepted) {
+        const context = presentationRuntime.get(id)
+        presentationRuntime.finishPlayback(id)
+        policyReview?.playbackEnded(id, context)
+      }
     } else if (event.type === GatewayClientEvent.PLAYBACK_CANCELLED) {
       const id = String(event.responseId || '')
       const accepted = acceptsPlaybackReceipt({
@@ -1198,9 +1204,11 @@ export function createRealtimeSessionRuntime({
         responseId: id, accepted, reason: String(event.reason || ''),
       })
       if (accepted) {
+        const context = presentationRuntime.get(id)
         presentationRuntime.cancelPlayback(id, {
           reason: String(event.reason || ''),
         })
+        policyReview?.playbackEnded(id, context, { interrupted: true })
       }
     } else if (event.type === GatewayClientEvent.MUTE) {
       clearVisualInput()

@@ -127,3 +127,32 @@ The lifecycle repair branch also contains earlier tool-result queue and old-sock
 isolation fixes. This playback-gate change has deterministic tests; it does not
 certify recovery of the historical 144 failed cases or fix all same-ID reuse and
 adapter completion issues. Keep new evaluations separate from frozen results.
+
+## JEV cancellation outcomes
+
+Only JEV-owned cancellation tracks a cancel request and its captured response
+IDs. Its events remain obsolete regardless of whether cancellation wins the race.
+A matching `response.done` with `status=cancelled` is explicit cancellation;
+`status=completed` means generation finished before cancellation. Both terminal
+frames are consumed before obsolete-output filtering so they release the waiting
+slot without exposing discarded output. A terminal frame for another response
+does not acknowledge the outstanding JEV cancel.
+
+A `no_active_response` error for the outstanding cancel records
+`already_inactive`, not cancellation success or successful playback. When an
+error supplies `error.event_id`, it must match the sent cancel request; response
+ID/param fields must also be compatible when present. With no request ID, the
+association is only the outstanding cancel and is logged as such, not promoted
+to an explicit per-response receipt. Only captured discarded IDs are removed
+from activity; a newer response is preserved.
+
+Missing confirmation uses the existing cancellation recovery/disconnect path;
+it never becomes synthetic cancellation success. Diagnostics use
+`realtime.policy_cancel` states `awaiting`, `cancelled`, `already_finished`,
+`already_inactive`, `terminal`, `unmatched_error`, and `unconfirmed_reset`.
+
+A buffered response which has already completed is explicitly retired by ID
+without sending an unnecessary cancel for an empty activity set. This is still
+raw-ID retirement, not a solution to upstream ID reuse; the documented identity
+limitations and historical-case acceptance requirements remain. Ordinary user
+interruption behavior is unchanged by this cancellation-outcome handling.

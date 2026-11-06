@@ -137,7 +137,7 @@ export class FrontendPolicyReview {
       this.blocked.add(id)
       this.onSuppressed(id, context)
     }
-    return ids.size
+    return [...ids]
   }
 
   async release(frontend) {
@@ -168,7 +168,8 @@ export class FrontendPolicyReview {
       }
       return
     }
-    if (this.discardBuffer()) frontend?.cancel({ retireResponses: true })
+    const discardedIds = this.discardBuffer()
+    if (discardedIds.length) frontend?.cancel({ retireResponses: true, responseIds: discardedIds })
     this.repair = { corrections }
     try {
       const delivery = await frontend.injectDelivery(JSON.stringify({ event: 'frontend_policy_correction', corrections }), 'policy-review', {},
@@ -183,7 +184,8 @@ export class FrontendPolicyReview {
     if (this.closed || this.resuming || !this.repair || this.getTurn().userSpeaking) return
     const frontend = this.getFrontend()
     const repair = this.repair
-    if (this.discardBuffer()) frontend?.cancel({ retireResponses: true })
+    const discardedIds = this.discardBuffer()
+    if (discardedIds.length) frontend?.cancel({ retireResponses: true, responseIds: discardedIds })
     const turn = this.getTurn()
     const revision = this.speechRevision
     this.resuming = true

@@ -354,6 +354,74 @@ test('policy-cancelled A cannot revive or consume B through late lifecycle event
   assert.equal(h.frontend.retiredResponses.size, 0)
 })
 
+for (const status of ['cancelled', 'completed']) {
+  test(`JEV cancel accepts explicit ${status} terminal before filtering retired output`, t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const h = harness(t)
+    h.start('A')
+    h.frontend.cancel({ retireResponses: true })
+    assert.equal(h.frontend.responseSlot.phase, 'cancelling')
+    h.done('unrelated')
+    assert.equal(h.frontend.policyCancellation.awaiting, true)
+    assert.equal(h.frontend.responseSlot.phase, 'cancelling')
+    const terminal = { type: 'response.done', response: { id: 'A', status } }
+    h.frontend.handleLifecycle(terminal)
+    assert.equal(h.frontend.policyCancellation.awaiting, false)
+    assert.equal(terminal.__voiceContext.suppressed, true)
+    assert.equal(h.frontend.responseSlot.phase, 'idle')
+    t.mock.timers.tick(h.frontend.responseCancelGraceMs + 1)
+    assert.equal(h.frontend.ready, true, 'confirmed terminal cancels forced recovery')
+    assert.ok(h.diagnostics.some(e => e.event === 'realtime.policy_cancel'
+      && e.state === (status === 'cancelled' ? 'cancelled' : 'already_finished')))
+  })
+}
+
+test('no-active cancel error retires JEV A only and is not logged as cancel success', t => {
+  const h = harness(t)
+  h.start('A')
+  h.frontend.cancel({ retireResponses: true })
+  h.frontend.activeResponses.add('B')
+  const eventId = h.sent.find(e => e.type === 'response.cancel').event_id
+  h.frontend.handleLifecycle({ type: 'error', response_id: 'A', error: {
+    param: 'response.cancel', event_id: eventId, message: 'Conversation has no active response.' } })
+  assert.deepEqual([...h.frontend.activeResponses], ['B'])
+  assert.equal(h.frontend.policyCancellation.awaiting, false)
+  assert.ok(h.diagnostics.some(e => e.event === 'realtime.policy_cancel' && e.state === 'already_inactive'))
+  assert.ok(!h.diagnostics.some(e => e.event === 'realtime.policy_cancel' && e.state === 'cancelled'))
+})
+
+test('a no-active error bound to another cancel request does not acknowledge the JEV cancel', t => {
+  const h = harness(t)
+  h.start('A')
+  h.frontend.cancel({ retireResponses: true })
+  h.frontend.handleLifecycle({ type: 'error', error: { event_id: 'other-request',
+    param: 'response.cancel', message: 'Conversation has no active response.' } })
+  assert.equal(h.frontend.policyCancellation.awaiting, true)
+  assert.equal(h.frontend.responseSlot.phase, 'cancelling')
+})
+
+test('JEV explicitly discards a response already completed while buffered', t => {
+  const h = harness(t)
+  h.start('A'); h.done('A')
+  h.frontend.cancel({ retireResponses: true, responseIds: ['A'] })
+  assert.equal(h.sent.filter(e => e.type === 'response.cancel').length, 0)
+  const late = { type: 'response.audio_transcript.delta', response_id: 'A', delta: 'obsolete' }
+  h.frontend.handleLifecycle(late)
+  assert.equal(late.__voiceContext.suppressed, true)
+  assert.equal(h.frontend.activeResponses.has('A'), false)
+})
+
+test('missing JEV cancel confirmation retains existing recovery, not synthetic success', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const h = harness(t)
+  h.start('A')
+  h.frontend.cancel({ retireResponses: true })
+  assert.equal(h.frontend.policyCancellation.awaiting, true)
+  t.mock.timers.tick(h.frontend.responseCancelGraceMs + 1)
+  assert.equal(h.frontend.ready, false)
+  assert.ok(h.diagnostics.some(e => e.event === 'realtime.policy_cancel' && e.state === 'unconfirmed_reset'))
+})
+
 test('policy tombstones also survive cancel grace expiry without a native done', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const h = harness(t)

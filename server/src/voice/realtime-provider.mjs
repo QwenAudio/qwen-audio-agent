@@ -152,6 +152,7 @@ export class RealtimeFrontend {
     this.transportGeneration = 0
     this.activeResponses = new Set()
     this.retiredResponses = new Set()
+    this.policyCancellation = null
     this.pendingResponses = []
     this.retryingResponses = new Set()
     this.responseWaiters = new Map()
@@ -734,17 +735,28 @@ export class RealtimeFrontend {
     this.send(this.protocol.responseCreate(response))
   }
 
-  cancel({ retireResponses = false } = {}) {
+  cancel({ retireResponses = false, responseIds = [] } = {}) {
     this.responseQueueGeneration += 1
     const cancelledResponseIds = [...this.activeResponses]
     // Policy review owns a replacement response. Keep cancellation tombstones
     // until the connection resets, so late A events cannot revive A or mutate B.
     if (retireResponses) {
-      for (const id of cancelledResponseIds) this.retiredResponses.add(id)
+      for (const id of [...cancelledResponseIds, ...responseIds]) this.retiredResponses.add(id)
     }
     const hasResponse = cancelledResponseIds.length
       || this.pendingResponses.some(pending => pending.responseRequested)
       || this.responseSlot.blocked
+    if (retireResponses && hasResponse) {
+      // One occupied slot owns one outstanding cancel. A repeated local
+      // suppression must not replace its request association before an ACK.
+      if (!this.policyCancellation?.awaiting) {
+        this.policyCancellation = { awaiting: true, ids: new Set(cancelledResponseIds),
+          eventId: '', transportGeneration: this.transportGeneration }
+      } else {
+        for (const id of cancelledResponseIds) this.policyCancellation.ids.add(id)
+      }
+      this.diagnose({ event: 'realtime.policy_cancel', state: 'awaiting', responseIds: [...this.policyCancellation.ids] })
+    }
     this.pendingResponses.forEach(item => {
       this.settlePending(item, { cancelled: true, phase: 'start' })
     })
@@ -892,8 +904,28 @@ export class RealtimeFrontend {
       for (const pending of this.retryingResponses) pending.resumeOnSpeechStopped?.()
     }
     const retiredId = realtimeResponseId(event)
+    const policyCancel = this.policyCancellation
+    if (event.type === 'response.done' && policyCancel?.awaiting
+      && policyCancel.transportGeneration === this.transportGeneration
+      && policyCancel.ids.has(retiredId)) {
+      this.activeResponses.delete(retiredId)
+      this.responseWaiters.delete(retiredId)
+      policyCancel.ids.delete(retiredId)
+      const status = event.response?.status
+      this.diagnose({ event: 'realtime.policy_cancel', responseId: retiredId,
+        state: status === 'cancelled' ? 'cancelled' : status === 'completed' ? 'already_finished' : 'terminal', status })
+      if (!policyCancel.ids.size) {
+        policyCancel.awaiting = false
+        if (this.responseSlot.phase === 'cancelling') this.responseSlot.release()
+        this.resolveIdle()
+      }
+      event.__voiceContext = { ...event.__voiceContext, suppressed: true }
+      return
+    }
     if (retiredId && this.retiredResponses.has(retiredId)
-      && (isResponseActivityEvent(event) || event.type === 'error')) {
+      && (isResponseActivityEvent(event) || event.type === 'error')
+      && !(event.type === 'error'
+        && this.provider.classifyError(realtimeEventErrorMessage(event)) === 'no_active_response')) {
       event.__voiceContext = { ...event.__voiceContext, suppressed: true }
       // Do not claim a pending response, reoccupy/release its slot, or settle
       // another response's waiter, even for a duplicate created/done/error.
@@ -901,6 +933,30 @@ export class RealtimeFrontend {
     }
     if (event.type === 'error'
       && this.provider.classifyError(realtimeEventErrorMessage(event)) === 'no_active_response') {
+      if (policyCancel?.awaiting) {
+        const requestId = event.error?.event_id
+        const matches = policyCancel.transportGeneration === this.transportGeneration
+          && (!event.error?.param || event.error.param === 'response.cancel')
+          && (!requestId || requestId === policyCancel.eventId)
+          && (!retiredId || policyCancel.ids.has(retiredId))
+        if (!matches) {
+          this.diagnose({ event: 'realtime.policy_cancel', state: 'unmatched_error' })
+          return
+        }
+        // This is not a successful cancellation receipt: the service reports
+        // nothing was active when it processed the cancel. Retire only the
+        // responses captured by that JEV cancel, never a newer response.
+        for (const id of policyCancel.ids) {
+          this.activeResponses.delete(id)
+          this.responseWaiters.delete(id)
+        }
+        policyCancel.awaiting = false
+        this.diagnose({ event: 'realtime.policy_cancel', state: 'already_inactive',
+          association: requestId ? 'event_id' : 'outstanding_cancel', responseIds: [...policyCancel.ids] })
+        if (this.responseSlot.phase === 'cancelling') this.responseSlot.release()
+        this.resolveIdle()
+        return
+      }
       // This acknowledges cancellation; it must not reject an unrelated item.
       if (this.responseSlot.phase === 'cancelling') {
         this.activeResponses.clear()
@@ -1048,7 +1104,8 @@ export class RealtimeFrontend {
       this.settlePending(pending, completed
         ? { completed: true, responseId: id }
         : { failed: true, responseId: id, status })
-      if (event.type === 'response.done') this.responseSlot.release()
+      if (event.type === 'response.done'
+        && !(this.policyCancellation?.awaiting && this.responseSlot.phase === 'cancelling')) this.responseSlot.release()
       this.resolveIdle()
     }
   }
@@ -1242,6 +1299,8 @@ export class RealtimeFrontend {
   }
 
   resetResponses() {
+    if (this.policyCancellation?.awaiting) this.diagnose({ event: 'realtime.policy_cancel', state: 'unconfirmed_reset' })
+    this.policyCancellation = null
     this.retiredResponses.clear()
     this.responseQueueGeneration += 1
     this.activeResponses.clear()
@@ -1313,6 +1372,9 @@ export class RealtimeFrontend {
       }
       const body = this.protocol.encodeOutgoing(outgoing)
       if (body == null) return
+      if (payload.type === 'response.cancel' && this.policyCancellation?.awaiting) {
+        this.policyCancellation.eventId = body.event_id || ''
+      }
       if (this.sendWireMessage(body, options)) return body
     }
   }

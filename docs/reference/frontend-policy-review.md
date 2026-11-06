@@ -25,7 +25,7 @@ node cli/bin/qwenaudio.mjs gateway
 | --- | --- | --- |
 | `QWEN_AUDIO_POLICY_REVIEW` | `off` | Enable the monitor (`on` or `off`). |
 | `QWEN_AUDIO_POLICY_REVIEW_ENDPOINT` | empty | Full URL of the JEV-Omni `/decide` service; required when enabled. |
-| `QWEN_AUDIO_POLICY_REVIEW_TIMEOUT_MS` | `1500` | Positive request budget in milliseconds, measured from reply completion; timeout releases the next response. |
+| `QWEN_AUDIO_POLICY_REVIEW_TIMEOUT_MS` | `1500` | Positive budget in milliseconds for each JEV request and for waiting for a missing source terminal; timeout fails open. |
 
 The endpoint must be reachable **from the Gateway**. A remote worker's loopback
 address is not the local Gateway's loopback. This feature does not deploy a model,
@@ -33,6 +33,48 @@ allocate GPUs, enable a proxy, or switch to another model automatically. Run an
 existing Jarvis-compatible JEV-Omni decision service with its own dependencies and
 model weights; this repository does not bundle those weights. The service must
 support `choice` questions with `violation`, `ok`, and `uncertain` options.
+
+## Tool admission and backend-result generation
+
+With the same opt-in switch enabled, Gateway now audits frontend tool calls
+**before dispatch**, including `spawn_thinking` submission and inline business
+MCP calls. The current validation target is Qwen; other providers have not been
+validated for this admission/cancellation flow. No ASR-review code or main system
+prompt is changed.
+
+At `response.function_call_arguments.done`, Gateway sends the received text
+prefix, history, existing execution evidence and the parsed proposed call to JEV
+with `phase=tool_admission`, `text_is_final` and `proposed_tools[].executed=false`.
+This boundary does not require source `response.done`: Qwen logs contain missing
+source terminals, and waiting for them would strand a proposed tool indefinitely.
+The reviewer must not treat the pending call as completed work or mark a genuine
+attempt invalid merely because it awaits admission. The reviewed rule remains
+only unattempted refusal, not general business correctness or parameter review.
+
+An allowed verdict dispatches normally. A rejected verdict creates no backend
+task and invokes no business tool for that call. Its existing function result
+returns `policy_review_rejected`, `executed=false`, `retryable=true`, the call ID
+and fixed rule/remediation fields. Gateway then uses existing JEV cancellation,
+retirement and correction-generation mechanisms to require a modified new call.
+Output produced while this is pending is held before presentation/dispatch.
+Timeout, uncertain or reviewer error fails open as before; these are not explicit
+JEV approvals. A stale turn or replaced session must not execute a delayed call.
+
+Completed reply text is still reviewed separately: admission cannot evaluate
+future speech. Final backend notifications and progress generation wait only for
+their own source reply's review, using the task ID and source turn/response
+association. Unrelated notifications are not a global barrier. If the source
+terminal never arrives, that wait uses the configured timeout and fails open;
+interruption/close also releases outstanding waits.
+
+If completed-source review rejects an announcement, the old announcement is not
+requested. The correction receives the factual backend result and notification
+IDs so its actual presentation can acknowledge the original task notification.
+Work already executed after an earlier admission remains executed: frontend must
+not claim it was unexecuted or repeat it merely because later speech was rejected.
+In a multi-call response each call is admitted separately; a later rejection does
+not roll back previously completed calls. This adds JEV calls/latency per tool as
+well as per completed reply; it is not an atomic transaction across a whole turn.
 
 ## Ordering and notification
 
@@ -126,7 +168,7 @@ on ok/uncertain/timeout/error; violations inject fixed remediation before
 regeneration; user interruption retains repair for the latest turn; input-busy
 recovery waits for native speech-stopped and respects cancellation/reset; late
 verdicts are ignored; disabled mode has no review side effects.
-These tests do not measure JEV accuracy or live inference latency.
+Tests also cover pre-dispatch side-effect protection, no source-done dependency, rejected-call receipts, stale turns, timeout/error fail-open, and source-bound result notification approval/repair. These tests do not measure JEV accuracy or live inference latency; this commit has not been validated by a live Qwen evaluation.
 
 The lifecycle repair branch also contains earlier tool-result queue and old-socket
 isolation fixes. This playback-gate change has deterministic tests; it does not

@@ -11,9 +11,11 @@ export class RealtimeAgentDeliveryRuntime {
   constructor({
     getFrontend,
     isDeliveryBlocked = () => false,
+    beforeDelivery = null,
   } = {}) {
     this.getFrontend = getFrontend
     this.isDeliveryBlocked = isDeliveryBlocked
+    this.beforeDelivery = beforeDelivery
   }
 
   async deliver(value, { shouldDeliver, injectContext = true } = {}) {
@@ -23,6 +25,11 @@ export class RealtimeAgentDeliveryRuntime {
     }
     if (this.isDeliveryBlocked(delivery)) {
       return { completed: false, blocked: true, mode: delivery.mode }
+    }
+    if (this.beforeDelivery) {
+      const outcome = await this.beforeDelivery(delivery)
+      if (outcome) return outcome
+      if (this.isDeliveryBlocked(delivery)) return { completed: false, blocked: true, mode: delivery.mode }
     }
     const frontend = this.getFrontend?.()
     const inject = typeof frontend?.injectDelivery === 'function'

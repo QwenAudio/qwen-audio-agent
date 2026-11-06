@@ -254,3 +254,55 @@ test('a skipped repair without a newer verdict or input does not spin the same r
   assert.equal(requests, 1)
   review.close()
 })
+
+test('tool admission timeout/error allows dispatch and holds speculative output until verdict', async () => {
+  for (const decide of [() => new Promise(() => {}), () => { throw new Error('offline') }]) {
+    const { review } = harness(decide, 5)
+    const pending = review.authorizeTool({ responseId: 'tool', callId: 'c', toolName: 'spawn_thinking', args: {}, context: { turnId: 't2', turnGeneration: 2 } })
+    const replayed = []
+    assert.equal(review.intercept({ type: 'response.audio.delta', response_id: 'next' }, { turnGeneration: 2 }, e => replayed.push(e)), true)
+    assert.equal(replayed.length, 0)
+    assert.equal((await pending).allowed, true)
+    await tick()
+    assert.equal(replayed.length, 1)
+    review.close()
+  }
+})
+
+test('task result gate waits only for its own source review and transfers actual results to correction', async () => {
+  const pending = deferred()
+  const { review, calls } = harness(async ({ rules }) => { await pending.promise; return [{ id: rules[0].id }] })
+  review.recordTaskSource({ name: 'spawn_thinking', status: 'completed', taskId: 'task', responseId: 'source', turnId: 't1' })
+  review.review({ responseId: 'source', context: { turnId: 't1' }, text: 'I cannot do that.' })
+  const delivery = { id: 'result', origin: 'announcement', text: 'Business succeeded.', correlation: { taskIds: ['task'] } }
+  let settled = false
+  const admitted = review.admitDelivery(delivery).then(v => { settled = true; return v })
+  assert.equal(await review.admitDelivery({ ...delivery, correlation: { taskIds: ['unrelated'] } }), null)
+  assert.equal(await review.admitDelivery({ ...delivery, origin: 'permission' }), null)
+  await tick(); assert.equal(settled, false)
+  pending.resolve()
+  assert.equal((await admitted).awaitingPolicyRepair, true)
+  await tick()
+  const resumes = calls.filter(c => c?.resume)
+  assert.ok(resumes.some(c => c.resume[0].taskIds?.includes('task')))
+  assert.ok(resumes.some(c => c.resume[1].response.instructions.includes('Business succeeded.')))
+  assert.ok(resumes.some(c => c.resume[1].response.instructions.includes('不得重复业务操作')))
+  review.close()
+})
+
+test('missing source terminal times out open, close releases waiters, and reused IDs do not reuse another turn verdict', async () => {
+  const { review } = harness(() => [], 5)
+  const make = (task, turnId) => review.recordTaskSource({ name: 'spawn_thinking', status: 'completed', taskId: task, responseId: 'same', turnId })
+  const delivery = task => ({ id: task, origin: 'announcement', text: 'result', correlation: { taskId: task } })
+  await review.review({ responseId: 'same', context: { turnId: 'old' }, text: 'old' })
+  make('new', 'new')
+  let settled = false
+  const pending = review.admitDelivery(delivery('new')).then(v => { settled = true; return v })
+  await tick(); assert.equal(settled, false)
+  await new Promise(resolve => setTimeout(resolve, 15))
+  assert.equal(await pending, null)
+  make('closing', 'other')
+  const closing = review.admitDelivery(delivery('closing'))
+  review.close()
+  assert.equal((await closing).cancelled, true)
+})

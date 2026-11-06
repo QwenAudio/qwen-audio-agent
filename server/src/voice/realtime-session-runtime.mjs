@@ -153,6 +153,9 @@ export function createRealtimeSessionRuntime({
   }
   const agentDeliveries = new RealtimeAgentDeliveryRuntime({
     getFrontend: () => realtimeSession?.frontend,
+    beforeDelivery: policyReviewSettings.enabled
+      ? delivery => ['announcement', 'progress'].includes(delivery.origin) ? policyReview.admitDelivery(delivery) : null
+      : null,
     isDeliveryBlocked: delivery => (
       closed
       || !realtimeSession?.ready
@@ -394,6 +397,8 @@ export function createRealtimeSessionRuntime({
     getFrontend: () => realtimeSession.frontend,
     getTurnId: () => turns.committedTurnId,
     getTurnGeneration: () => turns.committedTurnGeneration,
+    beforeToolExecution: policyReviewSettings.enabled
+      ? packet => policyReview.authorizeTool(packet) : null,
     memoryService,
     notesStore,
     getClientContext: () => clientContext,
@@ -446,6 +451,7 @@ export function createRealtimeSessionRuntime({
     },
     onToolCallDebug: event => {
       if (policyReviewSettings.enabled) {
+        policyReview?.recordTaskSource(event)
         policyToolEvidence.push({ ...event })
         if (policyToolEvidence.length > 100) policyToolEvidence.shift()
       }
@@ -620,7 +626,8 @@ export function createRealtimeSessionRuntime({
       // response-start event may escape while the previous transcript is under review.
       if (policyReview?.intercept(event,
         { ...(event.__voiceContext || responseTurnCandidate || turns.current()) }, handleEvent)) return
-      presentationRuntime.begin(event)
+      const context = presentationRuntime.begin(event)
+      policyReview?.observe(event, context)
       if (policyReview && event.type === 'response.created' && event.__voiceOrigin === 'agent'
         && event.__voiceContext?.policyRepair && responseTurnCandidate
         && event.__voiceContext.turnId === responseTurnCandidate.turnId
@@ -645,6 +652,8 @@ export function createRealtimeSessionRuntime({
         const text = context.assistantTranscript || (event.response?.output || [])
           .flatMap(item => item.content || []).map(part => part.transcript || part.text || '').join('')
         policyReview.review({ responseId, context, text })
+      } else if (policyReview) {
+        policyReview.endSource(responseId, context?.turnId)
       }
       connectionLogger.info('realtime.response.done', {
         responseId,

@@ -185,6 +185,7 @@ export class AnnouncementManager {
       || !taskIds.some(taskId => this.activeBatch.taskIds.includes(taskId))
     ) return
     this.activeBatch.responseCompleted = false
+    this.activeBatch.awaitingPolicyRepair = false
     this.activeBatch.retryRequested = true
     this.clearAcknowledgementTimeout()
     this.clearRetry()
@@ -246,7 +247,7 @@ export class AnnouncementManager {
     this.clearAcknowledgementTimeout()
     this.acknowledgementTimer = setTimeout(() => {
       this.acknowledgementTimer = null
-      if (!this.activeBatch?.responseCompleted) return
+      if (!this.activeBatch?.responseCompleted && !this.activeBatch?.awaitingPolicyRepair) return
       // response.done means generation finished, not that the client finished
       // playing it. Long or queued desktop audio may legitimately exceed the
       // acknowledgement window. Never create a second spoken response while
@@ -256,6 +257,7 @@ export class AnnouncementManager {
         return
       }
       this.activeBatch.responseCompleted = false
+      this.activeBatch.awaitingPolicyRepair = false
       this.activeBatch.retryRequested = true
       if (!this.delivering) {
         this.activeBatch.retryRequested = false
@@ -351,6 +353,7 @@ export class AnnouncementManager {
 
   async deliver() {
     if (this.closed || this.delivering) return
+    if (this.activeBatch?.awaitingPolicyRepair) return
     if (this.isDeliveryBlocked()) {
       // Playback completion normally flushes the queue again. Keep a delayed
       // self-wakeup as well: a throttled renderer or a lost playback receipt
@@ -382,23 +385,32 @@ export class AnnouncementManager {
       const boundedDelivery = eventText === delivery.text
         ? delivery
         : createAgentDelivery({ ...delivery, text: eventText })
-      const outcome = this.announceIntoContext
-        ? await this.deliveryRuntime.deliver(
-            boundedDelivery,
-            { injectContext: !batch.contextInjected },
-          )
-        : await frontend.speak(
-            batch.announcements.every(isReminderDue)
-              ? batch.announcements.map(item => item.objective).join('\n')
-              : eventText,
-            delivery.origin,
-            delivery.correlation,
-          )
+      let outcome
+      if (this.announceIntoContext) {
+        outcome = await this.deliveryRuntime.deliver(
+          boundedDelivery,
+          { injectContext: !batch.contextInjected },
+        )
+      } else {
+        if (this.deliveryRuntime.beforeDelivery) outcome = await this.deliveryRuntime.beforeDelivery(boundedDelivery)
+        outcome ||= await frontend.speak(
+          batch.announcements.every(isReminderDue)
+            ? batch.announcements.map(item => item.objective).join('\n')
+            : eventText,
+          delivery.origin,
+          delivery.correlation,
+        )
+      }
       if (
         this.deliveryGeneration !== deliveryGeneration
         || this.activeBatch !== batch
       ) return
       if (outcome?.contextInjected) batch.contextInjected = true
+      if (outcome?.awaitingPolicyRepair) {
+        batch.awaitingPolicyRepair = true
+        this.scheduleAcknowledgementTimeout()
+        return
+      }
       if (outcome?.completed) {
         // Realtime has generated the response, but the client may still have it
         // queued behind earlier audio. Delivery is confirmed only when the

@@ -865,3 +865,108 @@ test('back-to-back policy verdicts release a same-turn queued repair after an an
   assert.ok(h.events.some(e => e.audio === 'RELEASED='))
   assert.ok(h.events.some(e => e.type === 'response.interrupted' && e.responseId === 'first-repair'))
 })
+
+test('business delegation waits for JEV before submission without waiting for source response.done', async t => {
+  let release
+  const verdict = new Promise(resolve => { release = resolve })
+  const packets = []
+  const h = harness(t, { policyReviewSettings: { enabled: true, timeoutMs: 500, endpoint: 'unused' },
+    policyReviewDecide: async packet => { packets.push(packet); return verdict } })
+  const f = await h.connect({}, { capabilitiesNegotiated: true, capabilities: ['input.audio', 'input.text'] })
+  h.send({ type: Input.TEXT_MESSAGE, text: 'book an appointment' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'proposal' } })
+  f.emit({ type: 'response.audio_transcript.delta', response_id: 'proposal', delta: 'Let me check.' })
+  f.emit({ type: 'response.function_call_arguments.done', response_id: 'proposal', call_id: 'proposed-call',
+    name: 'spawn_thinking', arguments: '{"objective":"book an appointment"}' })
+  await until(() => packets.length === 1)
+  assert.equal(h.manager.list({}).length, 0)
+  assert.equal(f.outputs.length, 0)
+  assert.equal(packets[0].state.phase, 'tool_admission')
+  assert.equal(packets[0].state.assistant_text, 'Let me check.')
+  assert.equal(packets[0].state.proposed_tools[0].executed, false)
+  release([])
+  await until(() => h.manager.list({}).length === 1 && f.outputs.length === 1)
+  assert.equal(f.outputs[0].result.status, 'accepted')
+})
+
+test('JEV denial returns an unexecuted tool receipt before correction and never creates backend work', async t => {
+  let release, acknowledge
+  const verdict = new Promise(resolve => { release = resolve })
+  const receipt = new Promise(resolve => { acknowledge = resolve })
+  const packets = []
+  const h = harness(t, { policyReviewSettings: { enabled: true, timeoutMs: 500, endpoint: 'unused' },
+    policyReviewDecide: async packet => { packets.push(packet); await verdict; return [{ id: packet.rules[0].id }] } })
+  const f = await h.connect({}, { capabilitiesNegotiated: true, capabilities: ['input.audio', 'input.text'] })
+  const resumes = []
+  f.ensureResponse = async (...args) => { resumes.push(args) }
+  f.sendFunctionOutput = async (callId, result, context, settings) => {
+    f.outputs.push({ callId, result, context, settings }); await receipt
+  }
+  h.send({ type: Input.TEXT_MESSAGE, text: 'change the booking' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'denied-proposal' } })
+  f.emit({ type: 'response.function_call_arguments.done', response_id: 'denied-proposal', call_id: 'denied-call',
+    name: 'spawn_thinking', arguments: '{"objective":"change the booking"}' })
+  await until(() => packets.length === 1)
+  release()
+  await until(() => f.outputs.length === 1)
+  assert.equal(h.manager.list({}).length, 0)
+  assert.equal(f.outputs[0].result.error_code, 'policy_review_rejected')
+  assert.equal(f.outputs[0].result.executed, false)
+  assert.equal(f.outputs[0].result.retryable, true)
+  assert.equal(f.outputs[0].settings.createResponse, false)
+  assert.equal(resumes.length, 0)
+  f.emit({ type: 'response.done', response: { id: 'denied-proposal', status: 'completed' } })
+  acknowledge()
+  await until(() => resumes.length === 1)
+  assert.equal(h.manager.list({}).length, 0)
+})
+
+for (const reject of [false, true]) test(`backend result generation waits for its source JEV review (${reject ? 'repair' : 'allow'})`, async t => {
+  let release
+  const verdict = new Promise(resolve => { release = resolve })
+  const packets = []
+  const h = harness(t, { policyReviewSettings: { enabled: true, timeoutMs: 1000, endpoint: 'unused' },
+    policyReviewDecide: async packet => {
+      packets.push(packet)
+      if (packet.state.phase === 'tool_admission') return []
+      await verdict
+      return reject ? [{ id: packet.rules[0].id }] : []
+    } })
+  const f = await h.connect({ textOnly: true }, { capabilitiesNegotiated: true, capabilities: ['input.text'] })
+  const resumes = []
+  f.ensureResponse = async (...args) => { resumes.push(args); return { completed: true } }
+  h.send({ type: Input.TEXT_MESSAGE, text: 'do the work' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'source-with-task' } })
+  f.emit({ type: 'response.function_call_arguments.done', response_id: 'source-with-task', call_id: 'task-call',
+    name: 'spawn_thinking', arguments: '{"objective":"do the work"}' })
+  await until(() => f.outputs.some(o => o.result.task_id))
+  const taskId = f.outputs.find(o => o.result.task_id).result.task_id
+  await until(() => h.runs.has(taskId))
+  f.emit({ type: 'response.text.done', response_id: 'source-with-task', text: 'I cannot do the work.' })
+  f.emit({ type: 'response.done', response: { id: 'source-with-task', status: 'completed' } })
+  await until(() => packets.some(p => p.state.phase === 'completed_response'))
+  h.runs.get(taskId).resolve({ content: 'Business work completed exactly once.' })
+  await h.manager.wait(taskId)
+  await new Promise(resolve => setTimeout(resolve, 20))
+  assert.equal(f.deliveries.some(d => d.origin === 'announcement'), false)
+  assert.notEqual(h.manager.get(taskId).notificationStatus, 'delivered')
+  release()
+  if (!reject) {
+    await until(() => f.deliveries.some(d => d.origin === 'announcement'))
+  } else {
+    await until(() => resumes.some(r => r[0].taskIds?.includes(taskId)))
+    assert.equal(f.deliveries.some(d => d.origin === 'announcement'), false)
+    assert.notEqual(h.manager.get(taskId).notificationStatus, 'delivered')
+    const repair = resumes.find(r => r[0].taskIds?.includes(taskId))
+    assert.match(repair[1].response.instructions, /Business work completed exactly once/)
+    assert.match(repair[1].response.instructions, /不得重复业务操作/)
+    f.emit({ type: 'response.created', response: { id: 'result-repair' }, __voiceOrigin: 'agent', __voiceContext: repair[0] })
+    f.emit({ type: 'response.text.done', response_id: 'result-repair', text: 'I tried it and the work completed.' })
+    f.emit({ type: 'response.done', response: { id: 'result-repair', status: 'completed' } })
+    assert.equal(h.manager.get(taskId).notificationStatus, 'delivered')
+  }
+  assert.equal(h.manager.list({}).length, 1)
+})

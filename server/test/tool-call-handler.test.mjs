@@ -3197,3 +3197,25 @@ test('notes: unavailable without a notes store', async () => {
   })
   assert.equal(kit.outputs.at(-1)[1].error_code, 'notes_unavailable')
 })
+
+for (const action of ['allow', 'deny', 'stale']) test(`tool admission ${action} protects actual external side effects`, async () => {
+  const pending = Promise.withResolvers()
+  let mutations = 0, generation = 1, rejected = 0
+  const name = 'mcp__car__window'
+  const kit = harness({ getTurnGeneration: () => generation,
+    frontendToolSources: [responseToolSource([name], async () => { mutations++; return { status: 'ok' } })] })
+  kit.handler.beforeToolExecution = () => pending.promise
+  const result = responseToolCall(kit.handler, `gate-${action}`, name)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(mutations, 0)
+  assert.equal(kit.outputs.length, 0)
+  if (action === 'stale') generation++
+  pending.resolve({ allowed: action !== 'deny', corrections: [], reject: () => { rejected++ } })
+  await result
+  assert.equal(mutations, action === 'allow' ? 1 : 0)
+  if (action === 'deny') {
+    assert.equal(kit.outputs[0][1].executed, false)
+    assert.equal(kit.outputs[0][1].error_code, 'policy_review_rejected')
+    assert.equal(rejected, 1)
+  }
+})

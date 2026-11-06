@@ -101,6 +101,7 @@ export class ToolCallHandler {
     onToolResponseFailed = () => {},
     onToolCallDebug = () => {},
     onAgentActivity = () => {},
+    beforeToolExecution = null,
     inputAssets = null,
     frontendRetrieval = null,
     frontendKnowledge = null,
@@ -130,6 +131,7 @@ export class ToolCallHandler {
     this.onToolResponseFailed = onToolResponseFailed
     this.onToolCallDebug = onToolCallDebug
     this.onAgentActivity = onAgentActivity
+    this.beforeToolExecution = beforeToolExecution
     this.inputAssets = inputAssets
     this.frontendRetrieval = frontendRetrieval
     this.frontendKnowledge = frontendKnowledge
@@ -588,6 +590,7 @@ export class ToolCallHandler {
       requiresResultSummary: tool?.policy?.responseOnSuccess !== 'none' && needsToolResultSummary(toolName, args),
     })
     let failed = false
+    let admission
     try {
       if (invalidArguments) {
         const output = failure('invalid_arguments', '工具参数必须是有效的 JSON 对象。')
@@ -597,6 +600,30 @@ export class ToolCallHandler {
       if (this.stoppedToolTurns.has(this.toolTurnKey(turnId, generation))) {
         await this.stopToolLoop({ callId, turnId, turnGeneration: generation }, 'stopped')
         return { handled: true, executed: false, limit: { admitted: false, reason: 'stopped' } }
+      }
+      if (this.beforeToolExecution) {
+        admission = await this.beforeToolExecution({ responseId, callId, toolName, args,
+          context: { ...callContext, turnId, turnGeneration: generation } })
+        if (admission?.cancelled) {
+          await this.finishToolResponse(responseId, { suppressResponse: true })
+          return { handled: true, executed: false, cancelled: true }
+        }
+        if (this.isStale(turnId, generation)) {
+          admission?.finish?.()
+          await this.closeStaleCall(callId, turnId)
+          return { handled: true, executed: false, cancelled: true }
+        }
+        if (admission?.allowed === false) {
+          const output = failure('policy_review_rejected',
+            '该工具调用在执行前被审核阻止，未执行任何业务操作。请根据审核意见修改后重新调用。', {
+              status: 'blocked', retryable: true, executed: false, call_id: callId, tool_name: toolName,
+              corrections: (admission.corrections || []).flatMap(item => item.violations),
+            })
+          await this.sendOutput(callId, output, turnId)
+          await this.finishToolResponse(responseId, { suppressResponse: true })
+          admission.reject?.()
+          return { handled: true, executed: false, value: output }
+        }
       }
       if (external) {
         return await this.executeExternalToolCall(external, {
@@ -654,6 +681,7 @@ export class ToolCallHandler {
       failed = true
       throw error
     } finally {
+      admission?.finish?.()
       this.activeToolEntries.delete(callId)
       this.activeToolDebugEntries.delete(callId)
       await this.completeDeferredToolResponse(deferred, { failed })

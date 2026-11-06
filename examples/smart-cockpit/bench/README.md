@@ -248,4 +248,4 @@ next reply is buffered; ok/timeout releases it, while a violation injects fixed
 remediation and regenerates it. JEV regeneration waits for native speech-stopped
 on input-busy refusal.
 Only this routing rule is checked; other rules and repeated corrections are excluded. This is independent of ASR review and
-is disabled by default. See [configuration, ordering and limits](../../../../docs/reference/frontend-policy-review.md).
+is disabled by default. When enabled, frontend tools (including backend task submission) also wait for JEV admission before executing; rejected calls return `executed=false`, and backend-result generation waits for its source review. Timeout/error remains fail-open. The admission flow currently targets Qwen. See [configuration, ordering and limits](../../../../docs/reference/frontend-policy-review.md).

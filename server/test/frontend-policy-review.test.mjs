@@ -209,3 +209,48 @@ test('an interrupted repair remains required before output for the new user turn
   assert.equal(calls.filter(c => c.resume).length, 2)
   assert.equal(calls.at(-1).resume[0].turnId, 't3')
 })
+
+for (const outcome of [{ completed: true }, { cancelled: true }, { skipped: true }]) {
+  test(`a second verdict survives earlier repair outcome ${Object.keys(outcome)[0]} in the same turn`, async () => {
+  // Recorded airline13 ordering: first repair queued behind an announcement;
+  // announcement verdict arrives before that repair's response.created.
+  // Native completion resolves ensureResponse even while presentation is held.
+  const { review, calls } = harness(async ({ rules }) => [{ id: rules[0].id }])
+  const first = deferred(), second = deferred()
+  let requests = 0
+  review.getFrontend().ensureResponse = (...args) => {
+    calls.push({ resume: args })
+    return ++requests === 1 ? first.promise : second.promise
+  }
+  review.review({ responseId: 'earlier-answer', context: { turnId: 'same-turn' }, text: 'earlier refusal' })
+  await tick()
+  assert.equal(requests, 1)
+  review.review({ responseId: 'backend-announcement', context: { turnId: 'same-turn' }, text: 'another refusal' })
+  await tick()
+  assert.equal(requests, 1)
+  assert.equal(review.intercept({ type: 'response.created', response: { id: 'first-repair' } }, {}, () => assert.fail('obsolete repair')), true)
+  assert.equal(review.intercept({ type: 'response.done', response: { id: 'first-repair' } }, {}, () => assert.fail('obsolete repair')), true)
+  first.resolve(outcome)
+  await tick()
+  assert.equal(requests, 2, 'same-turn follow-up correction must not be stranded')
+  assert.match(calls.at(-1).resume[1].response.instructions, /backend-announcement/)
+  assert.match(calls.at(-1).resume[1].response.instructions, /earlier-answer/)
+  assert.equal(review.buffer.length, 0)
+  second.resolve({ completed: true })
+  await tick()
+  assert.equal(requests, 2, 'no duplicate replay after the final repair completes')
+  review.close()
+})
+
+}
+
+test('a skipped repair without a newer verdict or input does not spin the same request', async () => {
+  const { review, start } = harness(async ({ rules }) => [{ id: rules[0].id }])
+  let requests = 0
+  review.getFrontend().ensureResponse = async () => { requests++; return { skipped: true } }
+  start()
+  await tick()
+  await tick()
+  assert.equal(requests, 1)
+  review.close()
+})

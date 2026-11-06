@@ -828,3 +828,40 @@ for (const verdictKind of ['ok', 'timeout']) {
     assert.equal(regenerated, 0)
   })
 }
+
+test('back-to-back policy verdicts release a same-turn queued repair after an announcement', async t => {
+  let reviews = 0
+  const h = harness(t, { policyReviewSettings: { enabled: true, timeoutMs: 500, endpoint: 'unused' },
+    policyReviewDecide: async ({ rules }) => ++reviews <= 2 ? [{ id: rules[0].id }] : [] })
+  const f = await h.connect({}, { capabilitiesNegotiated: true, capabilities: ['input.audio', 'input.text'] })
+  const requests = []
+  let completeFirst
+  const first = new Promise(resolve => { completeFirst = resolve })
+  f.ensureResponse = (...args) => {
+    requests.push(args)
+    return requests.length === 1 ? first : Promise.resolve({ completed: true })
+  }
+  h.send({ type: Input.TEXT_MESSAGE, text: 'perform the operation' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'original' } })
+  f.emit({ type: 'response.audio_transcript.done', response_id: 'original', transcript: 'cannot do it' })
+  f.emit({ type: 'response.done', response: { id: 'original', status: 'completed' } })
+  await until(() => requests.length === 1)
+  f.emit({ type: 'response.created', __voiceOrigin: 'announcement', response: { id: 'announcement' } })
+  f.emit({ type: 'response.audio_transcript.done', response_id: 'announcement', transcript: 'another failure result' })
+  f.emit({ type: 'response.done', response: { id: 'announcement', status: 'completed' } })
+  await until(() => reviews === 2)
+  await tick()
+  f.emit({ type: 'response.created', response: { id: 'first-repair' } })
+  f.emit({ type: 'response.audio.delta', response_id: 'first-repair', delta: 'HELD=' })
+  f.emit({ type: 'response.done', response: { id: 'first-repair', status: 'completed' } })
+  assert.ok(!h.events.some(e => e.audio === 'HELD='))
+  completeFirst({ completed: true })
+  await until(() => requests.length === 2)
+  assert.match(requests[1][1].response.instructions, /original/)
+  assert.match(requests[1][1].response.instructions, /announcement/)
+  f.emit({ type: 'response.created', response: { id: 'second-repair' } })
+  f.emit({ type: 'response.audio.delta', response_id: 'second-repair', delta: 'RELEASED=' })
+  assert.ok(h.events.some(e => e.audio === 'RELEASED='))
+  assert.ok(h.events.some(e => e.type === 'response.interrupted' && e.responseId === 'first-repair'))
+})

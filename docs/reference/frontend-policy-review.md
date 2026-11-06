@@ -60,6 +60,11 @@ support `choice` questions with `violation`, `ok`, and `uncertain` options.
    answer will be corrected, actual tool/backend attempts for that request, then
    an answer to the latest request. They forbid exposing the reviewer, backend
    structure or tool names and repeating operations already completed.
+   If another verdict arrives while a repair is in flight, its correction is
+   queued and merged with unheard prior corrections. Completion of the current
+   repair drains that queue even within the same user turn. Cancellation or a
+   skipped older request cannot overwrite the newer correction. A skipped
+   request alone does not cause an immediate retry loop.
 5. If the user is speaking, replacement waits for native `speech_stopped`.
    Only this JEV replacement opts into event-driven recovery of an input/speech-busy
    response refusal. The provider requires a unique pending local request (no

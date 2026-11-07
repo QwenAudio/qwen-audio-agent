@@ -30,6 +30,7 @@ const PROTOCOL_METHODS = [
 const CAPABILITY_FLAGS = [
   'acknowledgesSessionUpdate',
   'singleResponseSlot',
+  'requiresResponseCreated',
   'responseMetadataCorrelation',
   'perResponseInstructions',
   'conversationItemIdEcho',

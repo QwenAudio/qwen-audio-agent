@@ -1,11 +1,20 @@
 # Optional JEV frontend policy review
 
-This opt-in monitor currently checks **one issue only**: the frontend claims it
-cannot carry out an actual user request without trying a relevant dedicated tool
-or delegating it to the backend. It derives one rule from the first `Routing`
-paragraph of the main system prompt, beginning “仅当直接回答就能满足用户请求时”.
-The main prompt itself is unchanged. Other system rules and repeated-user-
-correction checks are currently excluded.
+The review runs independent cases tied to the first `Routing` paragraph of the
+effective frontend prompt. Each case defines its own question, problem statement,
+and repair instruction.
+
+- **Refusal before consulting the backend**: the frontend declines an operation
+  on capability grounds without consulting the backend about that operation.
+  The repair asks `spawn_thinking` to check feasibility and attempt execution.
+- **Promise without starting work**: the frontend says it will start or is already
+  processing an operation, with no delegation or evidence of execution. The
+  repair submits the confirmed operation through `spawn_thinking` and reports the result.
+
+The reviewer sees observed calls and results. It has no tool inventory.
+A proposed `spawn_thinking` in the response makes both missing-delegation cases
+inapplicable. This guard checks the presence of a delegation. Its relevance and
+arguments require a separate review case.
 
 The reply under review streams normally. After its playback/output-completion boundary,
 one asynchronous review releases or rejects all of its tools and guards the following
@@ -53,9 +62,8 @@ transcript-done event. Different content parts are accumulated in output order.
 
 The one JEV packet has `phase=played_response`, the response/turn IDs, full retained
 text/history, real execution evidence and **all** queued calls in `proposed_tools`
-marked `executed=false`. Only the existing unattempted-refusal routing rule is
-checked. A pending relevant attempt must not itself be treated as a refusal just
-because Gateway is waiting for approval. This is not an ASR parameter check or a
+marked `executed=false`. Applicable cases produce separate choices and the
+Gateway selects the corresponding problem and repair text by case ID. This is not an ASR parameter check or a
 business-authorization audit. Current validation targets Qwen only.
 
 An explicit approval releases the queued calls through existing validation and
@@ -71,11 +79,10 @@ interruption/disconnection; they are not silently repaired or marked complete.
 A rejected verdict stops/retire-protects speculative next-response generation
 immediately. None of this response's queued calls executes. Each existing tool
 result reports `policy_review_rejected`, `executed=false`, `retryable=true` and the
-fixed rule/remedy. After those results settle, Gateway reuses its correction
-context and response-generation mechanisms. Instructions require the frontend to
-first fix and re-call the old unexecuted tools, then briefly clarify the earlier
-possible error to the user, and finally address the latest request. The model
-chooses the corrected calls; Gateway does not automatically repeat old arguments.
+case-specific problem and repair. After those results settle, Gateway reuses its
+correction context and response-generation mechanisms. The frontend follows the
+matched repair instruction and uses `spawn_thinking` for the original request.
+The old calls are evidence and are never automatically replayed.
 If the user is speaking, regeneration waits for native `speech_stopped`. A new
 input preserves the correction requirement; obsolete buffered audio is discarded.
 For a violation without tools, the existing clarify/attempt/latest-request remedy

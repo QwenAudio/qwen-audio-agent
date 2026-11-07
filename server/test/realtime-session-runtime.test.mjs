@@ -902,7 +902,7 @@ test('JEV denial returns an unexecuted tool receipt before correction and never 
   const receipt = new Promise(resolve => { acknowledge = resolve })
   const packets = []
   const h = harness(t, { policyReviewSettings: { enabled: true, timeoutMs: 500, endpoint: 'unused' },
-    policyReviewDecide: async packet => { packets.push(packet); await verdict; return [{ id: packet.rules[0].id }] } })
+    policyReviewDecide: async packet => { packets.push(packet); await verdict; return packet.rules.map(({ id }) => ({ id })) } })
   const f = await h.connect({}, { capabilitiesNegotiated: true, capabilities: ['input.audio', 'input.text'] })
   const resumes = []
   f.ensureResponse = async (...args) => { resumes.push(args) }
@@ -923,10 +923,15 @@ test('JEV denial returns an unexecuted tool receipt before correction and never 
   assert.equal(f.outputs[0].result.error_code, 'policy_review_rejected')
   assert.equal(f.outputs[0].result.executed, false)
   assert.equal(f.outputs[0].result.retryable, true)
+  const ruleIds = packets[0].rules.map(rule => rule.id)
+  assert.deepEqual(f.outputs[0].result.corrections.map(item => item.id), ruleIds)
   assert.equal(f.outputs[0].settings.createResponse, false)
   assert.equal(resumes.length, 0)
   acknowledge()
   await until(() => resumes.length === 1)
+  const injected = f.deliveries.find(delivery => delivery.origin === 'policy-review')
+  assert.deepEqual(JSON.parse(injected.text).corrections[0].violations.map(item => item.id), ruleIds)
+  for (const id of ruleIds) assert.ok(resumes[0][1].response.instructions.includes(id))
   assert.equal(h.manager.list({}).length, 0)
 })
 
@@ -963,8 +968,8 @@ for (const reject of [false, true]) test(`backend work starts only after unified
     assert.equal(h.manager.list({}).length, 0)
     assert.equal(f.deliveries.some(d => d.origin === 'announcement'), false)
     assert.equal(f.outputs[0].result.executed, false)
-    assert.match(resumes[0][1].response.instructions, /先依据原始请求修正并重新调用/)
-    assert.match(resumes[0][1].response.instructions, /澄清上一轮可能的错误/)
+    assert.match(resumes[0][1].response.instructions, /先调用 spawn_thinking/)
+    assert.match(resumes[0][1].response.instructions, /澄清先前的能力判断/)
   }
 })
 
@@ -1038,7 +1043,7 @@ for (const speaking of [false, true]) test(`rejected unified batch cancels specu
     f.emit({ type: 'input_audio_buffer.speech_stopped', item_id: 'new-user' })
   }
   await until(() => requests.length === 1)
-  assert.match(requests[0][1].response.instructions, /先依据原始请求修正并重新调用/)
+  assert.match(requests[0][1].response.instructions, /先调用 spawn_thinking/)
   assert.match(requests[0][1].response.instructions, /bad-1/)
   assert.match(requests[0][1].response.instructions, /bad-2/)
   assert.equal(requests[0][1].waitForSpeechStopped, true)

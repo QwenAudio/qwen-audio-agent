@@ -30,10 +30,10 @@ test('default off leaves all review hooks inert', () => {
   assert.deepEqual(calls, [])
 })
 
-test('only refusal routing paragraph is extracted; other rules are excluded', () => {
+test('routing paragraph enables two distinct backend delegation cases', () => {
   const rules = interactionRules('# Role\n\n不要暴露后台。\n# Routing\n\n仅当直接回答就能满足用户请求时，才直接回答。\n\n规则2\n# Background work\n\n取消任务。')
-  assert.equal(rules.length, 1)
-  assert.deepEqual(rules.map(rule => rule.text), ['仅当直接回答就能满足用户请求时，才直接回答。'])
+  assert.deepEqual(rules.map(rule => rule.key), ['backend_refusal', 'backend_promise_without_call'])
+  assert.notEqual(rules[0].correction, rules[1].correction)
 })
 
 test('next output is buffered without cancellation, ok replays audio and tools in order', async () => {
@@ -64,7 +64,7 @@ test('violation discards buffered output, injects original reply and fixed repai
   const correction = calls[1].text.corrections[0]
   assert.equal(correction.assistant_text, '已经发送了')
   assert.equal(correction.turn_id, 't1')
-  assert.match(correction.violations[0].correction, /先简短向用户说明/)
+  assert.match(correction.violations[0].correction, /先调用 spawn_thinking/)
   assert.doesNotMatch(JSON.stringify(correction), /UNTRUSTED/)
   assert.equal(calls[2].resume[1].waitForSpeechStopped, true)
   assert.match(calls[2].resume[1].response.instructions, /再回答最新一轮/)
@@ -108,18 +108,19 @@ test('JEV adapter sends choice questions and validates model, input hash and opt
   }
   const fetchImpl = async (_url, options) => {
     const input = JSON.parse(options.body)
-    assert.equal(input.questions.length, 1)
-    assert.match(input.questions[0].instructions, /只检查.*未经尝试就声称做不到/)
+    assert.equal(input.questions.length, 2)
+    assert.match(input.questions[0].instructions, /未就该请求询问后台/)
     assert.notEqual(input.questions[0].id, 'repeated_correction')
     const result = { backend: 'jev_omni', model: 'Jev-Omni/unified',
       input_hash: createHash('sha256').update(JSON.stringify(canonical(input))).digest('hex'),
       answers: input.questions.map(q => ({ question_id: q.id, primitive: q.primitive, option_ids: q.options.map(o => o.id), choice: 'violation' })) }
     return { ok: true, json: async () => result }
   }
-  const result = await decidePolicy({ endpoint: 'http://local/decide', state: { text: '文本' }, rules: [{ id: 'r', text: '规则' }], fetchImpl })
-  assert.equal(result.length, 1)
-  assert.match(result[0].correction, /spawn_thinking/)
-  await assert.rejects(decidePolicy({ endpoint: 'http://local/decide', state: {}, rules: [],
+  const rules = interactionRules('# Routing\n\n仅当直接回答就能满足用户请求时，才直接回答。')
+  const result = await decidePolicy({ endpoint: 'http://local/decide', state: { text: '文本' }, rules, fetchImpl })
+  assert.equal(result.length, 2)
+  assert.deepEqual(result.map(item => item.correction), rules.map(rule => rule.correction))
+  await assert.rejects(decidePolicy({ endpoint: 'http://local/decide', state: {}, rules,
     fetchImpl: async () => ({ ok: true, json: async () => ({ backend: 'other' }) }) }))
 })
 
@@ -154,7 +155,7 @@ test('injection failure retains original reply and fixed repair in response inst
   start()
   await tick()
   assert.match(calls.at(-1).resume[1].response.instructions, /已经发送了/)
-  assert.match(calls.at(-1).resume[1].response.instructions, /先用自然/)
+  assert.match(calls.at(-1).resume[1].response.instructions, /先调用 spawn_thinking/)
 })
 
 test('user speech discards held old output; a successful review cannot replay it later', async () => {
@@ -287,7 +288,7 @@ test('task result gate waits only for its own source review and transfers actual
   const resumes = calls.filter(c => c?.resume)
   assert.ok(resumes.some(c => c.resume[0].taskIds?.includes('task')))
   assert.ok(resumes.some(c => c.resume[1].response.instructions.includes('Business succeeded.')))
-  assert.ok(resumes.some(c => c.resume[1].response.instructions.includes('不得重复业务操作')))
+  assert.ok(resumes.some(c => c.resume[1].response.instructions.includes('不重复操作')))
   review.close()
 })
 
@@ -374,4 +375,39 @@ test('completed native output supplies final text without transcript.done, and c
   assert.equal((await review.authorizeTool({ responseId: 'suppressed', callId: 's', context: { suppressed: true } })).cancelled, true)
   review.close()
   assert.equal((await review.authorizeTool({ responseId: 'closed', callId: 's', context })).cancelled, true)
+})
+
+test('retail 85: an order modification delegation is ineligible for missing-delegation violations', async () => {
+  const rules = interactionRules('# Routing\n\n仅当直接回答就能满足用户请求时，才直接回答。')
+  const state = {
+    assistant_text: '我会修正之前那轮的回答，先尝试通过后台工具处理订单修改请求。',
+    proposed_tools: [{ name: 'spawn_thinking', arguments: { objective: '修改订单 #W2466703，替换夹克并退差价' }, executed: false }],
+  }
+  assert.deepEqual(await decidePolicy({ state, rules, fetchImpl: () => assert.fail('missing-delegation cases are inapplicable') }), [])
+})
+
+test('later findings for the same response retain the earlier rule in the combined repair', async () => {
+  let index = 0
+  const { review, calls, start } = harness(async ({ rules }) => [{ id: rules[index++].id }])
+  const inFlight = deferred()
+  review.getFrontend().ensureResponse = async (...args) => {
+    calls.push({ resume: args })
+    if (calls.filter(call => call?.resume).length === 1) return inFlight.promise
+    return { completed: true }
+  }
+  await start()
+  await tick()
+  await start()
+  await tick()
+  const notices = calls.filter(call => call?.text?.corrections)
+  const combined = notices.at(-1).text.corrections
+  assert.equal(combined.length, 1)
+  const ruleIds = combined[0].violations.map(({ id }) => id)
+  assert.equal(new Set(ruleIds).size, 2)
+  inFlight.resolve({ completed: true })
+  await tick()
+  const resumes = calls.filter(call => call?.resume)
+  assert.equal(resumes.length, 2)
+  for (const id of ruleIds) assert.ok(resumes[1].resume[1].response.instructions.includes(id))
+  review.close()
 })

@@ -12,7 +12,8 @@ const styles = (await Promise.all([
 // Chromium does not expose device safe-area insets. Substitute only their
 // values while keeping the production selectors, sizing and layout intact.
 const markup = `
-  <div id="root"><div class="mobile-runtime"><main class="app">
+  <div id="root"><div class="mobile-runtime">
+  <button class="mobile-disconnect" type="button">断开</button><main class="app">
     <header>
       <div class="brand"><span>V</span><div>qwen-audio-agent<small>REALTIME VOICE · LIVE</small></div></div>
       <a class="backend">Backend</a>
@@ -59,7 +60,7 @@ try {
     }\n${styles}</style>${markup}`)
     const boxes = await page.evaluate(() => {
       const result = {}
-      for (const selector of ['.app', '.workspace', '.messages', '.multimodal-composer', '.voice', '.video-toggle']) {
+      for (const selector of ['.app', '.workspace', '.messages', '.multimodal-composer', '.voice', '.video-toggle', '.mobile-disconnect']) {
         const rect = document.querySelector(selector).getBoundingClientRect()
         result[selector] = {
           top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left,

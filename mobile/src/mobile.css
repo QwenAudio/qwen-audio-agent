@@ -61,7 +61,7 @@ body { background: #08090d; }
   position: fixed;
   z-index: 30;
   top: calc(env(safe-area-inset-top) + 76px);
-  right: 14px;
+  right: calc(env(safe-area-inset-right) + 14px);
   padding: 6px 9px;
   border: 1px solid #ffffff18;
   border-radius: 9px;

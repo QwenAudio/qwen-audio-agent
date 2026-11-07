@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { config } from '../src/core/config.mjs'
+import { DASHSCOPE_AUDIO_30_REALTIME_MODEL } from '../../shared/realtime-provider-catalog.mjs'
 import { createRealtimeSessionRuntime, permissionResponseGate } from '../src/voice/realtime-session-runtime.mjs'
 import { RealtimeFrontend, REALTIME_PROVIDERS } from '../src/voice/realtime-provider.mjs'
 import { SessionObservers } from '../src/voice/session-observers.mjs'
@@ -311,6 +313,48 @@ test('frontend runtime chats without backend, socket, handshake or provider netw
   assert.ok(h.events.some(event => event.type === 'transcript.final' && event.content === 'hello back'))
   assert.deepEqual(h.done, [{ id: 'reply', status: 'completed' }])
   assert.equal(h.manager.list({}).length, 0)
+})
+
+test('DashScope early transcript cannot bind the next voice response to the previous turn', async t => {
+  const h = harness(t, { backend: false })
+  const session = await h.connect()
+  const { audioProvider, realtimeModel } = config
+  config.audioProvider = 'dashscope'
+  config.realtimeModel = DASHSCOPE_AUDIO_30_REALTIME_MODEL
+  t.after(() => Object.assign(config, { audioProvider, realtimeModel }))
+  const frontend = new RealtimeFrontend({
+    provider: REALTIME_PROVIDERS.dashscope,
+    onEvent: session.emit,
+  })
+  const receive = event => frontend.handleProviderEvent(event)
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+
+  receive({ type: 'input_audio_buffer.speech_started', item_id: 'previous-input' })
+  receive({ type: 'input_audio_buffer.speech_stopped', item_id: 'previous-input' })
+  receive({ type: 'response.created', response: { id: 'previous-response' } })
+  receive({ type: 'response.done', response: { id: 'previous-response', status: 'completed' } })
+  const previousTurn = h.events.findLast(event => event.type === 'turn.started').turnId
+
+  const responseId = 'next-response'
+  receive({ type: 'input_audio_buffer.speech_started', item_id: 'next-input' })
+  const nextTurn = h.events.findLast(event => event.type === 'turn.started').turnId
+  assert.notEqual(nextTurn, previousTurn)
+  receive({ type: 'response.audio_transcript.delta', response_id: responseId, delta: "'re" })
+  receive({ type: 'input_audio_buffer.speech_stopped', item_id: 'next-input' })
+  receive({ type: 'input_audio_buffer.committed', item_id: 'next-input' })
+  receive({ type: 'response.created', response: { id: responseId } })
+  receive({ type: 'response.audio_transcript.delta', response_id: responseId, delta: 'You' })
+  receive({ type: 'response.audio_transcript.delta', response_id: responseId, delta: "'re" })
+  receive({ type: 'response.audio.delta', response_id: responseId, delta: 'AA==' })
+  t.mock.timers.tick(12_000)
+
+  assert.deepEqual({
+    started: h.events.filter(event => event.type === 'response.started' && event.responseId === responseId)
+      .map(event => event.turnId),
+    audio: h.events.filter(event => event.type === 'audio.delta' && event.responseId === responseId)
+      .map(event => event.turnId),
+    timedOut: h.events.some(event => event.type === 'error' && /没有开始回复/.test(event.message)),
+  }, { started: [nextTurn], audio: [nextTurn], timedOut: false })
 })
 
 test('spawn receipt is asynchronous; ongoing work does not prevent further chat, interruption or close', async t => {

@@ -265,11 +265,18 @@ export class GatewayClient {
   #connect() {
     if (this.stopped) return
     this.onStatus?.({ state: 'connecting' })
-    const socket = this.createSocket(this.url, {
-      headers: this.accessToken
-        ? { Authorization: `Bearer ${this.accessToken}` }
-        : {},
-    })
+    let socket
+    try {
+      socket = this.createSocket(this.url, {
+        headers: this.accessToken
+          ? { Authorization: `Bearer ${this.accessToken}` }
+          : {},
+      })
+    } catch (error) {
+      this.onStatus?.({ state: 'unavailable', phase: 'connection', error })
+      if (this.socket === null) this.#scheduleReconnect()
+      return
+    }
     this.socket = socket
     this.connectTimer = setTimeout(() => {
       if (this.socket !== socket || this.stopped) return

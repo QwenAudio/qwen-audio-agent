@@ -76,6 +76,58 @@ function completeHandshake(socket) {
   })
 }
 
+test('reports a socket construction failure and recovers without throwing into the UI', t => {
+  const socket = new FakeSocket()
+  let attempts = 0
+  const failure = new TypeError('Gateway WebSocket credential contains invalid characters')
+  const { client, statuses } = createTimedClient(t, {
+    createSocket: () => {
+      attempts += 1
+      if (attempts === 1) throw failure
+      return socket
+    },
+  })
+  assert.deepEqual(statuses.map(status => status.state), ['connecting', 'unavailable'])
+  assert.equal(statuses[1].error, failure)
+  assert.equal(client.ready, false)
+  t.mock.timers.tick(50)
+  assert.equal(attempts, 2)
+  socket.open()
+  completeHandshake(socket)
+  assert.equal(client.ready, true)
+})
+
+test('does not create a second socket when a failure callback immediately restarts the client', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const sockets = []
+  let attempts = 0
+  const client = new GatewayClient({
+    url: 'wss://gateway.test/api/realtime',
+    reconnectMinMs: 50,
+    createSocket: () => {
+      attempts += 1
+      if (attempts === 1) throw new Error('Socket construction failed')
+      const socket = new FakeSocket()
+      sockets.push(socket)
+      return socket
+    },
+    onStatus: status => {
+      if (status.state === 'unavailable') {
+        client.stop()
+        client.start()
+      }
+    },
+  })
+  t.after(() => client.stop())
+  client.start()
+  assert.equal(sockets.length, 1)
+  t.mock.timers.tick(50)
+  assert.equal(sockets.length, 1)
+  sockets[0].open()
+  completeHandshake(sockets[0])
+  assert.equal(client.ready, true)
+})
+
 test('reference Client forwards payload-free memory changes without tool events or a new capability', t => {
   const received = []
   const { client, sockets } = createTimedClient(t, {

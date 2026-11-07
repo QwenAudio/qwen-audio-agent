@@ -234,6 +234,16 @@ export class ToolCallHandler {
     return JSON.stringify([turnId, turnGeneration])
   }
 
+  restartToolTurnTiming({ turnId, turnGeneration }) {
+    const context = { turnId, turnGeneration }
+    this.toolExecutor.restartTiming(context)
+    this.externalToolLoop.restartTiming(context)
+    const key = this.toolTurnKey(turnId, turnGeneration)
+    if (this.stoppedToolTurns.get(key)?.reason === 'duration_limit') {
+      this.stoppedToolTurns.delete(key)
+    }
+  }
+
   async stopToolLoop({ callId, turnId, turnGeneration }, reason) {
     const key = this.toolTurnKey(turnId, turnGeneration)
     const responseId = this.activeToolDebugEntries.get(callId)?.responseId || ''
@@ -243,8 +253,8 @@ export class ToolCallHandler {
       if (this.stoppedToolTurns.size >= 100) {
         this.stoppedToolTurns.delete(this.stoppedToolTurns.keys().next().value)
       }
-      this.stoppedToolTurns.set(key, responseKey)
-    } else if (this.stoppedToolTurns.get(key) !== responseKey) {
+      this.stoppedToolTurns.set(key, { responseKey, reason })
+    } else if (this.stoppedToolTurns.get(key).responseKey !== responseKey) {
       this.markTerminalToolResponse(responseId)
     }
     // Admission only proves an earlier attempt, not success. Preserve the
@@ -314,7 +324,7 @@ export class ToolCallHandler {
     const toolTurnKey = this.toolTurnKey(turnId, batch?.turnGeneration ?? this.getTurnGeneration())
     const mayRespond = () => isCurrent() && (
       !this.stoppedToolTurns.has(toolTurnKey)
-      || this.stoppedToolTurns.get(toolTurnKey) === (debug?.responseId || callId)
+      || this.stoppedToolTurns.get(toolTurnKey)?.responseKey === (debug?.responseId || callId)
     )
     if (batch) batch.responseGuards.push(mayRespond)
     else frontendOptions.shouldRespond = mayRespond

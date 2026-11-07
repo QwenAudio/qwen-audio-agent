@@ -190,6 +190,10 @@ export class FrontendToolExecutor {
     }
   }
 
+  restartTiming(context) {
+    this.#loop.restartTiming(context)
+  }
+
   async execute(name, context = {}) {
     const entry = this.#registry.get(name)
     const handler = this.#handlersByName.get(entry?.name)

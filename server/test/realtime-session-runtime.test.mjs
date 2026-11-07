@@ -1111,3 +1111,44 @@ test('disconnect while tool calls await the playback boundary never submits thos
   assert.equal(reviews, 0)
   assert.equal(h.manager.list({}).length, 0)
 })
+
+test('a current JEV repair start reopens an expired tool timer on the same turn', async t => {
+  let now = Date.now()
+  t.mock.method(Date, 'now', () => now)
+  const repairs = []
+  const h = harness(t, { policyReviewSettings: { enabled: true, timeoutMs: 1000, endpoint: 'unused' },
+    policyReviewDecide: async ({ state, rules }) => state.assistant_text === 'I cannot do that.'
+      ? [{ id: rules[0].id }] : [] })
+  const f = await h.connect({ textOnly: true }, { capabilitiesNegotiated: true, capabilities: ['input.text'] })
+  f.ensureResponse = async (context, options) => {
+    if (context.policyRepair) repairs.push({ context, options })
+    return { completed: true }
+  }
+  h.send({ type: Input.TEXT_MESSAGE, text: 'check my order' })
+  await until(() => f.inputs.length === 1)
+  const call = (responseId, callId, objective, fields = {}) => {
+    f.emit({ type: 'response.created', response: { id: responseId }, ...fields })
+    f.emit({ type: 'response.function_call_arguments.done', response_id: responseId,
+      call_id: callId, name: 'spawn_thinking', arguments: JSON.stringify({ objective }) })
+    f.emit({ type: 'response.done', response: { id: responseId, status: 'completed' } })
+  }
+  call('first-tool', 'first-call', 'lookup account')
+  await until(() => f.outputs.some(o => o.callId === 'first-call'))
+  assert.equal(f.outputs.find(o => o.callId === 'first-call').result.status, 'accepted')
+
+  now += 31_000
+  call('expired-tool', 'expired-call', 'lookup old order')
+  await until(() => f.outputs.some(o => o.callId === 'expired-call'))
+  assert.equal(f.outputs.find(o => o.callId === 'expired-call').result.error_code, 'tool_loop_limit')
+  f.emit({ type: 'response.created', response: { id: 'refusal' } })
+  f.emit({ type: 'response.text.done', response_id: 'refusal', text: 'I cannot do that.' })
+  f.emit({ type: 'response.done', response: { id: 'refusal', status: 'completed' } })
+  await until(() => repairs.length === 1)
+  call('repair-tool', 'repair-call', 'look up requested order', {
+    __voiceOrigin: 'agent', __voiceContext: repairs[0].context,
+  })
+  await until(() => f.outputs.some(o => o.callId === 'repair-call'))
+  // The repaired call reaches normal submission handling. The existing
+  // task still prevents a second submission for this user request.
+  assert.equal(f.outputs.find(o => o.callId === 'repair-call').result.status, 'duplicate')
+})

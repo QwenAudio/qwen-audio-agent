@@ -114,3 +114,17 @@ test('bounds serialized tool results before they return to the model', () => {
   circular.self = circular
   assert.equal(boundFrontendToolResult(circular).accepted, false)
 })
+
+test('restarting a turn timer preserves its call count and duplicate protection', () => {
+  let now = 0
+  const loop = new FrontendToolLoop({ maxCallsPerTurn: 2, maxDurationMs: 100, now: () => now })
+  const turn = { turnId: 'turn', turnGeneration: 1 }
+  const call = value => loop.admit({ ...turn, tool, args: { value } })
+  assert.equal(call(1).admitted, true)
+  now = 110
+  assert.equal(call(2).reason, 'duration_limit')
+  loop.restartTiming(turn)
+  assert.equal(call(1).reason, 'repeated_call')
+  assert.equal(call(2).admitted, true)
+  assert.equal(call(3).reason, 'call_limit')
+})

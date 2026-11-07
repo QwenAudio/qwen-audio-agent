@@ -78,12 +78,21 @@ export class FrontendToolLoop {
     this.#now = typeof now === 'function' ? now : Date.now
   }
 
+  restartTiming({ turnId, turnGeneration }) {
+    const turn = this.#turns.get(this.#turnKey(turnId, turnGeneration))
+    if (turn) turn.startedAt = this.#now()
+  }
+
+  #turnKey(turnId, turnGeneration) {
+    return `${String(turnGeneration ?? '')}:${String(turnId || '').trim()}`
+  }
+
   admit({ turnId, turnGeneration, tool, args = {} } = {}) {
     const id = String(turnId || '').trim()
     const name = String(tool?.name || '').trim()
     if (!id || !name) return { admitted: true, reason: null }
 
-    const key = `${String(turnGeneration ?? '')}:${id}`
+    const key = this.#turnKey(id, turnGeneration)
     const now = this.#now()
     let turn = this.#turns.get(key)
     if (!turn) {

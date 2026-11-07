@@ -630,13 +630,22 @@ export function createRealtimeSessionRuntime({
       const context = presentationRuntime.begin(event)
       policyReview?.observe(event, context)
       if (policyReview && event.type === 'response.created' && event.__voiceOrigin === 'agent'
-        && event.__voiceContext?.policyRepair && responseTurnCandidate
-        && event.__voiceContext.turnId === responseTurnCandidate.turnId
-        && event.__voiceContext.turnGeneration === responseTurnCandidate.turnGeneration) {
-        // A correlated repair answers this input, even though it is explicitly
-        // requested rather than an automatic model response.
-        turns.commit(responseTurnCandidate)
-        clearResponseCandidate()
+        && event.__voiceContext?.policyRepair && context && !context.suppressed) {
+        const current = turns.current()
+        const { turnId, turnGeneration } = event.__voiceContext
+        if (!turns.userSpeaking && turnId === current.turnId && turnGeneration === current.turnGeneration) {
+          if (!context.policyToolTimingRestarted) {
+            toolCalls.restartToolTurnTiming({ turnId, turnGeneration })
+            context.policyToolTimingRestarted = true
+          }
+          if (responseTurnCandidate?.turnId === turnId
+            && responseTurnCandidate.turnGeneration === turnGeneration) {
+            // The repair answers the current input rather than leaving its
+            // start watchdog waiting for an automatic model response.
+            turns.commit(responseTurnCandidate)
+            clearResponseCandidate()
+          }
+        }
       }
     }
     if (inputs.handleProviderEvent(event)) {

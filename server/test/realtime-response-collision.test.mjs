@@ -358,16 +358,18 @@ for (const status of ['cancelled', 'completed']) {
   test(`JEV cancel accepts explicit ${status} terminal before filtering retired output`, t => {
     t.mock.timers.enable({ apis: ['setTimeout'] })
     const h = harness(t)
+    h.frontend.capabilities.requiresResponseCreated = true
     h.start('A')
     h.frontend.cancel({ retireResponses: true })
     assert.equal(h.frontend.responseSlot.phase, 'cancelling')
-    h.done('unrelated')
+    assert.deepEqual(h.frontend.handleProviderEvent({ type: 'response.done', response: { id: 'unrelated', status: 'completed' } }), [])
     assert.equal(h.frontend.policyCancellation.awaiting, true)
     assert.equal(h.frontend.responseSlot.phase, 'cancelling')
     const terminal = { type: 'response.done', response: { id: 'A', status } }
-    h.frontend.handleLifecycle(terminal)
+    h.frontend.activeResponses.delete('A')
+    const [received] = h.frontend.handleProviderEvent(terminal)
     assert.equal(h.frontend.policyCancellation.awaiting, false)
-    assert.equal(terminal.__voiceContext.suppressed, true)
+    assert.equal(received.__voiceContext.suppressed, true)
     assert.equal(h.frontend.responseSlot.phase, 'idle')
     t.mock.timers.tick(h.frontend.responseCancelGraceMs + 1)
     assert.equal(h.frontend.ready, true, 'confirmed terminal cancels forced recovery')

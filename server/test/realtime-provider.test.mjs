@@ -2382,6 +2382,7 @@ test('the Qwen provider exposes its supported realtime capabilities', () => {
   assert.deepEqual(qwen.capabilities, {
     acknowledgesSessionUpdate: true,
     singleResponseSlot: true,
+    requiresResponseCreated: true,
     responseMetadataCorrelation: false,
     perResponseInstructions: true,
     sessionOutputVoice: true,

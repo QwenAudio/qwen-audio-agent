@@ -78,6 +78,8 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   acknowledgesSessionUpdate: true,
   // Refuses concurrent response.create requests instead of queueing them.
   singleResponseSlot: false,
+  // Accept response-scoped activity only during a formally opened response.
+  requiresResponseCreated: false,
   // Echoes response metadata so client-created responses can be correlated
   // without confusing them with automatic server-side responses.
   responseMetadataCorrelation: false,
@@ -298,11 +300,19 @@ export class RealtimeFrontend {
 
   handleProviderEvent(providerEvent, { onSessionReady, onSessionError, transportGeneration = this.transportGeneration } = {}) {
     if (transportGeneration !== this.transportGeneration) return []
-    const events = normalizedEvents(
-      this.protocol.normalizeIncoming(providerEvent),
-    )
-    for (const event of events) {
+    const events = []
+    for (const event of normalizedEvents(this.protocol.normalizeIncoming(providerEvent))) {
       if (transportGeneration !== this.transportGeneration) break
+      // Qwen Audio can replay early output after response.created. Keep that
+      // early output from claiming the turn, but preserve pending JEV cancel receipts.
+      if (this.capabilities.requiresResponseCreated && event.type !== 'response.created'
+        && isResponseActivityEvent(event)) {
+        const id = realtimeResponseId(event)
+        const cancel = this.policyCancellation
+        const isCancelReceipt = event.type === 'response.done' && cancel?.awaiting
+          && cancel.transportGeneration === transportGeneration && cancel.ids.has(id)
+        if (!this.activeResponses.has(id) && !isCancelReceipt) continue
+      }
       if (event.type === 'error' && this.restoringContext) {
         event.__voiceOrigin = 'restore'
       }
@@ -322,6 +332,7 @@ export class RealtimeFrontend {
       }
       this.handleLifecycle(event)
       this.onEvent?.(event)
+      events.push(event)
     }
     return events
   }

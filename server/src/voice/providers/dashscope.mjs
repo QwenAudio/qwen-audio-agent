@@ -97,11 +97,13 @@ export const dashscopeProvider = {
   protocol: openAiCompatibleProtocol,
 
   get capabilities() {
+    const { family } = activeModelProfile()
     return {
       perResponseInstructions: true,
       singleResponseSlot: true,
+      requiresResponseCreated: family === 'audio',
       sessionOutputVoice: true,
-      conversationItemIdEcho: activeModelProfile().family !== 'omni',
+      conversationItemIdEcho: family !== 'omni',
       imageRequiresAudioStart: true,
     }
   },

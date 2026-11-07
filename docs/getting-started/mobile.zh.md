@@ -60,5 +60,10 @@ iOS 构建需要完整 Xcode；Android 构建需要 JDK 21 和 Android SDK。`mo
 本地 Web 资源，再同步到 Capacitor 原生工程。公网 Gateway 地址必须是 HTTPS；显式 LAN
 连接允许使用带 Token 的 `ws://局域网IP`。
 
+内置 Web 资源在 iOS 使用固定本地 Origin `capacitor://qwaudio.local`
+（`iosScheme: "capacitor"`），Android 使用 `https://qwaudio.local`。WKWebView 无法将
+`https` 注册为自定义 scheme。Gateway 只允许已认证原生设备使用这两个本地 Origin；
+不接受不透明的 `null` 或其他自定义 Origin。本地资源 scheme 不改变远程连接的传输策略。
+
 GitHub 的 `Mobile` 工作流会保存 Android debug APK 和 iOS Simulator App，便于在没有
 本地原生工具链时下载验收。iOS 真机安装仍需要 Apple 开发签名。

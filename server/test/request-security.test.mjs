@@ -137,19 +137,38 @@ test('allows authenticated same-origin LAN browsers without trusting LAN DNS nam
   }, { authenticatedRemote: true }), false)
 })
 
-test('allows the fixed mobile app origin only for an authenticated mobile device', () => {
-  const req = {
-    headers: {
-      host: 'gateway.example.test',
-      origin: 'https://qwaudio.local',
-    },
+test('allows fixed Android and iOS app origins only for authenticated native devices', () => {
+  for (const origin of ['https://qwaudio.local', 'capacitor://qwaudio.local']) {
+    const req = {
+      headers: {
+        host: 'gateway.example.test',
+        origin,
+      },
+    }
+    assert.equal(isAllowedOrigin(req, {
+      authenticatedRemote: true,
+      trustedNativeClient: true,
+    }), true)
+    assert.equal(isAllowedOrigin(req, {
+      authenticatedRemote: true,
+      trustedNativeClient: false,
+    }), false)
+    assert.equal(isAllowedOrigin(req, {
+      authenticatedRemote: false,
+      trustedNativeClient: true,
+    }), false)
   }
-  assert.equal(isAllowedOrigin(req, {
-    authenticatedRemote: true,
-    trustedNativeClient: true,
-  }), true)
-  assert.equal(isAllowedOrigin(req, {
-    authenticatedRemote: true,
-    trustedNativeClient: false,
-  }), false)
+})
+
+test('rejects opaque and altered native app origins even with a valid device credential', () => {
+  for (const origin of [
+    'null', 'capacitor://attacker.example', 'capacitor://qwaudio.local/path',
+    'capacitor://qwaudio.local?query', 'capacitor://qwaudio.local#fragment',
+    'capacitor://user:pass@qwaudio.local', 'capacitor://qwaudio.local:443',
+  ]) {
+    assert.equal(isAllowedOrigin({ headers: { host: 'gateway.example.test', origin } }, {
+      authenticatedRemote: true,
+      trustedNativeClient: true,
+    }), false)
+  }
 })

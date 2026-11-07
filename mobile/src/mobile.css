@@ -43,8 +43,20 @@ body { background: #08090d; }
 .mobile-divider { margin: 22px 0; display: flex; align-items: center; gap: 12px; color: #666572; font-size: 12px; }
 .mobile-divider::before, .mobile-divider::after { content: ''; height: 1px; flex: 1; background: #ffffff14; }
 
-.mobile-runtime { height: 100dvh; padding-top: env(safe-area-inset-top); }
-.mobile-runtime .app { height: calc(100dvh - env(safe-area-inset-top)); }
+.mobile-runtime {
+  height: 100dvh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.mobile-runtime .app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.mobile-runtime .app > header { flex: 0 0 68px; }
+.mobile-runtime .workspace { height: auto; flex: 1; }
+.mobile-runtime .hero small { overflow-wrap: anywhere; }
+.mobile-runtime .multimodal-composer { flex-shrink: 0; }
 .mobile-disconnect {
   position: fixed;
   z-index: 30;
@@ -58,14 +70,38 @@ body { background: #08090d; }
   font-size: 11px;
 }
 
-@media (max-width: 600px) {
-  .mobile-runtime header { padding-top: 2px; }
-  .mobile-runtime .brand div { font-size: 12px; }
+@media (max-width: 1024px) {
+  .mobile-runtime .app > header { padding: 2px 14px 0; gap: 8px; }
+  .mobile-runtime .brand { min-width: 0; flex: 1; }
+  .mobile-runtime .brand > span { flex: 0 0 32px; }
+  .mobile-runtime .brand div {
+    min-width: 0;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  .mobile-runtime .app > header .status { flex: 0 0 auto; gap: 6px; font-size: 11px; }
+  .mobile-runtime .app > header .status span {
+    max-width: 6em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-runtime .app > header button {
+    flex: 0 0 auto;
+    min-height: 44px;
+    white-space: nowrap;
+  }
+  .mobile-runtime .brand small,
+  .mobile-runtime .app > header .ghost,
+  .mobile-runtime .backend,
   .mobile-runtime .model-status { display: none; }
   .mobile-runtime header .voice {
-    width: 32px;
-    height: 32px;
-    flex: 0 0 32px;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
     display: grid;
     place-items: center;
     padding: 0;
@@ -80,4 +116,14 @@ body { background: #08090d; }
     stroke-linecap: round;
     stroke-linejoin: round;
   }
+}
+
+@media (max-height: 600px) {
+  .mobile-runtime .workspace { padding: 12px 0 8px; }
+  .mobile-runtime .hero .orb { width: 56px; height: 56px; }
+  .mobile-runtime .hero p { display: none; }
+  .mobile-runtime .hero h1 { margin-top: 8px; font-size: 22px; }
+  .mobile-runtime .hero small { margin-top: 6px; }
+  .mobile-runtime .messages { margin: 8px 0; }
+  .mobile-runtime .multimodal-composer { margin-bottom: 0; }
 }

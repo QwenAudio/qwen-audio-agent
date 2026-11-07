@@ -58,6 +58,12 @@ body { background: #08090d; }
   font-size: 11px;
 }
 
+.mobile-runtime .workspace:has(.conversation-turn) { padding-top: 12px; }
+.mobile-runtime .workspace:has(.conversation-turn) .hero .orb,
+.mobile-runtime .workspace:has(.conversation-turn) .hero p,
+.mobile-runtime .workspace:has(.conversation-turn) .hero h1 { display: none; }
+.mobile-runtime .workspace:has(.conversation-turn) .hero small { margin-top: 0; }
+
 @media (max-width: 600px) {
   .mobile-runtime header { padding-top: 2px; }
   .mobile-runtime .brand div { font-size: 12px; }

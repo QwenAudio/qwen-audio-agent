@@ -62,7 +62,11 @@ body { background: #08090d; }
 .mobile-runtime .workspace:has(.conversation-turn) .hero .orb,
 .mobile-runtime .workspace:has(.conversation-turn) .hero p,
 .mobile-runtime .workspace:has(.conversation-turn) .hero h1 { display: none; }
-.mobile-runtime .workspace:has(.conversation-turn) .hero small { margin-top: 0; }
+.mobile-runtime .workspace:has(.conversation-turn) .hero small {
+  margin-top: 0;
+  padding-right: 64px;
+  overflow-wrap: anywhere;
+}
 
 @media (max-width: 600px) {
   .mobile-runtime header { padding-top: 2px; }

@@ -67,8 +67,14 @@ npm run mobile:android
 
 iOS requires full Xcode. Android requires JDK 21 and the Android SDK.
 `mobile:sync` builds the local web assets before syncing the Capacitor projects.
-The Gateway endpoint must use HTTPS; Mobile never downgrades a device credential
-to a clear-text WebSocket.
+Public Gateway endpoints must use HTTPS/WSS. Explicit LAN connection codes may
+use a tokenized `ws://<LAN IPv4>` endpoint.
+
+Bundled web assets use the fixed local origin `capacitor://qwaudio.local` on iOS
+(`iosScheme: "capacitor"`) and `https://qwaudio.local` on Android. WKWebView cannot
+register `https` as a custom scheme. The Gateway accepts these local origins only
+for authenticated native devices; opaque `null` and other custom origins remain
+rejected. This local asset scheme does not change the remote transport policy.
 
 The GitHub `Mobile` workflow retains an Android debug APK and an iOS Simulator
 App for testing without a local native toolchain. Installing on a physical iOS

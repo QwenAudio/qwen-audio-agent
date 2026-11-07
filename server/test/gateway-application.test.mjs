@@ -383,7 +383,7 @@ test('protects remote HTTP access and completes one-time device pairing', async 
       headers: {
         Host: 'gateway.example.test',
         Authorization: `Bearer ${paired.body.access_token}`,
-        Origin: 'https://qwaudio.local',
+        Origin: 'capacitor://qwaudio.local',
       },
     },
   )

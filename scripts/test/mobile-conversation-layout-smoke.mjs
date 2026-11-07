@@ -26,7 +26,7 @@ try {
   ]) {
     const page = await browser.newPage({ viewport })
     await page.setContent(`<style>${styles.join('\n')}</style>
-      <div class="mobile-runtime"><main class="app">
+      <div class="mobile-runtime"><button class="mobile-disconnect">断开</button><main class="app">
         <header><div class="brand"><span>V</span><div>qwen-audio-agent</div></div>
           <div class="status"><i></i><span>正在聆听</span></div>
           <button class="voice active" aria-label="关闭麦克风">麦克风</button>
@@ -61,10 +61,24 @@ try {
       assert.ok(messages.height - beforeMessages.height > 100,
         'conversation gains space previously occupied by welcome decorations')
       await page.locator('.hero small').evaluate(node => {
-        node.textContent = '连接错误，请重试'
+        node.textContent = 'Connection error: the Gateway is unavailable. Please check the connection and try again.'
       })
       assert.equal(await page.locator('.hero small').isVisible(), true,
         'connection errors remain visible during a conversation')
+      const disconnect = await page.locator('.mobile-disconnect').boundingBox()
+      const errorLines = await page.locator('.hero small').evaluate(node => {
+        const range = document.createRange()
+        range.selectNodeContents(node)
+        return Array.from(range.getClientRects(), rect => ({
+          top: rect.top, right: rect.right, bottom: rect.bottom,
+        }))
+      })
+      for (const line of errorLines) {
+        if (line.top < disconnect.y + disconnect.height && line.bottom > disconnect.y) {
+          assert.ok(line.right <= disconnect.x,
+            'the disconnect button must not cover connection error text')
+        }
+      }
     }
     await page.locator('.messages').evaluate(node => {
       node.innerHTML = '<div class="empty">试着说</div>'

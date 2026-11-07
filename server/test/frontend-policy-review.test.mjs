@@ -411,3 +411,50 @@ test('later findings for the same response retain the earlier rule in the combin
   for (const id of ruleIds) assert.ok(resumes[1].resume[1].response.instructions.includes(id))
   review.close()
 })
+
+test('review history is scoped to the reviewed turn, even after a newer turn is recorded', async () => {
+  const packets = []
+  const { review, calls } = harness(async packet => {
+    packets.push(packet)
+    return [{ id: packet.rules[0].id }]
+  })
+  review.getHistory = () => [
+    { turnId: 'old', role: 'user', content: 'outside the window' },
+    { turnId: 'previous-2', role: 'user', content: 'earlier request' },
+    { turnId: 'previous-2', role: 'assistant', content: 'earlier mistake' },
+    { turnId: 'previous-1', role: 'user', content: 'previous request' },
+    { turnId: 'notification', role: 'assistant', content: 'standalone notification' },
+    { turnId: 'current', role: 'user', content: 'change the booking' },
+    { turnId: 'current', role: 'user', content: 'keep the same date' },
+    { turnId: 'current', role: 'assistant', content: 'an earlier reply in this turn' },
+    { turnId: 'newer', role: 'user', content: 'newer request' },
+  ]
+  const proposedTools = [{ name: 'lookup', call_id: 'lookup-1', executed: false }]
+  const request = { responseId: 'target', context: { turnId: 'current' }, text: 'I cannot change it.', proposedTools }
+  await review.review(request)
+  await tick()
+  const { state } = packets[0]
+  assert.deepEqual(state.user_request, ['change the booking', 'keep the same date'])
+  assert.equal(state.assistant_text, request.text)
+  assert.deepEqual(state.proposed_tools, proposedTools)
+  assert.deepEqual(state.history.map(message => message.turn_id),
+    ['previous-2', 'previous-2', 'previous-1', 'current', 'current', 'current'])
+  const correction = calls.find(call => call?.text?.corrections).text.corrections[0]
+  assert.deepEqual(correction.history, state.history)
+  assert.deepEqual(correction.user_request, state.user_request)
+
+  review.options.previousTurns = 0
+  await review.review(request, { publishCorrection: false })
+  assert.ok(packets[1].state.history.every(message => message.turn_id === 'current'))
+  await review.review({ ...request, context: { turnId: 'missing' } }, { publishCorrection: false })
+  assert.deepEqual(packets[2].state.history, [])
+  assert.deepEqual(packets[2].state.user_request, [])
+  review.close()
+})
+
+test('previous review turns default to two and accept zero but reject invalid counts', () => {
+  const env = { QWEN_AUDIO_POLICY_REVIEW: 'on', QWEN_AUDIO_POLICY_REVIEW_ENDPOINT: 'http://local/decide' }
+  assert.equal(policyReviewOptions(env).previousTurns, 2)
+  assert.equal(policyReviewOptions({ ...env, QWEN_AUDIO_POLICY_REVIEW_PREVIOUS_TURNS: '0' }).previousTurns, 0)
+  assert.throws(() => policyReviewOptions({ ...env, QWEN_AUDIO_POLICY_REVIEW_PREVIOUS_TURNS: '1.5' }), /previous-turn/)
+})

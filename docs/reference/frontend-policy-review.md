@@ -8,8 +8,10 @@ and repair instruction.
   on capability grounds without consulting the backend about that operation.
   The repair asks `spawn_thinking` to check feasibility and attempt execution.
 - **Promise without starting work**: the frontend says it will start or is already
-  processing an operation, with no delegation or evidence of execution. The
-  repair submits the confirmed operation through `spawn_thinking` and reports the result.
+  processing an operation, without proposing a relevant tool call or delegation
+  and without evidence that the operation has already started. A relevant proposed
+  call counts even when it is awaiting approval. The repair uses an appropriate
+  direct tool if available, or submits the operation through `spawn_thinking`.
 
 The reviewer sees observed calls and results. It has no tool inventory.
 A proposed `spawn_thinking` in the response makes both missing-delegation cases
@@ -27,7 +29,7 @@ Set these variables on the Gateway process before starting it:
 ```sh
 QWEN_AUDIO_POLICY_REVIEW=on \
 QWEN_AUDIO_POLICY_REVIEW_ENDPOINT=http://127.0.0.1:8810/decide \
-QWEN_AUDIO_POLICY_REVIEW_TIMEOUT_MS=1500 \
+QWEN_AUDIO_POLICY_REVIEW_TIMEOUT_MS=2500 \
 node cli/bin/qwenaudio.mjs gateway
 ```
 
@@ -35,7 +37,8 @@ node cli/bin/qwenaudio.mjs gateway
 | --- | --- | --- |
 | `QWEN_AUDIO_POLICY_REVIEW` | `off` | Enable the monitor (`on` or `off`). |
 | `QWEN_AUDIO_POLICY_REVIEW_ENDPOINT` | empty | Full URL of the JEV-Omni `/decide` service; required when enabled. |
-| `QWEN_AUDIO_POLICY_REVIEW_TIMEOUT_MS` | `1500` | Positive budget in milliseconds for each JEV request; timeout fails open after the playback boundary, never during boundary collection. |
+| `QWEN_AUDIO_POLICY_REVIEW_TIMEOUT_MS` | `2500` | Positive budget in milliseconds for each JEV request; timeout fails open after the playback boundary, never during boundary collection. |
+| `QWEN_AUDIO_POLICY_REVIEW_PREVIOUS_TURNS` | `2` | Number of earlier user turns to include alongside the reviewed turn. Use `0` for the reviewed turn only. |
 
 The endpoint must be reachable **from the Gateway**. A remote worker's loopback
 address is not the local Gateway's loopback. This feature does not deploy a model,
@@ -81,8 +84,10 @@ immediately. None of this response's queued calls executes. Each existing tool
 result reports `policy_review_rejected`, `executed=false`, `retryable=true` and the
 case-specific problem and repair. After those results settle, Gateway reuses its
 correction context and response-generation mechanisms. The frontend follows the
-matched repair instruction and uses `spawn_thinking` for the original request.
-The old calls are evidence and are never automatically replayed.
+matched repair instruction for the original request.
+The old calls are evidence and are never automatically replayed. A repair that starts
+on the current user turn restarts that turn’s tool timer and clears a stop caused
+by the duration limit. Call counts and duplicate-call protection still apply.
 If the user is speaking, regeneration waits for native `speech_stopped`. A new
 input preserves the correction requirement; obsolete buffered audio is discarded.
 For a violation without tools, the existing clarify/attempt/latest-request remedy
@@ -115,9 +120,12 @@ truthful actual tool failure or backend inability, explicit policy restrictions,
 and refused authorization are not this issue. An empty lookup result is not
 proof of lacking capability. Only attempts relevant to this request count.
 
-This is a model judgment, not proof of compliance. The reviewer sees the main
-system rules and retained session history, not arbitrary prior sessions or
-forgotten messages. User corrections are treated as evidence, never new system
+The payload labels the reviewed user messages as `user_request` and the exact
+reply as `assistant_text`. `proposed_tools` lists calls from that reply. The
+`history` field contains the reviewed turn and the configured number of earlier
+retained user turns, anchored to the reviewed reply’s turn ID even if newer
+messages have arrived. Earlier messages are context only. If the source turn
+is absent, the request and history fields are empty. User corrections are treated as evidence, never new system
 instructions. Recent frontend tool evidence is bounded to 100 lifecycle events;
 conversation retention follows the existing ConversationSync settings. Truncated
 historical evidence can lead to `uncertain`. A successful task does not imply that

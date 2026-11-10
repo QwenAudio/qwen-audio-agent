@@ -27,7 +27,7 @@
     "playwright": "^1.63.0"
   },
   "peerDependencies": {
-    "qwen-audio-agent": "^2.0.1",
+    "qwen-audio-agent": "^2.1.0",
     "electron": "^43.8.1"
   },
   "peerDependenciesMeta": {

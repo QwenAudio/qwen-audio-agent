@@ -6,7 +6,7 @@ The adapter forwards assistant PCM from Gateway to Vidu and plays returned ARTC 
 
 **This commercial integration is experimental and disabled by default. This revision has not been accepted against the real Vidu service; do not use it for production workflows requiring automatic spoken-delivery confirmation.** Self-hosted DHAV remains the default with actual-playback receipts.
 
-**Gateway revision requirement:** use a Gateway containing the generic receipt-less fallback (`761672f` or later). Until released, follow the [source-checkout instructions](../README.md#quick-start) using the latest `main`. Older published versions may wait indefinitely for receipts before displaying transcripts or advancing scheduling. Updating only the example or client SDK is insufficient.
+**Gateway version requirement:** use qwen-audio-agent v2.1.0 or later, which includes the generic receipt-less fallback. Follow the [source-checkout instructions](../README.md#quick-start) with a matching v2.1.0 or newer checkout. A v2.0.1 or older Gateway may wait indefinitely for receipts before displaying transcripts or advancing scheduling. Updating only the example or client SDK is insufficient.
 
 ## Playback boundary
 
@@ -36,7 +36,7 @@ Initialization, playback or connection failure reports an error and stops microp
 
 ## Setup
 
-Create a key with S2 Avatar component access at the [Vidu API platform](https://platform.vidu.cn/). Create an ARTC application using the [Alibaba Cloud Live guide](https://help.aliyun.com/zh/live/activate-application) and copy its AppID/AppKey, not an account AccessKey. Start the compatible Gateway revision described above, then configure this example's `.env.local`:
+Create a key with S2 Avatar component access at the [Vidu API platform](https://platform.vidu.cn/). Create an ARTC application using the [Alibaba Cloud Live guide](https://help.aliyun.com/zh/live/activate-application) and copy its AppID/AppKey, not an account AccessKey. Start the compatible Gateway version described above, then configure this example's `.env.local`:
 
 ```dotenv
 DH_GATEWAY_URL=ws://127.0.0.1:18888/api/realtime

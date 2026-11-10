@@ -42,9 +42,9 @@ https://github.com/user-attachments/assets/dc9296b5-dfbe-4243-a2c6-3bf49237d71b
 
 ## 快速开始
 
-前提：使用框架支持的 Node.js 版本（推荐 22.22.2 或 24.15.0）、npm 10+、可用的 Realtime 模型配置，以及允许播放音频和访问麦克风的现代浏览器。以下命令从本仓库源码开始；默认 Mock 不需要 GPU 或数字人服务账号。浏览器自动化使用 Chromium；真实数字人服务另有 GPU、账号及平台要求。
+前提：使用框架支持的 Node.js 版本（推荐 22.22.2 或 24.15.0）、npm 10+、可用的 Realtime 模型配置，以及允许播放音频和访问麦克风的现代浏览器。以下命令从本仓库 v2.1.0 或更新版本源码开始；默认 Mock 不需要 GPU 或数字人服务账号。浏览器自动化使用 Chromium；真实数字人服务另有 GPU、账号及平台要求。
 
-**Vidu 需要包含通用无回执降级的 Gateway（`761672f` 及之后版本）。对应版本发布前，请使用最新 `main` 源码，不能只更新示例或 SDK 而继续连接旧 Gateway。**
+**Gateway 与客户端 SDK 均需使用 qwen-audio-agent v2.1.0 或更新版本。Vidu 依赖 v2.1.0 提供的通用无回执降级，不能只更新示例或 SDK 而继续连接 v2.0.1 或更旧的 Gateway。**
 
 ### 1. 启动标准 Gateway
 
@@ -139,7 +139,7 @@ npm run test:browser:vidu
 - **新增服务**：在 [server/renderers/](server/renderers/) 实现鉴权、服务会话及音频转交，在 [client/renderers/](client/renderers/) 实现媒体播放与能力声明；分别在[服务端注册表](server/renderers/index.mjs)和[浏览器注册表](client/renderer-adapters.mjs)注册同名适配器。接口见[适配器契约](docs/provider-contract.zh.md)。需要供应商适配代码，不要求改 Gateway 或将原生 RTC 转成 DHAV。
 - **恢复默认**：改回 `DH_RENDERER_ADAPTER=dhav`、`DH_PERSONA=mock-default`，清空 `DH_RENDERER_URL` / `DH_RENDERER_TOKEN`，设置 `VIDU_EXPERIMENTAL=0` 后重启；同时检查是否存在覆盖这些值的 Shell 环境变量。
 
-如单独复制本目录，需额外 `npm install qwen-audio-agent` 获取公开客户端 SDK，再构建页面；Gateway 仍须独立运行，并满足前述版本要求。
+如单独复制本目录，需额外 `npm install "qwen-audio-agent@^2.1.0"` 获取公开客户端 SDK，再构建页面；Gateway 仍须独立运行，并满足前述版本要求。
 
 ## 作者与致谢
 

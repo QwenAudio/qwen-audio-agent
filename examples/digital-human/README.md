@@ -42,9 +42,9 @@ Vendor protocols, SDKs and playback implementations stay inside the example; `qw
 
 ## Quick start
 
-Prerequisites: a framework-supported Node.js version (22.22.2 or 24.15.0 recommended), npm 10+, a working Realtime model configuration, and a modern browser with audio playback and microphone permission. The commands below start from this repository's source checkout. The default Mock needs neither a GPU nor an avatar-service account. Browser automation uses Chromium; real avatar services have additional GPU, account and platform requirements.
+Prerequisites: a framework-supported Node.js version (22.22.2 or 24.15.0 recommended), npm 10+, a working Realtime model configuration, and a modern browser with audio playback and microphone permission. The commands below start from this repository's v2.1.0 or later source checkout. The default Mock needs neither a GPU nor an avatar-service account. Browser automation uses Chromium; real avatar services have additional GPU, account and platform requirements.
 
-**Vidu requires a Gateway containing the generic receipt-less fallback (`761672f` or later). Until a compatible version is released, use the latest `main` source. Updating only the example or SDK while keeping an older Gateway is insufficient.**
+**Use qwen-audio-agent v2.1.0 or later for both Gateway and the client SDK. Vidu requires the generic receipt-less fallback included in v2.1.0; updating only the example or SDK while keeping a v2.0.1 or older Gateway is insufficient.**
 
 ### 1. Start the standard Gateway
 
@@ -139,7 +139,7 @@ Tests and the build should pass. Coverage includes protocol encoding/decoding, c
 - **New services:** implement authentication, service sessions and audio forwarding in [server/renderers/](server/renderers/), and media playback and capability declarations in [client/renderers/](client/renderers/). Register the same adapter ID in the [server registry](server/renderers/index.mjs) and [browser registry](client/renderer-adapters.mjs). See the [adapter contract](docs/provider-contract.zh.md). Vendor adapter code is required; Gateway changes or conversion of native RTC into DHAV are not.
 - **Restore defaults:** set `DH_RENDERER_ADAPTER=dhav`, `DH_PERSONA=mock-default` and `VIDU_EXPERIMENTAL=0`, clear `DH_RENDERER_URL` / `DH_RENDERER_TOKEN`, then restart. Also check for shell variables overriding these settings.
 
-If you copy this directory independently, additionally run `npm install qwen-audio-agent` to obtain the public client SDK before building the page. Gateway must still run separately and meet the revision requirement above.
+If you copy this directory independently, additionally run `npm install "qwen-audio-agent@^2.1.0"` to obtain the public client SDK before building the page. Gateway must still run separately and meet the version requirement above.
 
 ## Authors and acknowledgements
 

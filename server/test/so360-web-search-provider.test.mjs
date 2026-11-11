@@ -109,3 +109,8 @@ test('drops credential-bearing URLs and tolerates invalid numeric entities', () 
   )
   assert.ok(parseSo360Results(withBadEntity)[0].title.includes('\ufffd'))
 })
+
+test('decodes each entity once, so escaped entity text stays literal', () => {
+  const html = SEARCH_HTML.replace('摔倒受伤', '摔倒 &amp;lt;b&amp;gt; 受伤')
+  assert.ok(parseSo360Results(html)[0].title.includes('&lt;b&gt;'))
+})

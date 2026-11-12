@@ -1,5 +1,11 @@
+// A budget is measured in UTF-16 code units, but never split a surrogate pair.
+function cut(value, maxLength) {
+  const prefix = value.slice(0, maxLength)
+  return /[\uD800-\uDBFF]$/.test(prefix) ? prefix.slice(0, -1) : prefix
+}
+
 function cleanText(value, maxLength) {
-  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, maxLength)
+  return cut(String(value || '').replace(/\s+/g, ' ').trim(), maxLength)
 }
 
 export function normalizePublicUrl(value) {
@@ -72,7 +78,7 @@ export function normalizeSearchResponse(response, { query, limit = 5 } = {}) {
         : {}),
     })
   }
-  const summary = String(response?.summary || '').trim().slice(0, 8000)
+  const summary = cut(String(response?.summary || '').trim(), 8000)
   return {
     status: 'ok',
     query: cleanText(query, 500),

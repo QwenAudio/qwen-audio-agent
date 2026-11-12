@@ -1,0 +1,11 @@
+{
+  "name": "@qwen-audio-agent/example-music-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Voice companion Gateway wiring for the MoeKoe music app (GCP WebSocket client)",
+  "scripts": {
+    "start": "node start.mjs",
+    "verify": "node verify.mjs"
+  }
+}

@@ -8,6 +8,7 @@ const headers = process.env.QWEN_AUDIO_GATEWAY_ACCESS_TOKEN
   : undefined
 
 const ws = new WebSocket(url, { headers })
+let handshakeComplete = false
 const fail = (message) => {
   console.error(`verify failed: ${message}`)
   try { ws.close() } catch {}
@@ -32,6 +33,7 @@ ws.addEventListener('message', (event) => {
   let message
   try { message = JSON.parse(event.data) } catch { return }
   if (message.type === 'session.ready') {
+    handshakeComplete = true
     clearTimeout(timer)
     console.log('verify ok: session.ready received')
     console.log(`  protocol_version: ${message.protocol_version}`)
@@ -53,5 +55,5 @@ ws.addEventListener('error', (event) => {
 
 ws.addEventListener('close', (event) => {
   clearTimeout(timer)
-  if (event.code !== 1000) fail(`websocket closed before handshake: code=${event.code} reason=${event.reason || '-'}`)
+  if (!handshakeComplete) fail(`websocket closed before handshake: code=${event.code} reason=${event.reason || '-'}`)
 })

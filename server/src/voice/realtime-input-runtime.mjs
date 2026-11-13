@@ -215,7 +215,21 @@ export class RealtimeInputRuntime {
       || completedInput.duplicate
       || this.turns.isStale(transcriptTurn)
     ) return
-    const transcript = String(event.transcript || '').trim()
+    // The final transcript is this turn's end boundary. Some providers emit no
+    // end-of-speech event at all (Doubao Seeduplex: its ASR family is only
+    // started/delta/completed), so without closing here beginVoice() would leave
+    // userSpeaking true — the speech part of the busy gate never clears and the
+    // sleep gate stays shut. This is a provider-independent fallback: only the
+    // turn this final resolves to is ended, and a late item resolves to its own,
+    // older turn, so it can never end the turn speaking now. The
+    // speech_stopped / committed paths keep their own semantics.
+    if (transcriptTurn?.turnGeneration === this.turns.current().turnGeneration) {
+      this.turns.endSpeech()
+      this.announcementWindow.endSpeech()
+    }
+    // ASR providers disagree on how the closing event spells its final text:
+    // live Doubao Seeduplex sends `text`, realtime providers send `transcript`.
+    const transcript = String(event.text || event.transcript || '').trim()
     if (!transcript) {
       this.send({
         type: GatewayServerEvent.TRANSCRIPT_DISCARD,

@@ -86,6 +86,8 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   acknowledgesSessionUpdate: true,
   // Refuses concurrent response.create requests instead of queueing them.
   singleResponseSlot: false,
+  // Accept response-scoped activity only during a formally opened response.
+  requiresResponseCreated: false,
   // Echoes response metadata so client-created responses can be correlated
   // without confusing them with automatic server-side responses.
   responseMetadataCorrelation: false,
@@ -301,10 +303,16 @@ export class RealtimeFrontend {
   }
 
   handleProviderEvent(providerEvent, { onSessionReady, onSessionError } = {}) {
-    const events = normalizedEvents(
-      this.protocol.normalizeIncoming(providerEvent),
-    )
-    for (const event of events) {
+    const events = []
+    for (const event of normalizedEvents(this.protocol.normalizeIncoming(providerEvent))) {
+      // Qwen Audio may send early output while the user is still
+      // speaking, then replay it after response.created.
+      if (
+        this.capabilities.requiresResponseCreated
+        && event.type !== 'response.created'
+        && isResponseActivityEvent(event)
+        && !this.activeResponses.has(realtimeResponseId(event))
+      ) continue
       if (event.type === 'error' && this.restoringContext) {
         event.__voiceOrigin = 'restore'
       }
@@ -324,6 +332,7 @@ export class RealtimeFrontend {
       }
       this.handleLifecycle(event)
       this.onEvent?.(event)
+      events.push(event)
     }
     return events
   }

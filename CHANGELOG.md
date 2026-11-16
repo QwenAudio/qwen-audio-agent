@@ -6,6 +6,8 @@
 
 - 修复 StepFun 前台已有对话历史时重连超时：消息创建回执匹配兼容 `transcript`，
   保留类型、角色和非空内容检查（#557）。
+- 修复 Linux 上 `qwenaudio gateway install` 生成的 systemd 用户服务无法启动：
+  `WorkingDirectory` 不再添加引号，保留路径中的空格并转义 `%`。
 
 ### 示例
 

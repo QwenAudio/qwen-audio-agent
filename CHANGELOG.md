@@ -8,6 +8,8 @@
   保留类型、角色和非空内容检查（#557）。
 - 修复 Linux 上 `qwenaudio gateway install` 生成的 systemd 用户服务无法启动：
   `WorkingDirectory` 不再添加引号，保留路径中的空格并转义 `%`。
+- 修复移动端等客户端配对后无法通过 WebSocket 子协议连接远程 Gateway：凭据格式校验兼容
+  Gateway 签发的 22 字符设备 Token；签发、身份验证及静态访问 Token 的长度要求保持不变。
 
 ### 示例
 

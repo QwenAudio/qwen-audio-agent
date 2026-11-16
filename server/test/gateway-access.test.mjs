@@ -144,6 +144,30 @@ test('redeems one-time pairing tickets into persisted, revocable device tokens',
   }
 })
 
+test('accepts a paired device token in the WebSocket subprotocol header', () => {
+  const directory = mkdtempSync(resolve(tmpdir(), 'qwa-access-'))
+  try {
+    const access = runtime({
+      deviceRegistry: new GatewayDeviceRegistry({ filePath: resolve(directory, 'devices.json') }),
+    })
+    const paired = access.redeemPairingTicket(access.createPairingTicket().code, {
+      device: { id: 'phone-one', type: 'mobile', label: 'My phone' },
+    })
+    // Browsers and the mobile app cannot set Authorization on a WebSocket upgrade.
+    const identity = access.resolveUpgrade({
+      ...request(),
+      headers: {
+        ...request().headers,
+        'sec-websocket-protocol': `qwaudio.gcp.v6, qwaudio.bearer.${paired.token}`,
+      },
+    })
+    assert.equal(identity?.ownerId, 'user_personal')
+    assert.equal(identity.credentialId, paired.credentialId)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test('accepts a remote browser credential in the WebSocket subprotocol header', () => {
   const access = runtime()
   const identity = access.resolveUpgrade(request({

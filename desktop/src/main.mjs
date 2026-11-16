@@ -853,7 +853,7 @@ ipcMain.handle('qwen-audio-agent:settings-load', async event => {
     throw new Error('无权读取设置')
   }
   const settings = desktopSettingsStore.load()
-  const catalogStatus = desktopSettingsStore.modelCatalogStatus()
+  const modelCatalogs = desktopSettingsStore.modelCatalogs()
   const runtime = setupRequired
     ? {
         gatewayConnected: false,
@@ -868,12 +868,11 @@ ipcMain.handle('qwen-audio-agent:settings-load', async event => {
     : await runtimeStatus()
   return {
     settings,
-    ...catalogStatus,
+    realtimeModelCatalogs: modelCatalogs,
     realtimeConfigurationPending: Boolean(
       isLoopbackUrl(configuredGatewayOrigin)
-      && catalogStatus.realtimeModelCatalogs
       && runtime.realtimeConfigurationSignature
-      && realtimeSettingsChanged(settings, settings, catalogStatus.realtimeModelCatalogs, runtime.realtimeConfigurationSignature)
+      && realtimeSettingsChanged(settings, settings, modelCatalogs, runtime.realtimeConfigurationSignature)
     ),
     skins: [...BUILTIN_ORB_SKINS, ...listSkins(skinsRoot)],
     runtime,
@@ -1189,7 +1188,7 @@ async function applyDesktopSettings(settings) {
   const runtime = await runtimeStatus(appOrigin)
   return {
     settings: normalized,
-    ...desktopSettingsStore.modelCatalogStatus(),
+    realtimeModelCatalogs: desktopSettingsStore.modelCatalogs(),
     realtimeConfigurationPending: false,
     restarted,
     restartRequired: false,

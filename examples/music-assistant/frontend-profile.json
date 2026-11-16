@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "name": "music-assistant-example",
+  "description": "音乐 App 的语音陪伴助手。",
+  "assistant": "assistant/music-companion.md"
+}

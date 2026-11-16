@@ -31,7 +31,8 @@ const RESPONSE_CORRELATION_KEY = 'qwen_audio_request_id'
  *
  * - response payloads use output_modalities instead of modalities;
  * - text deltas arrive as response.output_text.* instead of response.text.*;
- * - conversation item ids are namespaced per item type.
+ * - conversation item ids are namespaced per item type and at most 32 characters;
+ * - conversation.item.added acknowledges an item, not a completed response.
  */
 export const gaRealtimeProtocol = Object.freeze({
   encodeOutgoing: payload => ({

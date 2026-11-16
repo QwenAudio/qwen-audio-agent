@@ -390,6 +390,34 @@ test('Doubao Seeduplex reuses the provider item id across utterances', () => {
   ])
 })
 
+test('Doubao Seeduplex uncorrelated final does not close the active speech gate', () => {
+  const { turns, announcementWindow, frame } = inputHarness()
+  frame({
+    type: 'conversation.item.input_audio_transcription.started',
+    item_id: 'item_current',
+  })
+  const current = turns.current()
+  assert.equal(turns.userSpeaking, true)
+  assert.equal(announcementWindow.userSpeaking, true)
+
+  frame({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'item_untracked',
+    text: '迟到的转写',
+  })
+  assert.deepEqual(turns.current(), current)
+  assert.equal(turns.userSpeaking, true)
+  assert.equal(announcementWindow.userSpeaking, true)
+
+  frame({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'item_current',
+    text: '当前的话',
+  })
+  assert.equal(turns.userSpeaking, false)
+  assert.equal(announcementWindow.userSpeaking, false)
+})
+
 test('Doubao Seeduplex late final of an older item cannot end the turn speaking now', () => {
   const { frame, speaking, finals } = inputHarness()
 

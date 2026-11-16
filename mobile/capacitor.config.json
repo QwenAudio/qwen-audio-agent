@@ -4,7 +4,7 @@
   "webDir": "dist",
   "server": {
     "hostname": "qwaudio.local",
-    "iosScheme": "https",
+    "iosScheme": "capacitor",
     "androidScheme": "https"
   },
   "plugins": {

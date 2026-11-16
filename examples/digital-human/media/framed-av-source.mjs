@@ -91,6 +91,12 @@ export function createFramedAvSource({ binding, onUnit, onEvent = () => {}, onEr
         if (Number(key.slice(key.lastIndexOf(':') + 1)) <= quarantinedGeneration) expectedSequence.delete(key)
       }
     },
+    // Drop one turn's sequence bookkeeping without quarantining its generation.
+    // clear() cannot serve here: a turn that is superseded rather than cancelled
+    // may share its generation band with turns that are still live.
+    forget(turn) {
+      if (turn?.responseId !== undefined) expectedSequence.delete(`${turn.responseId}:${turn.generation}`)
+    },
     close() {
       if (closed) return
       closed = true

@@ -1,7 +1,7 @@
 {
   "name": "qwen-audio-agent",
   "desktopName": "qwen-audio-agent.desktop",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "A realtime voice runtime that keeps AI agents talking, working, and present.",
   "author": "qwen-audio-agent contributors",
   "license": "Apache-2.0",
@@ -311,6 +311,8 @@
     "example:webrtc:install": "npm ci --prefix packages/webrtc --no-audit --no-fund",
     "example:webrtc": "node examples/webrtc/start.mjs",
     "example:webrtc:omni": "node examples/webrtc/start.mjs --omni",
+    "example:music-assistant": "node examples/music-assistant/start.mjs",
+    "example:music-assistant:verify": "node examples/music-assistant/verify.mjs",
     "lint": "eslint .",
     "docs:dev": "concurrently -n sync,site -c yellow,magenta \"node scripts/sync-docs-site.mjs --watch\" \"vitepress dev docs\"",
     "predocs:dev": "node scripts/sync-docs-site.mjs",

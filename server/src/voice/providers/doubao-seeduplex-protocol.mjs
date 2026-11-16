@@ -77,6 +77,8 @@ function conversationItem(item) {
 export function createDoubaoSeeduplexProtocol() {
   let activeResponseId = ''
   let pendingUserText = ''
+  let activeAsrItemId = ''
+  let endedAsrItemId = ''
 
   const responseId = event => (
     event.response_id
@@ -186,6 +188,58 @@ export function createDoubaoSeeduplexProtocol() {
           type: 'response.done',
           response: { ...event.response, status: 'cancelled' },
         })
+      }
+      // Doubao ASR events arrive with item_id but the Gateway input pipeline
+      // expects realtime-protocol field names and a paired speech boundary. The
+      // live endpoint never emits input_audio_buffer.speech_started,
+      // speech_stopped or committed, so both ends of one utterance are
+      // synthesized from the transcription events of a single item_id.
+      if (event?.type === 'conversation.item.input_audio_transcription.started') {
+        const itemId = event.item_id || id('item')
+        activeAsrItemId = itemId
+        endedAsrItemId = ''
+        return [{
+          type: 'input_audio_buffer.speech_started',
+          item_id: itemId,
+          event_id: event.event_id,
+        }]
+      }
+      if (event?.type === 'conversation.item.input_audio_transcription.delta') {
+        return [{
+          ...event,
+          item_id: event.item_id || activeAsrItemId,
+          text: '',
+          stash: String(event.delta || ''),
+        }]
+      }
+      if (event?.type === 'conversation.item.input_audio_transcription.completed') {
+        const itemId = event.item_id || activeAsrItemId
+        const events = []
+        // The close of an utterance is the only end boundary this provider
+        // sends, so it is synthesized here from the final transcript of the
+        // same item_id that opened the utterance above. Emitting it only for
+        // the item that is still open keeps the pair 1:1: a final that belongs
+        // to another (older) item stays transcript-only, so a late event can
+        // never close the turn that is speaking now.
+        // `input_audio_buffer.committed` rather than `speech_stopped` on
+        // purpose: the input pipeline ends the turn for both, but only
+        // `speech_stopped` arms the response-start watchdog, which would
+        // report a missing reply and reconnect the session whenever a duplex
+        // model answers late or stays silent.
+        if (itemId && itemId === activeAsrItemId && itemId !== endedAsrItemId) {
+          endedAsrItemId = itemId
+          events.push({
+            type: 'input_audio_buffer.committed',
+            item_id: itemId,
+            event_id: event.event_id,
+          })
+        }
+        events.push({
+          ...event,
+          item_id: itemId,
+          transcript: String(event.text || event.transcript || ''),
+        })
+        return events
       }
       return normalizeResponseEvent(event)
     },

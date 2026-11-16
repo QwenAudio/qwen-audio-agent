@@ -17,6 +17,19 @@ Adapter，只解析一次公开搜索结果页。该基础兜底属于实验性�
 QWEN_AUDIO_WEB_SEARCH_PROVIDER=bailian
 ```
 
+内置的 [Keenable](https://docs.keenable.ai) 预设无需账号或 Key，即可连接 Keenable
+联网搜索 MCP（`https://api.keenable.ai/mcp`）。免 Key 调用按 IP 限流；设置
+`KEENABLE_API_KEY` 仅用于提高调用额度：
+
+```dotenv
+QWEN_AUDIO_WEB_SEARCH_PROVIDER=keenable
+# KEENABLE_API_KEY=your-key
+```
+
+启用该预设后，搜索词会发送到 Keenable，返回的标题、摘要和链接作为来源进入语音模型
+上下文。预设固定使用上述地址和 `search_web_pages` 工具，不读取下方的
+`QWEN_AUDIO_WEB_SEARCH_MCP_*` 设置。
+
 同一个与供应商无关的 Adapter 也可以接入其他兼容的 MCP 搜索服务；自定义地址必须
 显式提供自己的凭据：
 
@@ -27,7 +40,7 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN=your-token
 QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 ```
 
-可选 `so360`（默认）、`bing`、`bailian`、`mcp` 或 `none`。设置 `none` 只关闭搜索，网页读取工具仍可用；同时关闭搜索和网页读取时设置：
+可选 `so360`（默认）、`bing`、`bailian`、`keenable`、`mcp` 或 `none`。设置 `none` 只关闭搜索，网页读取工具仍可用；同时关闭搜索和网页读取时设置：
 
 ```dotenv
 QWEN_AUDIO_WEB_TOOLS_ENABLED=false

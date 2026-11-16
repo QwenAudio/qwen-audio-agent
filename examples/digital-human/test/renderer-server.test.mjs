@@ -155,6 +155,33 @@ test('cancel discards queued input and stops media', async () => {
   } finally { await server.close() }
 })
 
+test('a response-scoped channel fault leaves earlier turns intact and drops only its target', async () => {
+  const server = await startMockRendererServer({ fault: 'channel_drop', faultResponseId: TURN.responseId })
+  try {
+    const session = await openClientSession(server)
+    await session.waitFor(() => session.inputEvents.some(e => e.event === 'session.ready'), 'session.ready')
+    const tone = tonePcm({ durationMs: 200 })
+    const earlier = { ...session.turn, responseId: 'earlier-turn' }
+    session.input.send(encodeControl({ op: ControlOp.START, requestId: 'earlier-start', turn: earlier }))
+    session.input.send(encodeInputPcm({ turn: earlier, sequence: 0, sampleOffset: 0, samples: tone.samples, payload: tone.buffer }))
+    session.input.send(encodeControl({ op: ControlOp.FINISH, requestId: 'earlier-end', turn: earlier, lastAudioSequence: 0, totalSamples: tone.samples }))
+    await session.waitFor(() => session.inputEvents.some(e => e.event === 'turn.completed' && e.turn.responseId === earlier.responseId), 'earlier turn completed')
+    await session.waitFor(() => session.mediaRecords.some(r => r.kind === RecordKind.MEDIA_END && r.header.turn.responseId === earlier.responseId), 'earlier media end')
+    const earlierUnits = session.mediaRecords.filter(r => r.kind === RecordKind.PAIRED_AV && r.header.turn.responseId === earlier.responseId)
+    assert.equal(earlierUnits.length, 5, 'An unrelated turn passes the two-frame fault threshold normally')
+    assert.equal(session.input.readyState, WebSocket.OPEN)
+
+    const target = { ...session.turn, generation: 1 }
+    const closed = new Promise(resolve => session.input.once('close', resolve))
+    session.input.send(encodeControl({ op: ControlOp.START, requestId: 'target-start', turn: target }))
+    session.input.send(encodeInputPcm({ turn: target, sequence: 0, sampleOffset: 0, samples: tone.samples, payload: tone.buffer }))
+    await withTimeout(closed, 5000, 'target channel drop')
+    await session.waitFor(() => session.mediaRecords.filter(r => r.kind === RecordKind.PAIRED_AV && r.header.turn.responseId === target.responseId).length === 2, 'target frames')
+    assert.ok(!session.mediaRecords.some(r => r.kind === RecordKind.MEDIA_END && r.header.turn.responseId === target.responseId))
+    await session.close()
+  } finally { await server.close() }
+})
+
 test('sequence gap fails the turn with protocol_error', async () => {
   const server = await startMockRendererServer()
   try {

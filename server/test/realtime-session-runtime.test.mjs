@@ -26,11 +26,13 @@ function harness(t, {
   backend = true, ownerId = 'runtime-owner', sessionId = 'conversation',
   taskManager = new TaskManager(), ...overrides
 } = {}) {
-  const events = [], frontends = [], tasks = [], observations = [], done = []
+  const events = [], frontends = [], tasks = [], observations = [], done = [], logs = []
   const runs = new Map(), memoryListeners = new Set()
   const manager = taskManager
   const conversationSync = new ConversationSync()
-  const logger = { info() {}, warn() {}, error() {}, debug() {} }
+  const logger = Object.fromEntries(['info', 'warn', 'error', 'debug'].map(level => [
+    level, (event, fields = {}) => logs.push({ level, event, fields }),
+  ]))
   const provider = {
     key: 'test', label: 'Test', inputSampleRate: 16000, outputSampleRate: 24000,
     capabilities: { sessionOutputVoice: true },
@@ -90,6 +92,7 @@ function harness(t, {
         },
         async appendUserInputContext() {}, async ensureResponse() {}, async whenIdle() {},
         emit: options.onEvent,
+        diagnose: options.onDiagnostic,
         settle: options.onResponseSettled,
         disconnect() { this.ready = false; options.onClose() },
       }
@@ -114,7 +117,7 @@ function harness(t, {
     await Promise.all(manager.list({ active: true }).map(task => operations.cancel(task.id, { ownerId })))
   })
   return { runtime, send, connect, request, manager, operations, events, frontends, runs, tasks, observations,
-    done, memoryListeners, provider, conversationSync, ownerId, sessionId }
+    done, logs, memoryListeners, provider, conversationSync, ownerId, sessionId }
 }
 
 test('negotiated receipt-less audio keeps result notifications pending while tasks and conversation work', async t => {
@@ -659,6 +662,146 @@ test('closing before tool discovery or inactivity timeout cannot start a new mod
   await new Promise(resolve => setTimeout(resolve, 120))
   assert.equal(h.frontends.length, 0)
   assert.equal(h.events.length, count)
+})
+
+test('normal transport closure is informational while abnormal closure keeps warning details', async t => {
+  const h = harness(t)
+  const f = await h.connect()
+  for (const [code, level] of [[1000, 'info'], [1005, 'warn'], [1006, 'warn'], [1011, 'warn']]) {
+    const fields = { provider: 'test', code, reason: 'synthetic close reason' }
+    f.diagnose({ event: 'realtime.transport_closed', ...fields })
+    assert.deepEqual(h.logs.at(-1), { level, event: 'realtime.transport_closed', fields })
+  }
+  f.diagnose({ event: 'realtime.response_timeout', provider: 'test', phase: 'inactivity' })
+  assert.equal(h.logs.at(-1).level, 'warn', 'other diagnostic warnings must not be downgraded')
+  assert.equal(h.events.some(event => event.type === 'error'), false, 'logging alone must not change client state')
+  assert.equal(h.runtime.status().state, 'connected')
+})
+
+test('failed response completion exposes nested provider errors and preserves their diagnostic details', async t => {
+  const h = harness(t)
+  const f = await h.connect()
+  const error = { code: 'model_inference_error', type: 'server_error', message: 'Synthetic model inference failure' }
+  f.emit({ type: 'response.created', response: { id: 'failed-response' } })
+  f.emit({ type: 'response.done', response: {
+    id: 'failed-response', status: 'failed', status_details: { type: 'failed', error },
+  } })
+  const errors = h.events.filter(event => event.type === 'error')
+  assert.equal(errors.length, 1, 'a failed completion must not be silently presented as an idle response')
+  assert.ok(errors[0].message.includes(error.code))
+  assert.ok(errors[0].message.includes(error.message))
+  const failureLog = h.logs.find(log => log.event === 'realtime.response.failed')
+  assert.ok(failureLog, 'provider response failures must remain available in logs')
+  assert.equal(failureLog.fields.responseId, 'failed-response')
+  assert.equal(failureLog.fields.provider, 'test')
+  assert.ok(failureLog.fields.errorMessage.includes(error.code))
+  assert.ok(failureLog.fields.errorMessage.includes(error.type))
+  assert.ok(failureLog.fields.errorMessage.includes(error.message))
+  assert.deepEqual(h.done, [{ id: 'failed-response', status: 'failed' }])
+  assert.equal(h.runtime.status().state, 'connected', 'a nonfatal response error does not block the session')
+})
+
+test('failed response completion without provider details still reports an error', async t => {
+  const h = harness(t)
+  const f = await h.connect()
+  f.emit({ type: 'response.created', response: { id: 'undetailed-failure' } })
+  f.emit({ type: 'response.done', response: { id: 'undetailed-failure', status: 'failed' } })
+  const errors = h.events.filter(event => event.type === 'error')
+  assert.equal(errors.length, 1)
+  assert.ok(errors[0].message.trim())
+  assert.deepEqual(h.done, [{ id: 'undetailed-failure', status: 'failed' }])
+})
+
+test('fatal errors in failed response completions block later close and audio reconnects', async t => {
+  const h = harness(t)
+  const error = { code: 'Model.AccessDenied', message: 'Synthetic model access denial' }
+  h.provider.classifyError = message => message.includes(error.code) ? 'fatal' : 'other'
+  const f = await h.connect()
+  f.emit({ type: 'response.created', response: { id: 'fatal-response' } })
+  f.emit({ type: 'response.done', response: {
+    id: 'fatal-response', status: 'failed', status_details: { type: 'failed', error },
+  } })
+  assert.equal(h.runtime.status().state, 'unavailable')
+  assert.equal(f.ready, false)
+  const unavailable = h.events.findLast(event => event.type === 'voice.connection' && event.state === 'unavailable')
+  assert.ok(unavailable.message.includes(error.code))
+  assert.ok(unavailable.message.includes(error.message))
+  assert.ok(h.logs.some(log => log.event === 'realtime.blocked' && log.fields.classification === 'fatal'))
+  f.disconnect()
+  h.send({ type: Input.AUDIO_APPEND, audio: 'AAAA' })
+  await new Promise(resolve => setTimeout(resolve, 600))
+  assert.equal(h.frontends.length, 1, 'the provider close following a fatal failure must not start a reconnect loop')
+  assert.equal(h.runtime.status().state, 'unavailable')
+})
+
+for (const status of ['cancelled', 'completed']) {
+  test(`${status} response completion does not report a nested error or block the session`, async t => {
+    const h = harness(t)
+    h.provider.classifyError = () => 'fatal'
+    const f = await h.connect()
+    f.emit({ type: 'response.created', response: { id: `${status}-response` } })
+    f.emit({ type: 'response.done', response: {
+      id: `${status}-response`, status,
+      status_details: { error: { code: 'synthetic_detail', message: 'Not a failed response' } },
+    } })
+    assert.equal(h.events.some(event => event.type === 'error'), false)
+    assert.equal(h.logs.some(log => log.event === 'realtime.blocked'), false)
+    assert.equal(h.runtime.status().state, 'connected')
+    assert.deepEqual(h.done, [{ id: `${status}-response`, status }])
+  })
+}
+
+test('a failed suppressed response does not surface an error or block a newer turn', async t => {
+  const h = harness(t)
+  h.provider.classifyError = () => 'fatal'
+  const f = await h.connect()
+  h.send({ type: Input.TEXT_MESSAGE, text: 'old question' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'old-response' } })
+  f.emit({ type: 'response.audio.delta', response_id: 'old-response', delta: 'AAA=' })
+  h.send({ type: Input.INTERRUPT })
+  h.send({ type: Input.TEXT_MESSAGE, text: 'new question' })
+  await until(() => f.inputs.length === 2)
+  f.emit({ type: 'response.created', response: { id: 'new-response' } })
+  f.emit({ type: 'response.done', response: {
+    id: 'old-response', status: 'failed',
+    status_details: { error: { code: 'Model.AccessDenied', message: 'Synthetic old response error' } },
+  } })
+  assert.equal(h.events.some(event => event.type === 'error'), false)
+  assert.equal(h.logs.some(log => log.event === 'realtime.blocked'), false)
+  assert.equal(h.runtime.status().state, 'connected')
+  assert.ok(h.logs.some(log => log.event === 'realtime.response.done'
+    && log.fields.responseId === 'old-response' && log.fields.suppressed === true))
+  f.emit({ type: 'response.text.done', response_id: 'new-response', text: 'new answer' })
+  f.emit({ type: 'response.done', response: { id: 'new-response', status: 'completed' } })
+  assert.ok(h.events.some(event => event.type === 'transcript.final' && event.content === 'new answer'))
+})
+
+test('failed response content-safety recovery keeps the failed turn after response cleanup', async t => {
+  const h = harness(t)
+  const f = await h.connect()
+  h.send({ type: Input.TEXT_MESSAGE, text: 'rejected question' })
+  await until(() => f.inputs.length === 1)
+  const rejectedTurn = f.inputs[0].context.turnId
+  f.emit({ type: 'response.created', response: { id: 'rejected-response' } })
+  // No audio has played, so this older response has not been suppressed by
+  // playback cancellation. Its own turn, not the current one, must be excluded.
+  h.send({ type: Input.TEXT_MESSAGE, text: 'keep this question' })
+  await until(() => f.inputs.length === 2)
+  const currentTurn = f.inputs[1].context.turnId
+  assert.notEqual(rejectedTurn, currentTurn)
+  f.emit({ type: 'response.done', response: {
+    id: 'rejected-response', status: 'failed', status_details: { error: { message: 'unsafe' } },
+  } })
+  await until(() => h.frontends.length === 2 && h.frontends[1].deliveries.length > 0)
+  const recoveryLog = h.logs.find(log => log.event === 'realtime.content_safety_recovery')
+  assert.equal(recoveryLog.fields.excludedTurnId, rejectedTurn)
+  const restored = h.frontends[1].initialContext.recentMessages
+  assert.equal(restored.some(message => message.turnId === rejectedTurn), false)
+  assert.ok(restored.some(message => message.turnId === currentTurn && message.content === 'keep this question'))
+  assert.ok(h.conversationSync.frontendContext(h).some(message => message.turnId === rejectedTurn),
+    'recovery must not delete the visible conversation history')
+  assert.deepEqual(h.done, [{ id: 'rejected-response', status: 'failed' }])
 })
 
 test('content-safety reconnect recovers frontend context without rerunning backend work', async t => {

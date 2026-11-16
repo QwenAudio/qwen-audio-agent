@@ -154,12 +154,16 @@ function normalizeToolResult(result) {
   }
 }
 
-function callArguments(tool, query, limit) {
+function callArguments(tool, query, limit, toolArguments = {}) {
   const properties = tool?.inputSchema?.properties || {}
   const queryField = QUERY_FIELDS.find(field => field in properties) || 'query'
   const args = { [queryField]: query }
   const limitField = LIMIT_FIELDS.find(field => field in properties)
   if (limitField) args[limitField] = limit
+  // Preset arguments are sent only when the tool declares them.
+  for (const [field, value] of Object.entries(toolArguments)) {
+    if (field in properties && !(field in args)) args[field] = value
+  }
   return args
 }
 
@@ -179,6 +183,7 @@ export class McpWebSearchProvider {
     key = 'mcp',
     label = 'MCP Web Search',
     requiresToken = false,
+    toolArguments = {},
     clientFactory = defaultClientFactory,
     transportFactory = defaultTransportFactory,
   } = {}) {
@@ -188,6 +193,7 @@ export class McpWebSearchProvider {
     this.key = clean(key) || 'mcp'
     this.label = clean(label) || 'MCP Web Search'
     this.requiresToken = Boolean(requiresToken)
+    this.toolArguments = { ...toolArguments }
     this.clientFactory = clientFactory
     this.transportFactory = transportFactory
   }
@@ -243,7 +249,12 @@ export class McpWebSearchProvider {
       }
       const result = await client.callTool({
         name: this.toolName,
-        arguments: callArguments(tool, normalizedQuery, boundedLimit),
+        arguments: callArguments(
+          tool,
+          normalizedQuery,
+          boundedLimit,
+          this.toolArguments,
+        ),
       }, undefined, { signal })
       return normalizeToolResult(result)
     } catch (error) {

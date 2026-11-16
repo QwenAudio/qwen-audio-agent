@@ -37,6 +37,10 @@ export function useDualConnection({ sessionId, config, image, autoMic = false })
   const [playback, setPlayback] = useState('idle')
   const [avatarState, setAvatarState] = useState(null)
   const [frameCount, setFrameCount] = useState(0)
+  // Idle animation is painted without a reply, so it never moves frameCount.
+  // One flag is enough: repeat sets make React bail out, so a 25 fps stream
+  // costs no re-renders.
+  const [idlePainted, setIdlePainted] = useState(false)
   const [messages, setMessages] = useState([])
   const [micEnabled, setMicEnabled] = useState(false)
   const [rendererAvailable, setRendererAvailable] = useState(false)
@@ -100,6 +104,7 @@ export function useDualConnection({ sessionId, config, image, autoMic = false })
     setRendererAvailable(false)
     setAvatarState(null)
     setFrameCount(0)
+    setIdlePainted(false)
   }, [])
 
   useEffect(() => {
@@ -109,6 +114,7 @@ export function useDualConnection({ sessionId, config, image, autoMic = false })
     setPlayback('idle')
     setAvatarState(null)
     setFrameCount(0)
+    setIdlePainted(false)
     setMicEnabled(false)
     setRendererAvailable(false)
     setError(null)
@@ -183,6 +189,7 @@ export function useDualConnection({ sessionId, config, image, autoMic = false })
     setAvatarState(null)
     setPlayback('idle')
     setFrameCount(0)
+    setIdlePainted(false)
     setMicEnabled(false)
     setRendererAvailable(false)
     // Both construction and resume happen directly inside the click gesture.
@@ -219,6 +226,7 @@ export function useDualConnection({ sessionId, config, image, autoMic = false })
         canvas: canvasRef.current,
         video: videoRef.current,
         onFrame: () => { if (current()) setFrameCount(value => value + 1) },
+        onIdleFrame: () => { if (current()) setIdlePainted(true) },
       })
       if (!current()) { player.close?.(); return }
       const renderer = new WebSocket(socketUrl(config.rendererPath))
@@ -343,7 +351,7 @@ export function useDualConnection({ sessionId, config, image, autoMic = false })
   }, [commitMessages, interruptMessages])
 
   return {
-    state, playback, avatarState, frameCount, messages, micEnabled, rendererAvailable, error,
+    state, playback, avatarState, frameCount, idlePainted, messages, micEnabled, rendererAvailable, error,
     canvasRef, videoRef, start, toggleMic, send, disconnect,
     interrupt: () => {
       const runtime = runtimeRef.current

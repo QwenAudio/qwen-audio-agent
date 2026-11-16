@@ -15,11 +15,11 @@ const miniCpm = process.argv.includes('--minicpm')
 const webRtc = process.argv.includes('--webrtc')
 const upstream = new WebSocketServer({ host: '127.0.0.1', port: 0 })
 await once(upstream, 'listening')
-// Exercise canonical-only configuration and keep inherited aliases/catalogs
+// Exercise canonical-only configuration and keep inherited aliases
 // from redirecting a no-cloud fixture to another connection.
 for (const key of ['DASHSCOPE_API_KEY', 'DASHSCOPE_WORKSPACE_ID', 'QWEN_AUDIO_REALTIME_BASE_URL',
   'QWEN_AUDIO_REALTIME_ENDPOINT', 'QWEN_OMNI_REALTIME_VOICE', 'MINICPM_O_REALTIME_URL',
-  'MINICPM_O_AUTH_TOKEN', 'QWEN_AUDIO_FRONTEND_MODELS_CONFIG']) delete process.env[key]
+  'MINICPM_O_AUTH_TOKEN']) delete process.env[key]
 Object.assign(process.env, {
   QWEN_AUDIO_REALTIME_API_KEY: miniCpm ? '' : 'fixture-only',
   QWEN_AUDIO_REALTIME_PROVIDER: miniCpm ? 'minicpm-o' : 'dashscope',

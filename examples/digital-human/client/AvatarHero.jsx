@@ -7,7 +7,7 @@ import './avatar-hero.css'
 export default function AvatarHero({ avatar, personaId, rendererId = 'dhav', referenceImage }) {
   const {
     state, playback, avatarState, error,
-    canvasRef, videoRef, frameCount, send, clearError,
+    canvasRef, videoRef, frameCount, idlePainted, send, clearError,
   } = avatar
 
   const [draft, setDraft] = useState('')
@@ -16,7 +16,10 @@ export default function AvatarHero({ avatar, personaId, rendererId = 'dhav', ref
   const dot = avatarStatusDot(visual)
 
   const ready = state === 'connected'
-  const showVideo = frameCount > 0 && visual !== 'audio_only'
+  // Idle animation paints without a reply, so it never advances frameCount;
+  // either signal means the canvas has real pixels. Vidu owns a continuous RTC
+  // track and never reports idle frames, so its liveness check still governs.
+  const showVideo = (frameCount > 0 || idlePainted) && visual !== 'audio_only'
     && (rendererId !== 'vidu' || (videoRef.current?.srcObject && !videoRef.current.paused && videoRef.current.readyState >= 2))
   const showReference = rendererId === 'vidu' && referenceImage && failedImage !== referenceImage && !showVideo
 
@@ -36,6 +39,7 @@ export default function AvatarHero({ avatar, personaId, rendererId = 'dhav', ref
       data-avatar-state={avatarState?.state || ''}
       data-visual={visual}
       data-frame-count={frameCount}
+      data-idle-painted={idlePainted ? 'true' : 'false'}
     >
       <div className="avatar-viewport" data-visual={visual}>
         <canvas

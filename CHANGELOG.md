@@ -10,6 +10,8 @@
   `WorkingDirectory` 不再添加引号，保留路径中的空格并转义 `%`。
 - 修复移动端等客户端配对后无法通过 WebSocket 子协议连接远程 Gateway：凭据格式校验兼容
   Gateway 签发的 22 字符设备 Token；签发、身份验证及静态访问 Token 的长度要求保持不变。
+- 修复 GPT-Live 工具结果与后台结果无法续答的问题：GA 对话项 ID 总长度不超过 32 字符，
+  并兼容 `conversation.item.added` 消息接收回执；保留按消息 ID 确认投递的机制（#592）。
 
 ### 示例
 

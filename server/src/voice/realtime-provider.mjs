@@ -55,7 +55,10 @@ function matchesConversationItem(expected, received) {
   if (expected.type === 'function_call_output') return expected.call_id === received.call_id
   if (expected.type !== 'message' || expected.role !== received.role) return false
   // Ignore automatically created microphone/assistant items on the same socket.
-  const text = item => (item.content || []).map(part => part.text || '').join('')
+  // StepFun acknowledges text as audio/transcript; input_audio is microphone input.
+  const text = item => (item.content || []).map(part => (
+    part.text || (part.type === 'input_audio' ? '' : part.transcript) || ''
+  )).join('')
   return text(expected) !== '' && text(expected) === text(received)
 }
 
@@ -86,7 +89,7 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   acknowledgesSessionUpdate: true,
   // Refuses concurrent response.create requests instead of queueing them.
   singleResponseSlot: false,
-  // Accept response-scoped activity only during a formally opened response.
+  // Require a formal start; a final transcript may still arrive after completion.
   requiresResponseCreated: false,
   // Echoes response metadata so client-created responses can be correlated
   // without confusing them with automatic server-side responses.
@@ -117,6 +120,13 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   imageRequiresAudioStart: false,
 })
 const DEFAULT_RESPONSE_CANCEL_GRACE_MS = 1_000
+const MAX_PENDING_FINAL_RESPONSES = 100
+const FINAL_TEXT_EVENTS = new Set([
+  'response.audio_transcript.done',
+  'response.output_audio_transcript.done',
+  'response.text.done',
+  'response.output_text.done',
+])
 
 export class RealtimeFrontend {
   constructor({
@@ -160,6 +170,9 @@ export class RealtimeFrontend {
     this.restoringContext = false
     this.audioInputStarted = false
     this.activeResponses = new Set()
+    // Only used by providers requiring response.created. false = awaiting final
+    // while active; true = successfully ended and awaiting one late final.
+    this.pendingFinalResponses = new Map()
     this.pendingResponses = []
     this.retryingResponses = new Set()
     this.responseWaiters = new Map()
@@ -305,14 +318,22 @@ export class RealtimeFrontend {
   handleProviderEvent(providerEvent, { onSessionReady, onSessionError } = {}) {
     const events = []
     for (const event of normalizedEvents(this.protocol.normalizeIncoming(providerEvent))) {
-      // Qwen Audio may send early output while the user is still
-      // speaking, then replay it after response.created.
+      // Some providers replay early output after their formal response start.
+      // Late final text belongs to presentation, not to a new active response.
       if (
         this.capabilities.requiresResponseCreated
         && event.type !== 'response.created'
         && isResponseActivityEvent(event)
         && !this.activeResponses.has(realtimeResponseId(event))
-      ) continue
+      ) {
+        const id = realtimeResponseId(event)
+        if (!FINAL_TEXT_EVENTS.has(event.type) || this.pendingFinalResponses.get(id) !== true) continue
+        this.pendingFinalResponses.delete(id)
+        event.__voiceLateFinal = true
+        this.onEvent?.(event)
+        events.push(event)
+        continue
+      }
       if (event.type === 'error' && this.restoringContext) {
         event.__voiceOrigin = 'restore'
       }
@@ -741,6 +762,7 @@ export class RealtimeFrontend {
   cancel() {
     this.responseQueueGeneration += 1
     const cancelledResponseIds = [...this.activeResponses]
+    for (const id of cancelledResponseIds) this.pendingFinalResponses.delete(id)
     const hasResponse = cancelledResponseIds.length
       || this.pendingResponses.some(pending => pending.responseRequested)
       || this.responseSlot.blocked
@@ -797,9 +819,10 @@ export class RealtimeFrontend {
       if (matches(pending)) this.settlePending(pending, { cancelled: true, phase: 'start' })
     }
     let cancelledActive = false
-    for (const pending of this.responseWaiters.values()) {
+    for (const [id, pending] of this.responseWaiters) {
       if (!matches(pending)) continue
       cancelledActive = true
+      this.pendingFinalResponses.delete(id)
       this.settlePending(pending, {
         cancelled: true,
         phase: 'completion',
@@ -890,6 +913,7 @@ export class RealtimeFrontend {
       && this.provider.classifyError(realtimeEventErrorMessage(event)) === 'no_active_response') {
       // This acknowledges cancellation; it must not reject an unrelated item.
       if (this.responseSlot.phase === 'cancelling') {
+        for (const id of this.activeResponses) this.pendingFinalResponses.delete(id)
         this.activeResponses.clear()
         this.responseWaiters.clear()
         this.responseSlot.release()
@@ -935,6 +959,7 @@ export class RealtimeFrontend {
     }
     if (isResponseActivityEvent(event)) {
       const responseId = realtimeResponseId(event)
+      if (FINAL_TEXT_EVENTS.has(event.type)) this.pendingFinalResponses.delete(responseId)
       if (this.responseSlot.phase === 'cancelling') {
         event.__voiceContext = { suppressed: true }
       } else if (event.type !== 'response.done') {
@@ -977,6 +1002,12 @@ export class RealtimeFrontend {
       if (pending?.isCurrent?.() === false) event.__voiceContext = { ...pending.context, suppressed: true }
       if (id) {
         this.activeResponses.add(id)
+        if (this.capabilities.requiresResponseCreated) {
+          this.pendingFinalResponses.set(id, false)
+          while (this.pendingFinalResponses.size > MAX_PENDING_FINAL_RESPONSES) {
+            this.pendingFinalResponses.delete(this.pendingFinalResponses.keys().next().value)
+          }
+        }
         if (pending) {
           this.responseWaiters.set(id, pending)
           pending.responseStartedAt = Date.now()
@@ -1032,6 +1063,11 @@ export class RealtimeFrontend {
       const status = event.response?.status
       const completed = event.type === 'response.done'
         && !['failed', 'cancelled', 'incomplete'].includes(status)
+      if (completed && this.pendingFinalResponses.has(id)) {
+        this.pendingFinalResponses.set(id, true)
+      } else {
+        this.pendingFinalResponses.delete(id)
+      }
       this.settlePending(pending, completed
         ? { completed: true, responseId: id }
         : { failed: true, responseId: id, status })
@@ -1122,6 +1158,7 @@ export class RealtimeFrontend {
       }
       if (this.capabilities.singleResponseSlot) this.responseSlot.recover()
       else this.send(this.protocol.responseCancel())
+      this.pendingFinalResponses.delete(responseId)
       this.settlePending(pending, {
         timedOut: true,
         phase: 'inactivity',
@@ -1214,6 +1251,7 @@ export class RealtimeFrontend {
   resetResponses() {
     this.responseQueueGeneration += 1
     this.activeResponses.clear()
+    this.pendingFinalResponses.clear()
     this.responseSlot.release()
     this.rejectConversationItemWaiters(new Error('Realtime 会话已重置'))
     this.pendingResponses.forEach(item => this.settlePending(item, { cancelled: true }))

@@ -31,7 +31,8 @@ const RESPONSE_CORRELATION_KEY = 'qwen_audio_request_id'
  *
  * - response payloads use output_modalities instead of modalities;
  * - text deltas arrive as response.output_text.* instead of response.text.*;
- * - conversation item ids are namespaced per item type.
+ * - conversation item ids are namespaced per item type and at most 32 characters;
+ * - conversation.item.added acknowledges an item, not a completed response.
  */
 export const gaRealtimeProtocol = Object.freeze({
   encodeOutgoing: payload => ({
@@ -45,6 +46,8 @@ export const gaRealtimeProtocol = Object.freeze({
         return { ...event, type: 'response.text.delta' }
       case 'response.output_text.done':
         return { ...event, type: 'response.text.done' }
+      case 'conversation.item.added':
+        return { ...event, type: 'conversation.item.created' }
       default:
         return event
     }
@@ -66,7 +69,9 @@ export const gaRealtimeProtocol = Object.freeze({
 
   conversationItemId: item => {
     const prefix = ID_PREFIXES[item?.type] || 'item'
-    return `${prefix}_${randomUUID().replaceAll('-', '')}`
+    // OpenAI limits the entire item id, including its type namespace, to 32 characters.
+    const suffix = randomUUID().replaceAll('-', '').slice(0, 32 - prefix.length - 1)
+    return `${prefix}_${suffix}`
   },
 
   conversationItemCreate: item => ({

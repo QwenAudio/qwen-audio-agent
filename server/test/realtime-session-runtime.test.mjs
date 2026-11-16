@@ -357,6 +357,99 @@ test('DashScope early transcript cannot bind the next voice response to the prev
   }, { started: [nextTurn], audio: [nextTurn], timedOut: false })
 })
 
+test('DashScope late final transcript keeps its completed turn without reopening the response slot', async t => {
+  const h = harness(t, { backend: false })
+  const session = await h.connect({}, {
+    capabilitiesNegotiated: true, capabilities: ['input.audio', 'input.text'],
+  })
+  const { audioProvider, realtimeModel } = config
+  config.audioProvider = 'dashscope'
+  config.realtimeModel = DASHSCOPE_AUDIO_30_REALTIME_MODEL
+  t.after(() => Object.assign(config, { audioProvider, realtimeModel }))
+  const frontend = new RealtimeFrontend({
+    provider: REALTIME_PROVIDERS.dashscope,
+    onEvent: session.emit,
+  })
+  t.after(() => frontend.close())
+  const receive = event => frontend.handleProviderEvent(event)
+
+  receive({ type: 'input_audio_buffer.speech_started', item_id: 'first-input' })
+  receive({ type: 'input_audio_buffer.speech_stopped', item_id: 'first-input' })
+  receive({ type: 'response.created', response: { id: 'first-response' } })
+  receive({ type: 'response.audio.delta', response_id: 'first-response', delta: 'AA==' })
+  receive({ type: 'response.done', response: { id: 'first-response', status: 'completed' } })
+  const firstTurn = h.events.findLast(event => event.type === 'turn.started').turnId
+  assert.equal(frontend.activeResponses.size, 0)
+
+  receive({ type: 'input_audio_buffer.speech_started', item_id: 'next-input' })
+  receive({ type: 'input_audio_buffer.speech_stopped', item_id: 'next-input' })
+  const nextTurn = h.events.findLast(event => event.type === 'turn.started').turnId
+  assert.notEqual(nextTurn, firstTurn)
+  frontend.responseSlot.occupy()
+  const startedBeforeFinal = h.events.filter(event => event.type === 'response.started').length
+  receive({
+    type: 'response.audio_transcript.done', response_id: 'first-response', transcript: 'first answer',
+  })
+
+  const final = h.events.findLast(event => event.type === 'transcript.final' && event.role === 'assistant')
+  assert.equal(final?.content, 'first answer')
+  assert.equal(final.turnId, firstTurn)
+  assert.equal(h.events.filter(event => event.type === 'response.started').length, startedBeforeFinal)
+  assert.equal(frontend.activeResponses.size, 0, 'a final transcript must not resurrect the completed response')
+  assert.equal(frontend.responseSlot.phase, 'pending', 'the next response still owns the pending slot')
+  assert.ok(h.conversationSync.frontendContext(h)
+    .some(message => message.role === 'assistant' && message.content === 'first answer' && message.turnId === firstTurn))
+  assert.deepEqual(h.done, [{ id: 'first-response', status: 'completed' }])
+
+  receive({ type: 'response.created', response: { id: 'next-response' } })
+  assert.equal(frontend.responseSlot.phase, 'idle')
+  assert.deepEqual([...frontend.activeResponses], ['next-response'])
+  receive({ type: 'response.done', response: { id: 'next-response', status: 'completed' } })
+})
+
+for (const hadAudio of [false, true]) {
+  test(`DashScope final text cannot recreate a cleaned response context (had audio: ${hadAudio})`, async t => {
+    const h = harness(t, { backend: false })
+    const session = await h.connect({}, {
+      capabilitiesNegotiated: true, capabilities: ['input.audio', 'input.text'],
+    })
+    const { audioProvider, realtimeModel } = config
+    config.audioProvider = 'dashscope'
+    config.realtimeModel = DASHSCOPE_AUDIO_30_REALTIME_MODEL
+    t.after(() => Object.assign(config, { audioProvider, realtimeModel }))
+    const frontend = new RealtimeFrontend({
+      provider: REALTIME_PROVIDERS.dashscope,
+      onEvent: session.emit,
+    })
+    t.after(() => frontend.close())
+    const receive = event => frontend.handleProviderEvent(event)
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+
+    receive({ type: 'input_audio_buffer.speech_started', item_id: 'old-input' })
+    receive({ type: 'input_audio_buffer.speech_stopped', item_id: 'old-input' })
+    receive({ type: 'response.created', response: { id: 'old-response' } })
+    if (hadAudio) receive({ type: 'response.audio.delta', response_id: 'old-response', delta: 'AA==' })
+    receive({ type: 'response.done', response: { id: 'old-response', status: 'completed' } })
+    // Silent replies are cleaned immediately; receipt-less audio retains its
+    // original turn for final text only until the context cleanup deadline.
+    if (hadAudio) t.mock.timers.tick(30_000)
+
+    receive({ type: 'input_audio_buffer.speech_started', item_id: 'new-input' })
+    receive({ type: 'input_audio_buffer.speech_stopped', item_id: 'new-input' })
+    receive({ type: 'response.created', response: { id: 'new-response' } })
+    const eventsBeforeFinal = h.events.length
+    const delivered = receive({
+      type: 'response.audio_transcript.done', response_id: 'old-response', transcript: 'too late',
+    })
+
+    assert.equal(delivered.length, 1, 'the provider forwards the late final for the Gateway to correlate')
+    assert.equal(h.events.length, eventsBeforeFinal, 'an expired response must not emit new turn or transcript events')
+    assert.deepEqual([...frontend.activeResponses], ['new-response'])
+    assert.equal(h.conversationSync.frontendContext(h).some(message => message.content === 'too late'), false)
+    receive({ type: 'response.done', response: { id: 'new-response', status: 'completed' } })
+  })
+}
+
 test('spawn receipt is asynchronous; ongoing work does not prevent further chat, interruption or close', async t => {
   const h = harness(t)
   const f = await h.connect()

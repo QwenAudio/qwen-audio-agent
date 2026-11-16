@@ -7,20 +7,13 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
   const { parseSettings, clientSettingsPatch } = await import('../src/settings-config.mjs')
   const { parseDesktopGatewayInput } = await import('../src/gateway-connection.mjs')
   const { encodeGatewayPairingCode, encodeGatewayBrowserPairingCode } = await import('../../shared/gateway/remote-access.mjs')
-  const { createRealtimeModelCatalogs } = await import('../../shared/realtime-model-catalog.mjs')
-  const realtimeModelCatalogs = createRealtimeModelCatalogs({
-    providers: { dashscope: { models: {
-      'private-audio': { label: 'Private Audio', api: 'audio', voice: null },
-      'private-omni': { label: 'Private Omni', api: 'omni', voice: 'Ethan' },
-    } } },
-  })
-  let realtimeModelCatalogError = ''
+  const {
+    BUILTIN_REALTIME_MODEL_CATALOGS: realtimeModelCatalogs,
+    DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL: flashModel,
+    DASHSCOPE_OMNI_FLASH_REALTIME_MODEL: omniModel,
+  } = await import('../../shared/realtime-model-catalog.mjs')
+  let catalogSnapshot = realtimeModelCatalogs
   let realtimeConfigurationPending = false
-  const modelCatalogStatus = () => ({
-    realtimeModelCatalogs: realtimeModelCatalogError ? null : realtimeModelCatalogs,
-    realtimeModelCatalogError,
-    realtimeConfigurationPending,
-  })
   let settings = { ...parseSettings('', {}), agentProtocol: 'qwen' }
   let saves = 0
   let runtimeRequests = 0
@@ -32,7 +25,10 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
     backend: { protocol: 'qwen', label: 'Qwen Code', connected: true },
   })
   const handlers = {
-    'settings-load': () => ({ settings, ...modelCatalogStatus(), runtime: runtime(), skins: [], wakeShortcutRegistered: true }),
+    'settings-load': () => ({
+      settings, realtimeModelCatalogs: catalogSnapshot, realtimeConfigurationPending,
+      runtime: runtime(), skins: [], wakeShortcutRegistered: true,
+    }),
     'settings-runtime-status': () => { runtimeRequests += 1; return runtime() },
     'settings-detect-backends': () => ({ backends: [{
       id: 'qwen', label: 'Qwen Code', ready: true, selected: true,
@@ -41,13 +37,15 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
     'updater-status': () => ({ phase: 'idle' }),
     'settings-save': (_event, draft) => {
       assert.equal('realtimeModelCatalogs' in draft, false, 'Read-only catalogs must not be submitted as settings')
-      assert.equal('realtimeModelCatalogError' in draft, false)
       assert.equal('realtimeConfigurationPending' in draft, false)
       const target = parseDesktopGatewayInput(draft.gatewayUrl)
       settings = { ...settings, ...(target.remote ? clientSettingsPatch(draft) : draft), gatewayUrl: target.origin }
       saves += 1
       realtimeConfigurationPending = false
-      return { settings, ...modelCatalogStatus(), runtime: runtime(), wakeShortcutRegistered: true }
+      return {
+        settings, realtimeModelCatalogs: catalogSnapshot, realtimeConfigurationPending,
+        runtime: runtime(), wakeShortcutRegistered: true,
+      }
     },
   }
   for (const [name, handler] of Object.entries(handlers)) {
@@ -79,9 +77,9 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
     assert.equal(await evaluate(`document.querySelector('#gateway-pairing-code') === null`), true)
     assert.deepEqual(await evaluate(`(() => {
       const model = document.querySelector('[data-setting=realtimeModel]')
-      return { tag: model.tagName, registered: [...model.options].filter(option => option.value.startsWith('private-')).map(option => option.textContent),
+      return { tag: model.tagName, flash: [...model.options].find(option => option.value === ${JSON.stringify(flashModel)})?.textContent,
         profile: !!document.querySelector('[data-realtime-slot=profile]') }
-    })()`), { tag: 'SELECT', registered: ['Private Audio', 'Private Omni'], profile: false })
+    })()`), { tag: 'SELECT', flash: 'Qwen Audio 3.1 Realtime Flash', profile: false })
     // Exercise the actual dynamic form, including provider/model/language
     // switches. No user settings or provider API are accessed by this fixture.
     await evaluate(`(() => {
@@ -105,7 +103,7 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
     assert.equal(await evaluate(`document.querySelectorAll('#realtime-provider [role=option]').length`), 1)
     await evaluate(`document.querySelector('#realtime-provider [data-value=stepfun]').click()`)
     assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeModel]').value`), 'stepaudio-3-realtime-preview')
-    assert.equal(await evaluate(`[...document.querySelector('[data-setting=realtimeModel]').options].some(option => option.value.startsWith('private-'))`), false)
+    assert.equal(await evaluate(`[...document.querySelector('[data-setting=realtimeModel]').options].some(option => option.value === ${JSON.stringify(flashModel)})`), false)
     assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeApiKey]').value`), '')
     await evaluate(`(() => {
       setRealtimeField('realtimeApiKey', 'test-step-key')
@@ -113,10 +111,11 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
       selectFrontend('dashscope')
     })()`)
     assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeVoice]').value`), 'audio-draft')
-    await evaluate(`setRealtimeField('realtimeModel', 'private-audio')`)
+    await evaluate(`setRealtimeField('realtimeModel', ${JSON.stringify(flashModel)})`)
     assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeModel]').checkValidity()`), true)
     assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeVoice]').value`), '')
-    await evaluate(`setRealtimeField('realtimeModel', 'private-omni')`)
+    assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeVoice]').placeholder`), 'longanqian_v3.1')
+    await evaluate(`setRealtimeField('realtimeModel', ${JSON.stringify(omniModel)})`)
     assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeVoice]').value`), '')
     await evaluate(`(() => {
       setRealtimeField('realtimeVoice', 'omni-draft')
@@ -148,7 +147,7 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
     assert.equal(await evaluate(`document.querySelector('label[for=realtime-provider-trigger]').textContent`), 'Provider')
     assert.equal(await evaluate(`document.querySelector('#settings-form').checkValidity()`), true, 'Inactive provider drafts cannot block the active provider')
     await evaluate(`selectFrontend('dashscope')`)
-    assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeModel]').value`), 'private-omni')
+    assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeModel]').value`), omniModel)
     assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeModel]').checkValidity()`), true)
     assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeVoice]').value`), 'omni-draft')
     await evaluate(`selectFrontend('stepfun')`)
@@ -219,12 +218,12 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
       return !document.querySelector('[data-local-gateway-settings]').hidden
         && !document.querySelector('button[type=submit]').disabled
     })()`), true, 'Switching to a local address restores local configuration controls')
-    liveModelProfile = { id: 'private-omni', label: 'Private Omni Runtime', family: 'omni' }
+    liveModelProfile = realtimeModelCatalogs.dashscope.profiles.find(profile => profile.id === flashModel)
     await evaluate(`(() => {
       selectFrontend('dashscope')
-      setRealtimeField('realtimeModel', 'private-audio')
-      setRealtimeField('realtimeVoice', 'audio-saved')
-      setRealtimeField('realtimeModel', 'private-omni')
+      setRealtimeField('realtimeModel', ${JSON.stringify(omniModel)})
+      setRealtimeField('realtimeVoice', 'omni-saved')
+      setRealtimeField('realtimeModel', ${JSON.stringify(flashModel)})
       setRealtimeField('realtimeVoice', '')
       document.querySelector('#settings-form').requestSubmit()
     })()`)
@@ -232,23 +231,23 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
       const deadline = Date.now() + 5000
       const poll = () => {
         if (document.querySelector('#message').className === 'success') return resolve()
-        if (Date.now() > deadline) return reject(new Error('Registered model settings were not applied'))
+        if (Date.now() > deadline) return reject(new Error('Supported model settings were not applied'))
         setTimeout(poll, 20)
       }
       poll()
     })`)
     assert.equal(saves, links.length + 1)
-    assert.equal(settings.realtimeModel, 'private-omni')
+    assert.equal(settings.realtimeModel, flashModel)
     assert.equal(settings.realtimeVoice, '')
-    assert.match(await evaluate(`document.querySelector('#current-realtime').textContent`), /^Private Omni Runtime/)
+    assert.match(await evaluate(`document.querySelector('#current-realtime').textContent`), /^Qwen Audio 3\.1 Flash/)
     assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeModel]').checkValidity()`), true,
       'The save response must preserve the read-only catalog snapshot')
     await window.loadFile(resolve(__dirname, '../src/settings.html'))
     await evaluate(`new Promise((resolve, reject) => {
       const deadline = Date.now() + 5000
       const poll = () => {
-        if (document.querySelector('[data-setting=realtimeModel]')?.value === 'private-omni') return resolve()
-        if (Date.now() > deadline) return reject(new Error('Registered model settings were not restored'))
+        if (document.querySelector('[data-setting=realtimeModel]')?.value === ${JSON.stringify(flashModel)}) return resolve()
+        if (Date.now() > deadline) return reject(new Error('Supported model settings were not restored'))
         setTimeout(poll, 20)
       }
       poll()
@@ -259,18 +258,18 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
       const { writeFile } = require('node:fs/promises')
       await evaluate(`document.querySelector('#voice-tab').click()`)
       await new Promise(resolve => setTimeout(resolve, 150))
-      await writeFile(resolve(process.env.QWAUDIO_SMOKE_SCREENSHOT_DIR, 'voice-registered-model.png'), (await window.webContents.capturePage()).toPNG())
+      await writeFile(resolve(process.env.QWAUDIO_SMOKE_SCREENSHOT_DIR, 'voice-supported-model.png'), (await window.webContents.capturePage()).toPNG())
     }
 
-    // A removed registry entry must remain visible and block saving. Native
+    // An unsupported saved model must remain visible and block saving. Native
     // validation must reveal the Voice tab before trying to focus its selector.
-    settings = { ...settings, realtimeModel: 'removed-private-model' }
+    settings = { ...settings, realtimeModel: 'unsupported-model' }
     await window.loadFile(resolve(__dirname, '../src/settings.html'))
     await evaluate(`new Promise((resolve, reject) => {
       const deadline = Date.now() + 5000
       const poll = () => {
-        if (document.querySelector('[data-setting=realtimeModel]')?.value === 'removed-private-model') return resolve()
-        if (Date.now() > deadline) return reject(new Error('Unregistered model was silently changed'))
+        if (document.querySelector('[data-setting=realtimeModel]')?.value === 'unsupported-model') return resolve()
+        if (Date.now() > deadline) return reject(new Error('Unsupported model was silently changed'))
         setTimeout(poll, 20)
       }
       poll()
@@ -279,26 +278,25 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
       const model = document.querySelector('[data-setting=realtimeModel]')
       document.querySelector('#app-tab').click()
       document.querySelector('#settings-form').requestSubmit()
-      return { value: model.value, error: model.validationMessage.includes('frontend-models.json'),
+      return { value: model.value, error: model.validationMessage.includes('模型不受支持'),
         selected: model.selectedOptions[0].textContent,
         voiceVisible: !document.querySelector('#voice-settings').hidden, focused: document.activeElement === model }
-    })()`), { value: 'removed-private-model', error: true, selected: 'removed-private-model（未登记）', voiceVisible: true, focused: true })
-    assert.equal(saves, links.length + 1, 'Unregistered models must not reach settings-save')
+    })()`), { value: 'unsupported-model', error: true, selected: 'unsupported-model（不支持）', voiceVisible: true, focused: true })
+    assert.equal(saves, links.length + 1, 'Unsupported models must not reach settings-save')
     assert.doesNotMatch(rendererMessages.join('\n'), /not focusable/)
     if (process.env.QWAUDIO_SMOKE_SCREENSHOT_DIR) {
       const { writeFile } = require('node:fs/promises')
       await new Promise(resolve => setTimeout(resolve, 150))
-      await writeFile(resolve(process.env.QWAUDIO_SMOKE_SCREENSHOT_DIR, 'voice-unregistered-model.png'), (await window.webContents.capturePage()).toPNG())
+      await writeFile(resolve(process.env.QWAUDIO_SMOKE_SCREENSHOT_DIR, 'voice-unsupported-model.png'), (await window.webContents.capturePage()).toPNG())
     }
 
-    realtimeModelCatalogError = 'Invalid JSON in frontend model catalog /example/frontend-models.json'
     settings = { ...settings, gatewayUrl: 'https://gateway.example' }
     await window.loadFile(resolve(__dirname, '../src/settings.html'))
     await evaluate(`new Promise((resolve, reject) => {
       const deadline = Date.now() + 5000
       const poll = () => {
-        if (document.querySelector('#realtime-model-catalog-error').textContent.includes('Invalid JSON')) return resolve()
-        if (Date.now() > deadline) return reject(new Error('Catalog failure prevented settings from loading'))
+        if (document.querySelector('#gateway-url').value === 'https://gateway.example') return resolve()
+        if (Date.now() > deadline) return reject(new Error('Unsupported local model prevented remote settings from loading'))
         setTimeout(poll, 20)
       }
       poll()
@@ -306,7 +304,7 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
     assert.equal(await evaluate(`document.querySelector('#gateway-url').value`), 'https://gateway.example')
     assert.equal(await evaluate(`document.querySelector('[data-setting=realtimeModel]').disabled`), true)
     assert.equal(await evaluate(`document.querySelector('#settings-form').checkValidity()`), true,
-      'Unavailable local catalogs must not block remote preferences')
+      'Unsupported local models must not block remote preferences')
     await evaluate(`(() => {
       const language = document.querySelector('#desktop-language')
       language.value = 'en'
@@ -317,19 +315,16 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
       const deadline = Date.now() + 5000
       const poll = () => {
         if (document.querySelector('#message').className === 'success') return resolve()
-        if (Date.now() > deadline) return reject(new Error('Catalog failure prevented saving remote preferences'))
+        if (Date.now() > deadline) return reject(new Error('Unsupported local model prevented saving remote preferences'))
         setTimeout(poll, 20)
       }
       poll()
     })`)
     assert.equal(saves, links.length + 2)
     assert.equal(settings.language, 'en')
-    assert.match(await evaluate(`document.querySelector('#realtime-model-catalog-error').textContent`), /^Cannot load the local model catalog/)
     const requestsBeforeRefresh = runtimeRequests
     await evaluate(`new Promise(resolve => setTimeout(resolve, 2100))`)
     assert.ok(runtimeRequests > requestsBeforeRefresh)
-    assert.equal(await evaluate(`document.querySelector('#realtime-model-catalog-error').hidden`), false)
-    assert.match(await evaluate(`document.querySelector('#realtime-model-catalog-error').textContent`), /Invalid JSON/)
     assert.deepEqual(await evaluate(`(() => {
       const gateway = document.querySelector('#gateway-url')
       gateway.value = 'http://localhost:3101'
@@ -339,24 +334,23 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
       const model = document.querySelector('[data-setting=realtimeModel]')
       return { enabled: !model.disabled, error: model.validationMessage,
         voiceVisible: !document.querySelector('#voice-settings').hidden }
-    })()`), { enabled: true, error: 'Model catalog is unavailable. Fix its configuration and reopen Settings.', voiceVisible: true })
-    assert.equal(saves, links.length + 2, 'Catalog failure must still prevent local model configuration')
+    })()`), { enabled: true, error: 'Model is not supported. Select a listed model.', voiceVisible: true })
+    assert.equal(saves, links.length + 2, 'Unsupported models must still prevent local model configuration')
     if (process.env.QWAUDIO_SMOKE_SCREENSHOT_DIR) {
       const { writeFile } = require('node:fs/promises')
       await new Promise(resolve => setTimeout(resolve, 150))
-      await writeFile(resolve(process.env.QWAUDIO_SMOKE_SCREENSHOT_DIR, 'voice-catalog-error.png'), (await window.webContents.capturePage()).toPNG())
+      await writeFile(resolve(process.env.QWAUDIO_SMOKE_SCREENSHOT_DIR, 'voice-unsupported-model-en.png'), (await window.webContents.capturePage()).toPNG())
     }
 
-    // Metadata-only catalog edits have no editable-field fingerprint delta.
+    // An application update can change model defaults without changing fields.
     // A main-process pending signal must still allow applying them locally.
-    realtimeModelCatalogError = ''
     realtimeConfigurationPending = true
-    settings = { ...settings, gatewayUrl: 'http://localhost:3101', realtimeModel: 'private-omni', agentProtocol: 'none' }
+    settings = { ...settings, gatewayUrl: 'http://localhost:3101', realtimeModel: flashModel, agentProtocol: 'none' }
     await window.loadFile(resolve(__dirname, '../src/settings.html'))
     await evaluate(`new Promise((resolve, reject) => {
       const deadline = Date.now() + 5000
       const poll = () => {
-        if (document.querySelector('[data-setting=realtimeModel]')?.value === 'private-omni') return resolve()
+        if (document.querySelector('[data-setting=realtimeModel]')?.value === ${JSON.stringify(flashModel)}) return resolve()
         if (Date.now() > deadline) return reject(new Error('Pending catalog settings were not loaded'))
         setTimeout(poll, 20)
       }
@@ -400,6 +394,54 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
       language.dispatchEvent(new Event('change', { bubbles: true }))
       return { changed, unchanged: document.querySelector('button[type=submit]').disabled }
     })()`), { changed: true, unchanged: true })
+
+    // A missing IPC snapshot blocks only local model settings, without reviving
+    // the obsolete user-file error state or preventing remote client changes.
+    catalogSnapshot = undefined
+    realtimeConfigurationPending = false
+    settings = { ...settings, gatewayUrl: 'http://localhost:3101' }
+    await window.loadFile(resolve(__dirname, '../src/settings.html'))
+    await evaluate(`new Promise((resolve, reject) => {
+      const deadline = Date.now() + 5000
+      const poll = () => {
+        if (document.querySelector('[data-setting=realtimeModel]')?.value === ${JSON.stringify(flashModel)}) return resolve()
+        if (Date.now() > deadline) return reject(new Error('Missing snapshot silently changed the selected model'))
+        setTimeout(poll, 20)
+      }
+      poll()
+    })`)
+    const savesBeforeMissingSnapshot = saves
+    assert.deepEqual(await evaluate(`(() => {
+      const language = document.querySelector('#desktop-language')
+      language.value = 'zh-CN'
+      language.dispatchEvent(new Event('change', { bubbles: true }))
+      document.querySelector('#settings-form').requestSubmit()
+      const model = document.querySelector('[data-setting=realtimeModel]')
+      return { value: model.value, invalid: !model.checkValidity(), error: model.validationMessage,
+        options: model.options.length, oldNotice: !!document.querySelector('#realtime-model-catalog-error') }
+    })()`), {
+      value: flashModel, invalid: true, error: '模型目录不可用，请重新打开设置或重启应用', options: 1, oldNotice: false,
+    })
+    assert.equal(saves, savesBeforeMissingSnapshot)
+    assert.equal(await evaluate(`(() => {
+      const gateway = document.querySelector('#gateway-url')
+      gateway.value = 'https://gateway.example'
+      gateway.dispatchEvent(new Event('input', { bubbles: true }))
+      return document.querySelector('#settings-form').checkValidity()
+        && document.querySelector('[data-setting=realtimeModel]').disabled
+        && !document.querySelector('button[type=submit]').disabled
+    })()`), true, 'A missing local model snapshot must not block remote client settings')
+    await evaluate(`document.querySelector('#settings-form').requestSubmit()`)
+    await evaluate(`new Promise((resolve, reject) => {
+      const deadline = Date.now() + 5000
+      const poll = () => {
+        if (document.querySelector('#message').className === 'success') return resolve()
+        if (Date.now() > deadline) return reject(new Error('Missing model snapshot prevented remote settings from saving'))
+        setTimeout(poll, 20)
+      }
+      poll()
+    })`)
+    assert.equal(saves, savesBeforeMissingSnapshot + 1)
   } catch (error) {
     throw new Error(`${error.stack || error.message}\n${rendererMessages.join('\n')}`, { cause: error })
   } finally {

@@ -117,8 +117,10 @@ test('mock retains sub-frame PCM until more streaming input arrives', async t =>
   await new Promise(resolve => setTimeout(resolve, 100))
   send({ type: 'audio.append', ...turn, sampleRate: 24000, audio: audio.subarray(960).toString('base64') })
   send({ type: 'audio.end', ...turn })
-  await until(() => messages.some(m => m.kind === RecordKind.MEDIA_END))
-  const played = Buffer.concat(messages.filter(m => m.kind === RecordKind.PAIRED_AV)
+  await until(() => messages.some(m => m.kind === RecordKind.MEDIA_END && m.header.turn.responseId === turn.responseId))
+  // Scoped to the reply: the idle turn keeps painting silent frames on the same
+  // socket, and they must never be counted as played audio.
+  const played = Buffer.concat(messages.filter(m => m.kind === RecordKind.PAIRED_AV && m.header.turn.responseId === turn.responseId)
     .map(m => m.audio.subarray(0, (m.header.samples - m.header.paddingSamples) * 2)))
   assert.deepEqual(played, audio)
 })

@@ -7,15 +7,17 @@ import { rtcHarness, FakeMedia, testProvider, waitUntil, OFFER, JPEG } from './f
 import {
   DASHSCOPE_AUDIO_30_REALTIME_MODEL,
   DASHSCOPE_AUDIO_31_REALTIME_MODEL,
+  DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL,
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
   resolveDashScopeRealtimeModelProfile,
 } from '../../shared/realtime-model-catalog.mjs'
 
-test('WebRTC describes and validates each Audio model turn detection default', () => {
+test('WebRTC describes and validates the effective Audio model configuration', () => {
   for (const [model, type] of [
     [DASHSCOPE_AUDIO_31_REALTIME_MODEL, 'smart_turn_v2'],
     [DASHSCOPE_AUDIO_30_REALTIME_MODEL, 'smart_turn'],
     [DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL, 'smart_turn'],
+    [DASHSCOPE_AUDIO_31_FLASH_REALTIME_MODEL, 'smart_turn_v2'],
   ]) {
     const media = new FakeMedia()
     const provider = { ...testProvider(), model: () => model,

@@ -6,9 +6,12 @@ Plus when you install qwen-audio-agent and only set an API key.
 
 ## Models
 
+The built-in Audio models are:
+
 | Model | Notes |
 | --- | --- |
 | `qwen-audio-3.1-realtime-plus` | **Default.** Uses `longanqian_v3.1` by default |
+| `qwen-audio-3.1-realtime-flash` | Uses `longanqian_v3.1` by default |
 | `qwen-audio-3.0-realtime-plus` | Previous-generation Plus model, still available |
 | `qwen-audio-3.0-realtime-flash` | Lower latency, lower cost |
 
@@ -32,21 +35,28 @@ One Gateway owns one active model. Switch it from the Desktop settings
 page or from the CLI, then restart the Gateway:
 
 ```bash
-qwenaudio config set --realtime-model qwen-audio-3.1-realtime-plus
+qwenaudio config set --realtime-model qwen-audio-3.1-realtime-flash
 # For an installed user background service only:
 qwenaudio gateway restart
 ```
 
-3.1 Plus reuses the `dashscope` provider and the existing WebSocket event
+3.1 Plus / Flash reuse the `dashscope` provider and the existing WebSocket event
 protocol. An explicitly configured 3.0 model remains selected until you change
 or clear its model setting. If you have explicitly set a voice, choose one matching the model
 or clear the override to use its default. See the [official migration guidance](https://help.aliyun.com/zh/model-studio/qwen-audio-realtime-user-guides).
 
 WebUI and TUI only display the active model; they never override it.
 
+The supported model list and each model's adaptation parameters are maintained
+in framework code. Users select a model; they do not add model records or tune
+API bindings, capabilities, or turn detection. The default remains 3.1 Plus.
+Built-in support does not verify live account access; confirm availability for
+your account and endpoint. See the
+[configuration reference](../configuration/frontend.md#select-a-supported-model).
+
 ## Voice and turn detection
 
-- Default voice: `longanqian_v3.1` for the default 3.1 Plus model;
+- Default voice: `longanqian_v3.1` for 3.1 Plus / Flash;
   `longanqian` for 3.0 Plus / Flash. Override with `QWEN_AUDIO_REALTIME_VOICE` using a voice supported
   by the selected model.
 - A GCP client may provide a session-scoped voice in
@@ -54,8 +64,9 @@ WebUI and TUI only display the active model; they never override it.
   over the environment default. At runtime, call
   `GatewayClient.updateOutputVoice(voice)`; the Gateway rebuilds the upstream
   Realtime Session while preserving the Client connection and Gateway session.
-- Turn detection: `smart_turn_v2` for 3.1 Plus; `smart_turn` for 3.0 Plus / Flash.
-  The runtime selects the model default; no manual VAD tuning is exposed.
+- Turn detection: `smart_turn_v2` for 3.1 Plus / Flash; `smart_turn` for 3.0 Plus / Flash.
+  The framework selects the fixed mode for the chosen model. Turn detection and
+  VAD parameters are not user-configurable.
 
 ## Endpoint overrides
 

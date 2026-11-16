@@ -4,6 +4,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
+import { pathToFileURL } from 'node:url'
 import { demoEnvironment } from '../examples/webrtc/start.mjs'
 import { parsePackOutput } from '../scripts/verify-package.mjs'
 
@@ -62,15 +63,22 @@ test('npm pack keeps the usable example but excludes installed media, SDKs and p
     'shared/gateway/webrtc-browser.mjs',
     'shared/gateway/webrtc-message.mjs',
     'shared/realtime-model-catalog.mjs',
-    'shared/realtime-models/api-profiles.mjs',
-    'shared/realtime-models/builtins.mjs',
-    'shared/realtime-models/registry.mjs',
+    'shared/realtime-models/profile.mjs',
+    'shared/realtime-models/dashscope.mjs',
+    'shared/realtime-models/stepfun.mjs',
+    'shared/realtime-models/gpt-live.mjs',
+    'shared/realtime-models/google-live.mjs',
+    'shared/realtime-models/doubao-seeduplex.mjs',
   ]
   for (const path of [...required, '.npmignore', 'examples/webrtc/.npmignore', `${nativePath}/package.json`, `${nativePath}/index.cjs`]) {
     const target = join(fixture, path)
     await mkdir(dirname(target), { recursive: true })
     await copyFile(new URL(path, root), target)
   }
+  // Import from the isolated package fixture to verify the catalog's complete
+  // module dependency chain is included, not just its public entry point.
+  const catalog = await import(pathToFileURL(join(fixture, 'shared/realtime-model-catalog.mjs')))
+  assert.ok(catalog.realtimeModelCatalog('dashscope')?.profiles.length)
   for (const path of [
     `${nativePath}/node_modules/@roamhq/wrtc/wrtc.node`,
     `${nativePath}/node_modules/sharp/libvips.dylib`,

@@ -42,9 +42,9 @@ https://github.com/user-attachments/assets/dc9296b5-dfbe-4243-a2c6-3bf49237d71b
 
 ## 快速开始
 
-前提：使用框架支持的 Node.js 版本（推荐 22.22.2 或 24.15.0）、npm 10+、可用的 Realtime 模型配置，以及允许播放音频和访问麦克风的现代浏览器。以下命令从本仓库源码开始；默认 Mock 不需要 GPU 或数字人服务账号。浏览器自动化使用 Chromium；真实数字人服务另有 GPU、账号及平台要求。
+前提：使用框架支持的 Node.js 版本（推荐 22.22.2 或 24.15.0）、npm 10+、可用的 Realtime 模型配置，以及允许播放音频和访问麦克风的现代浏览器。以下命令从本仓库 v2.1.0 或更新版本源码开始；默认 Mock 不需要 GPU 或数字人服务账号。浏览器自动化使用 Chromium；真实数字人服务另有 GPU、账号及平台要求。
 
-**Vidu 需要包含通用无回执降级的 Gateway（`761672f` 及之后版本）。对应版本发布前，请使用最新 `main` 源码，不能只更新示例或 SDK 而继续连接旧 Gateway。**
+**Gateway 与客户端 SDK 均需使用 qwen-audio-agent v2.1.0 或更新版本。Vidu 依赖 v2.1.0 提供的通用无回执降级，不能只更新示例或 SDK 而继续连接 v2.0.1 或更旧的 Gateway。**
 
 ### 1. 启动标准 Gateway
 
@@ -127,6 +127,7 @@ npm run test:browser:vidu
 
 - **助手回复音频（数字人输入）**：目前只接受 PCM16 little-endian、24 kHz、单声道；其他采样率会被拒绝，不会隐式按错误速率播放。此限制不指用户麦克风的采集格式。
 - **DHAV**：以实际起播、排空和取消产生回执；首次起播前失败可回退原声一次，开始后不从头重播。真实 FlashHead 的 GPU 性能和音画同步需部署者验证。
+- **待机动画（DHAV）**：回复结束或被取消后，适配器继续用静音维持一个待机轮次，画面保持动作而不是停在最后一帧。这些帧带 `idle` 标记，直接画到 canvas，不进音频队列、不占播放时间轴、也不产生播放回执；真实回复在同一条有序控制通道上顶掉它。待机轮次失败只按退避有限重启，不会拖垮会话。仅当 provider 声明 `capabilities.idle` 时启用，Vidu 不受影响。代价是只要浏览器连着，渲染器就持续产帧（约 25 fps），自部署 GPU 需据此评估负载。
 - **Vidu**：默认关闭，本版尚未完成真实服务验收。原生音画由同一媒体元素播放；打断立即停止本地旧媒体，并让下一条有效回复使用新的 live / RTC channel，增加重连延迟和可能的费用。
 - **无播放回执的边界**：Vidu 不提供逐回复播放结束与远端打断完成确认，示例不估算或伪造回执。普通对话可显示生成字幕；自动后台结果通知保持待投递，可通过语音或文字主动查询任务。本例没有完整任务卡片或权限管理 UI。
 - **故障与范围**：Vidu 故障会停止收音并要求重连，不自动重播；输入与排队有界。示例为本机单客户端集成，不是多租户生产服务，不能直接将本地凭据代理暴露到公网。其他浏览器、长期运行和商业 RTC 网络行为仍需真实环境验证。
@@ -138,7 +139,7 @@ npm run test:browser:vidu
 - **新增服务**：在 [server/renderers/](server/renderers/) 实现鉴权、服务会话及音频转交，在 [client/renderers/](client/renderers/) 实现媒体播放与能力声明；分别在[服务端注册表](server/renderers/index.mjs)和[浏览器注册表](client/renderer-adapters.mjs)注册同名适配器。接口见[适配器契约](docs/provider-contract.zh.md)。需要供应商适配代码，不要求改 Gateway 或将原生 RTC 转成 DHAV。
 - **恢复默认**：改回 `DH_RENDERER_ADAPTER=dhav`、`DH_PERSONA=mock-default`，清空 `DH_RENDERER_URL` / `DH_RENDERER_TOKEN`，设置 `VIDU_EXPERIMENTAL=0` 后重启；同时检查是否存在覆盖这些值的 Shell 环境变量。
 
-如单独复制本目录，需额外 `npm install qwen-audio-agent` 获取公开客户端 SDK，再构建页面；Gateway 仍须独立运行，并满足前述版本要求。
+如单独复制本目录，需额外 `npm install "qwen-audio-agent@^2.1.0"` 获取公开客户端 SDK，再构建页面；Gateway 仍须独立运行，并满足前述版本要求。
 
 ## 作者与致谢
 

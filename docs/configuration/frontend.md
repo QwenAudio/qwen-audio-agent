@@ -2,7 +2,7 @@
 
 The voice frontend handles realtime conversation; the backend Agent executes work. You can choose them independently.
 
-Keep provider selection, credentials, endpoints, and the selected model in the `config.env` shown by `qwenaudio config`. Desktop's voice frontend settings edit these connection settings and select models from the effective catalog. Optional model registrations belong in a separate `frontend-models.json` file.
+Keep provider selection, credentials, endpoints, and the selected model in the `config.env` shown by `qwenaudio config`. Desktop's voice frontend settings edit these connection settings and select from the framework's supported models. Model definitions and adaptation parameters are maintained in code.
 
 ## Choose a Service
 
@@ -67,6 +67,7 @@ Current built-in DashScope model profiles:
 | Model ID | Realtime input |
 | --- | --- |
 | `qwen-audio-3.1-realtime-plus` (default) | Text, audio |
+| `qwen-audio-3.1-realtime-flash` | Text, audio |
 | `qwen-audio-3.0-realtime-plus` | Text, audio |
 | `qwen-audio-3.0-realtime-flash` | Text, audio |
 | `qwen3.5-omni-flash-realtime` | Text, audio, live visual frames |
@@ -75,43 +76,19 @@ Current built-in DashScope model profiles:
 
 All profiles support tool calls. Live vision also requires client and transport support; see [Visual Input](../guides/vision.md).
 
-Audio 3.1 Plus uses the existing `dashscope` provider and defaults to
+Audio 3.1 Plus / Flash use the existing `dashscope` provider and default to
 `longanqian_v3.1`; Audio 3.0 Plus / Flash keep `longanqian`. An explicit
 `QWEN_AUDIO_REALTIME_VOICE` must match the selected model. Audio models do not
 support visual input. See the [Audio guide](../voice-frontends/qwen-audio-realtime.md)
 for model switching and workspace endpoint overrides.
 
-## Register an Additional Model
+## Select a Supported Model
 
-The effective catalog contains the built-in models plus your registrations. An unregistered model ID is a configuration error: the Gateway does not infer a protocol from its name. Register a new model only after confirming that the service exposes it through one of the supported APIs.
+The model list is maintained by the framework. Desktop and `qwenaudio config show` use this same list; choose a model for the selected provider in Desktop or set `QWEN_AUDIO_REALTIME_MODEL`. Leave it empty to use the provider default. For example, with `dashscope` selected, use `qwen-audio-3.1-realtime-flash` to switch to the built-in 3.1 Flash model. The default remains 3.1 Plus.
 
-Create `frontend-models.json` beside `config.env`, under `QWAUDIO_CONFIG_DIR` (normally `~/.config/qwaudio`). To use another file, set `QWEN_AUDIO_FRONTEND_MODELS_CONFIG` in `config.env`; relative paths are resolved from that configuration directory, not the current working directory. Without the default file, only built-in models are loaded. An explicitly configured missing file or invalid JSON is an error, not a silent fallback.
+An unsupported model ID is a configuration error. User configuration cannot add models, redefine existing models, or change their API bindings, capabilities, turn detection, or integration constraints. These are fixed by the framework's model support. The existing `QWEN_AUDIO_REALTIME_VOICE` and session-scoped voice overrides still work; choose a voice compatible with the selected model.
 
-This example contains a placeholder, not a verified service model. Replace `replace-with-supported-model-id` with the actual API model ID; do not put API keys or endpoints in this file:
-
-```json
-{
-  "providers": {
-    "dashscope": {
-      "models": {
-        "replace-with-supported-model-id": {
-          "api": "audio",
-          "label": "My Audio Model",
-          "voice": null
-        }
-      }
-    }
-  }
-}
-```
-
-`api` is required and selects a reusable integration preset: a wire-protocol variant, default capability declarations, session defaults (including turn detection), and integration constraints. These are shared defaults for this integration, not a guarantee that every model using the same upstream API has identical capabilities. Register only models compatible with the selected preset; registration does not discover model capabilities or override the preset. `label` is optional and defaults to the model ID. Omit `voice` or use `null` to leave the default voice to the service; an explicit voice setting in `config.env` still takes precedence.
-
-DashScope accepts `audio`, `omni` (3.5), or `omni-v2` (3.8, with its workspace endpoint requirement). For `stepfun`, `gpt-live`, `google-live`, and `doubao-seeduplex`, `api` must equal the provider key. Registration is append-only: it cannot replace a built-in model for the same provider, add an unsupported provider/API, or set undeclared fields. Model IDs are case-sensitive and start with a letter or digit; remaining characters may also include `. _ : / @ + -`. Invalid entries are reported as configuration errors.
-
-After loading the catalog, select the registered ID in Desktop or set `QWEN_AUDIO_REALTIME_MODEL`. Apply the configuration as described below. The catalog is not a service-side permission check: the account, region, endpoint, voice, and actual model compatibility still need validation. Models behind speech-to-speech and MiniCPM-o remain configured in those external services.
-
-A new model compatible with an existing integration preset needs only a registration. If its capabilities, session requirements, or wire behavior differ, the integration needs an explicit change and tests before that model can use it. A new wire protocol requires a Provider adapter implementation; this JSON file does not load SDKs or executable plugins.
+The list describes implemented support, not live service availability or account authorization. Check the account, region, endpoint, and voice for your chosen model, then apply and verify the connection below. Models behind speech-to-speech and MiniCPM-o remain configured in those external services.
 
 ## Apply and Verify
 
@@ -119,11 +96,11 @@ A new model compatible with an existing integration preset needs only a registra
 2. Connect a client and check that the voice frontend is connected.
 3. Speak and confirm that audio plays. If you need tools, also test search or a simple backend request.
 
-To inspect the configured provider and effective model catalog:
+To inspect the configured provider and supported model list:
 
 ```bash
 qwenaudio config show
-qwenaudio config set --realtime-model qwen-audio-3.0-realtime-flash
+qwenaudio config set --realtime-model qwen-audio-3.1-realtime-flash
 ```
 
 `config set` changes the current provider's model; it neither switches providers nor restarts the Gateway. Remote clients use the remote Gateway's settings, not local model settings.

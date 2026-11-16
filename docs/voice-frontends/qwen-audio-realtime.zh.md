@@ -5,9 +5,12 @@ DashScope 的 Qwen Audio 3.0 和 3.1 Realtime 模型，专为语音直通语音�
 
 ## 模型
 
+内置的 Audio 模型如下：
+
 | 模型 | 说明 |
 | --- | --- |
 | `qwen-audio-3.1-realtime-plus` | **默认。** 默认音色为 `longanqian_v3.1` |
+| `qwen-audio-3.1-realtime-flash` | 默认音色为 `longanqian_v3.1` |
 | `qwen-audio-3.0-realtime-plus` | 上一代 Plus 模型，仍可选择 |
 | `qwen-audio-3.0-realtime-flash` | 延迟更低、成本更低 |
 
@@ -30,26 +33,31 @@ QWEN_AUDIO_REALTIME_VOICE=
 重启 Gateway 生效：
 
 ```bash
-qwenaudio config set --realtime-model qwen-audio-3.1-realtime-plus
+qwenaudio config set --realtime-model qwen-audio-3.1-realtime-flash
 # 以下仅用于已安装的用户后台服务：
 qwenaudio gateway restart
 ```
 
-3.1 Plus 复用 `dashscope` Provider 和现有 WebSocket 事件协议。已显式配置的 3.0 模型
+3.1 Plus / Flash 复用 `dashscope` Provider 和现有 WebSocket 事件协议。已显式配置的 3.0 模型
 不会自动切换，需修改或清除模型配置。如果已显式配置音色，
 请改用与模型匹配的音色，或清除覆盖值以使用模型默认音色。详见[官方迁移说明](https://help.aliyun.com/zh/model-studio/qwen-audio-realtime-user-guides)。
 
 WebUI 和 TUI 只展示当前生效模型，不单独覆盖。
 
+受支持模型列表及各模型的适配参数由框架代码维护。用户只选择模型，不新增模型记录，
+也不修改 API 绑定、能力或话轮检测。默认模型仍为 3.1 Plus。内置支持不代表已验证
+实时账号权限，请确认账号和服务地址对应的可用性。详见
+[配置参考](../configuration/frontend.zh.md#选择受支持模型)。
+
 ## 音色与话轮检测
 
-- 默认的 3.1 Plus 使用 `longanqian_v3.1`；3.0 Plus / Flash 默认音色仍为 `longanqian`。
+- 3.1 Plus / Flash 默认使用 `longanqian_v3.1`；3.0 Plus / Flash 默认音色仍为 `longanqian`。
   可用 `QWEN_AUDIO_REALTIME_VOICE` 覆盖，但须选择当前模型支持的音色。
 - GCP 客户端可在首次 `session.hello` 的 `connection.output_voice` 中提供会话级音色；
   它优先于环境变量。运行时调用 `GatewayClient.updateOutputVoice(voice)`，Gateway 会
   重建上游 Realtime Session，客户端连接和 Gateway 会话保持不变。
-- 3.1 Plus 使用 `smart_turn_v2`，3.0 Plus / Flash 使用 `smart_turn`。
-  运行时按模型选择默认值，不暴露手动 VAD 调参。
+- 3.1 Plus / Flash 使用 `smart_turn_v2`，3.0 Plus / Flash 使用 `smart_turn`。
+  框架按所选模型使用固定模式，不开放用户配置话轮检测或 VAD 参数。
 
 ## 端点覆盖
 

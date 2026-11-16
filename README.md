@@ -27,6 +27,8 @@ tells you:
 
 ## News
 
+- **2026-11-10 · [v2.1.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v2.1.0)**
+  🎙️ Adds Qwen Audio 3.1 Realtime and unified frontend configuration; 🧩 supports updating running tasks and continuing completed work; 🎭 adds a runnable [dual-connection digital-human example](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/digital-human) with replaceable rendering services; 📷 adds photo capture to WebUI.
 - **2026-09-23 · [v2.0.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v2.0.0)**
   🏗️ Rebuilt the orchestration runtime with a unified client protocol and ACP / A2A backend integration; 🎙️ expanded [voice and video model support](#voice-frontends); 🧠 enhanced frontend tools, memory, and knowledge libraries; 💬 added a desktop conversation panel and remote mobile access; 🧩 added [customer service, smart cockpit, digital human, and other examples](#examples-and-scenario-expansion); 📄 published the [technical report](https://arxiv.org/pdf/2609.25195).
 - **2026-08-20 · [v1.11.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.11.0)**
@@ -103,8 +105,7 @@ tasks. They integrate independently and can be combined as needed.
 
 | Voice frontend | Deployment | Setup | Features |
 | --- | --- | --- | --- |
-| [Qwen Audio 3.0 Realtime](docs/voice-frontends/qwen-audio-realtime.md) | Cloud | Bailian API Key | Duplex voice, tool calling |
-| [Qwen Audio 3.1 Realtime Plus](docs/voice-frontends/qwen-audio-realtime.md) | Cloud | Bailian API Key | Duplex voice, tool calling |
+| [Qwen Audio 3.0/3.1 Realtime](docs/voice-frontends/qwen-audio-realtime.md) | Cloud | Bailian API Key | Duplex voice, tool calling |
 | [GPT-Live / OpenAI Realtime](docs/voice-frontends/gpt-live.md) | Cloud | OpenAI API Key | — |
 | [Google Gemini Live](docs/voice-frontends/google-live.md) | Cloud | Google API Key | Live video input |
 | [Qwen3.5-Omni Realtime](docs/voice-frontends/qwen-omni-realtime.md) | Cloud | Bailian API Key | Live video input |
@@ -113,6 +114,10 @@ tasks. They integrate independently and can be combined as needed.
 | [StepAudio 3 Realtime](docs/voice-frontends/stepfun.md) | Cloud | StepFun API Key | — |
 | [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.md) | Local | Start the service and set its URL | Configurable STT / LLM / TTS |
 | [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.md) | Local or cloud | Compatible service URL | Live video input, no tool calling |
+
+Frontend connections share the same provider, model, API Key, service URL, and
+voice settings. Supported models and protocol parameters are maintained by the
+framework; see [frontend configuration](docs/configuration/frontend.md).
 
 To connect another voice service, implement the
 [Realtime Provider interface](docs/voice-frontends/custom-provider.md) without

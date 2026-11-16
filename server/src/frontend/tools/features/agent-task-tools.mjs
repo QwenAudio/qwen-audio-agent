@@ -46,8 +46,8 @@ const updateAgentTaskTool = {
       properties: {
         task_id: { type: 'string', description: '系统提供的目标工作 ID；指代不明确时先查询或询问，不得猜造。' },
         instruction: { type: 'string', description: '用户本次补充、修改的要求或对追问的回答。' },
-        input_request_id: { type: 'string', description: '回答追问时原样使用请求中的 ID，防止回答过期问题；普通工作调整不填。' },
-        values: { type: 'object', description: '可选的表单回答，字段必须来自后台请求提供的 schema。', additionalProperties: true },
+        input_request_id: { type: 'string', description: '回答后台追问时原样使用请求中的 ID，防止回答过期问题；普通工作调整必须省略此字段，不要传 null。' },
+        values: { type: 'object', description: '仅在回答后台追问的表单时填写对象，字段必须来自请求提供的 schema；普通工作调整或无需表单回答时必须省略此字段，不要传 null。', additionalProperties: true },
         input_refs: spawnThinkingTool.function.parameters.properties.input_refs,
       },
       required: ['task_id', 'instruction'],

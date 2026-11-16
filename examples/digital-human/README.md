@@ -42,9 +42,9 @@ Vendor protocols, SDKs and playback implementations stay inside the example; `qw
 
 ## Quick start
 
-Prerequisites: a framework-supported Node.js version (22.22.2 or 24.15.0 recommended), npm 10+, a working Realtime model configuration, and a modern browser with audio playback and microphone permission. The commands below start from this repository's source checkout. The default Mock needs neither a GPU nor an avatar-service account. Browser automation uses Chromium; real avatar services have additional GPU, account and platform requirements.
+Prerequisites: a framework-supported Node.js version (22.22.2 or 24.15.0 recommended), npm 10+, a working Realtime model configuration, and a modern browser with audio playback and microphone permission. The commands below start from this repository's v2.1.0 or later source checkout. The default Mock needs neither a GPU nor an avatar-service account. Browser automation uses Chromium; real avatar services have additional GPU, account and platform requirements.
 
-**Vidu requires a Gateway containing the generic receipt-less fallback (`761672f` or later). Until a compatible version is released, use the latest `main` source. Updating only the example or SDK while keeping an older Gateway is insufficient.**
+**Use qwen-audio-agent v2.1.0 or later for both Gateway and the client SDK. Vidu requires the generic receipt-less fallback included in v2.1.0; updating only the example or SDK while keeping a v2.0.1 or older Gateway is insufficient.**
 
 ### 1. Start the standard Gateway
 
@@ -127,6 +127,7 @@ Tests and the build should pass. Coverage includes protocol encoding/decoding, c
 
 - **Assistant reply audio (avatar input):** currently accepts only PCM16 little-endian, 24 kHz, mono. Other sample rates are rejected rather than silently played at the wrong rate. This restriction does not refer to microphone capture.
 - **DHAV:** receipts follow actual playback start, drain and cancellation. A failure before first playback may fall back to original audio once; playback never restarts from the beginning after it has started. Deployers must validate real FlashHead GPU performance and audiovisual synchronization.
+- **Idle animation (DHAV):** after a reply ends or is cancelled, the adapter keeps a silence-fed idle turn alive so the avatar keeps moving instead of freezing on the last spoken frame. Those frames carry an `idle` flag and are painted straight to the canvas: they never enter the audio queue, the playback timeline or the receipts. A real reply supersedes them on the same ordered control channel. A failed idle turn restarts with bounded backoff rather than taking the session down. Idle is enabled only when the provider declares `capabilities.idle`, so Vidu is unaffected. The cost is that the renderer keeps producing frames (~25 fps) for as long as a browser is connected; self-hosted GPU deployments should budget for that.
 - **Vidu:** disabled by default; this revision has not completed real-service acceptance. Native audio/video play through the same media element. Interruption immediately stops old local media, and the next valid reply uses a new live / RTC channel, adding reconnection latency and potentially charges.
 - **Without playback receipts:** Vidu provides neither per-reply playback-end nor remote interruption-completion confirmation. The example does not estimate or fabricate receipts. Ordinary dialogue can display generated captions; automatic background-result notifications remain pending. Users can actively query tasks by voice or text. This example has no complete task-card or permission-management UI.
 - **Failures and scope:** Vidu failures stop microphone capture and require reconnection, without automatic audio replay. Input and queues are bounded. This is a local, single-client integration, not a multi-tenant production service; do not expose the local credential proxy directly to the Internet. Other browsers, long-running sessions and commercial RTC network behavior still need real-environment validation.
@@ -138,7 +139,7 @@ Tests and the build should pass. Coverage includes protocol encoding/decoding, c
 - **New services:** implement authentication, service sessions and audio forwarding in [server/renderers/](server/renderers/), and media playback and capability declarations in [client/renderers/](client/renderers/). Register the same adapter ID in the [server registry](server/renderers/index.mjs) and [browser registry](client/renderer-adapters.mjs). See the [adapter contract](docs/provider-contract.zh.md). Vendor adapter code is required; Gateway changes or conversion of native RTC into DHAV are not.
 - **Restore defaults:** set `DH_RENDERER_ADAPTER=dhav`, `DH_PERSONA=mock-default` and `VIDU_EXPERIMENTAL=0`, clear `DH_RENDERER_URL` / `DH_RENDERER_TOKEN`, then restart. Also check for shell variables overriding these settings.
 
-If you copy this directory independently, additionally run `npm install qwen-audio-agent` to obtain the public client SDK before building the page. Gateway must still run separately and meet the revision requirement above.
+If you copy this directory independently, additionally run `npm install "qwen-audio-agent@^2.1.0"` to obtain the public client SDK before building the page. Gateway must still run separately and meet the version requirement above.
 
 ## Authors and acknowledgements
 

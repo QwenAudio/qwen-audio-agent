@@ -26,7 +26,7 @@ import {
   updateSettingsContent,
 } from './settings-config.mjs'
 import { normalizeConversationSessionId } from '../../shared/conversation-session.mjs'
-import { loadRealtimeModelCatalogs } from '../../shared/realtime-models/config-file.mjs'
+import { BUILTIN_REALTIME_MODEL_CATALOGS } from '../../shared/realtime-model-catalog.mjs'
 import { assertRealtimeFrontendModel } from '../../shared/realtime-provider-catalog.mjs'
 import { mergeRealtimeEnvironment, realtimeSettingsValues } from '../../shared/realtime-provider-definitions.mjs'
 
@@ -88,7 +88,6 @@ function writePrivateFile(path, content) {
  *   configDir: string, clientDir: string, path: string, clientSettingsPath: string, uiStatePath: string,
  *   load: () => object,
  *   modelCatalogs: () => object,
- *   modelCatalogStatus: () => { realtimeModelCatalogs: object|null, realtimeModelCatalogError: string },
  *   save: (settings: object) => object,
  *   status: () => { ready: boolean, provider: string|null, missing: object[] },
  *   ready: () => boolean,
@@ -128,16 +127,9 @@ export function createSettingsStore({
     env,
     parseEnv(readTextFile(settingsPath)),
   ), QWAUDIO_CONFIG_DIR: directory })
-  const modelCatalogs = () => loadRealtimeModelCatalogs(effectiveEnvironment())
-  // A broken local catalog must not prevent editing client settings or
-  // connecting to a remote Gateway. Saving local model settings stays strict.
-  const modelCatalogStatus = () => {
-    try {
-      return { realtimeModelCatalogs: modelCatalogs(), realtimeModelCatalogError: '' }
-    } catch (error) {
-      return { realtimeModelCatalogs: null, realtimeModelCatalogError: error.message }
-    }
-  }
+  // Supported models ship with the application; local JSON cannot register
+  // models or change the protocol defaults used by this settings store.
+  const modelCatalogs = () => BUILTIN_REALTIME_MODEL_CATALOGS
 
   const loadUiState = () => {
     const content = readTextFile(uiStatePath)
@@ -170,7 +162,6 @@ export function createSettingsStore({
     uiStatePath,
     load,
     modelCatalogs,
-    modelCatalogStatus,
     preview: settings => normalizeSettings(mergeSettingsPatch(load(), settings)),
 
     save(settings) {

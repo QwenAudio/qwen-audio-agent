@@ -65,6 +65,8 @@ jobs:
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
         run: npm run test:web-browser
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npm run test:mobile-layout
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
         run: npm run test:x-omni-browser
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
         run: npm ci --prefix examples/digital-human --ignore-scripts

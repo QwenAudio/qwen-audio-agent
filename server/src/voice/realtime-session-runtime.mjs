@@ -233,7 +233,9 @@ export function createRealtimeSessionRuntime({
     onEvent: event => handleEvent(event),
     onDiagnostic: diagnostic => {
       const { event, ...fields } = diagnostic
-      if (['realtime.response_requested', 'realtime.response_started'].includes(event)) connectionLogger.info(event, fields)
+      const informational = ['realtime.response_requested', 'realtime.response_started'].includes(event)
+        || (event === 'realtime.transport_closed' && fields.code === 1000)
+      if (informational) connectionLogger.info(event, fields)
       else connectionLogger.warn(event, fields)
     },
     onResponseSettled: ({ origin, context, outcome }) => {
@@ -585,6 +587,11 @@ export function createRealtimeSessionRuntime({
     if (isSleepActivityEvent(event)) sleepController?.recordActivity()
     if (isResponseActivityEvent(event)) presentationRuntime.begin(event)
     if (inputs.handleProviderEvent(event)) return
+    const responseFailed = event.type === 'response.done' && event.response?.status === 'failed'
+    // Terminal handling may remove or suppress the context; retain its original
+    // identity for error reporting and content-safety recovery afterwards.
+    const responseContext = responseFailed ? presentationRuntime.get(realtimeResponseId(event)) : null
+    const failedContext = responseContext ? { ...responseContext } : null
     if (event.type === 'response.done') {
       const responseId = realtimeResponseId(event)
       const context = presentationRuntime.get(responseId)
@@ -599,6 +606,14 @@ export function createRealtimeSessionRuntime({
         hasFunctionCall: Boolean(context?.hasFunctionCall),
         suppressed: Boolean(context?.suppressed),
       })
+      if (responseFailed) {
+        connectionLogger.warn('realtime.response.failed', {
+          provider: realtimeSession.providerKey,
+          responseId,
+          turnId: context?.turnId || '',
+          errorMessage: realtimeEventErrorMessage(event),
+        })
+      }
     }
     if (event.type === 'response.function_call_arguments.done') {
       const id = realtimeResponseId(event)
@@ -637,21 +652,25 @@ export function createRealtimeSessionRuntime({
           status: event.response?.status || 'unknown',
         })
       }
-      return
-    } else if (event.type === 'error') {
+      // A failed response is also an error, not only a playback terminal.
+      // Cancelled/incomplete and superseded responses remain silent.
+      if (!responseFailed || failedContext?.suppressed) return
+    }
+    if (event.type === 'error' || responseFailed) {
       // A response refused by a busy single-slot provider is retried by the
       // frontend transparently; nothing user-facing happened.
       if (event.__voiceRetried) return
       const errorMessage = realtimeEventErrorMessage(event)
       const providerError = realtimeSession.classifyError(errorMessage)
       const recoverableInactivity = providerError === 'inactivity'
+      const errorOrigin = event.__voiceOrigin || failedContext?.origin
       // A local or otherwise capacity-bounded provider can still be draining
       // the previous Session. Its close event drives the shared reconnect
       // backoff, so this transient refusal is neither a response failure nor
       // a user-facing error.
       if (providerError === 'capacity_busy') return
       const permissionSpeechCollision = (
-        event.__voiceOrigin === 'permission'
+        errorOrigin === 'permission'
         && providerError === 'input_busy'
       )
       if (permissionSpeechCollision) {
@@ -664,16 +683,16 @@ export function createRealtimeSessionRuntime({
       if (benignCancelRace) return
       if (providerError === 'content_safety') {
         const recentMessages = conversationSync.frontendContext({ ownerId, sessionId })
-        const restoring = ['restore', 'session'].includes(event.__voiceOrigin)
-        const failedContext = restoring ? {} : (
-          presentationRuntime.get(realtimeResponseId(event)) || {
+        const restoring = ['restore', 'session'].includes(errorOrigin)
+        const rejectedContext = restoring ? {} : (
+          failedContext || presentationRuntime.get(realtimeResponseId(event)) || {
             turnId: turns.committedTurnId || turns.turnId,
           }
         )
         const generation = ++contentRecoveryGeneration
-        const canRecover = realtimeRecoveryContext.beginRecovery(failedContext, recentMessages)
+        const canRecover = realtimeRecoveryContext.beginRecovery(rejectedContext, recentMessages)
         clearResponseCandidate()
-        presentationRuntime.failResponse(event)
+        if (!responseFailed) presentationRuntime.failResponse(event)
         emit({
           type: GatewayServerEvent.PLAYBACK_CLEAR,
           reason: 'provider_content_safety',
@@ -685,8 +704,8 @@ export function createRealtimeSessionRuntime({
         })
         connectionLogger.warn('realtime.content_safety_recovery', {
           provider: realtimeSession.providerKey,
-          excludedTurnId: failedContext.turnId || '',
-          origin: event.__voiceOrigin || 'response',
+          excludedTurnId: rejectedContext.turnId || '',
+          origin: errorOrigin || 'response',
           errorMessage,
           responseId: realtimeResponseId(event),
           attempt: realtimeRecoveryContext.attempts,
@@ -756,7 +775,7 @@ export function createRealtimeSessionRuntime({
           message: errorMessage,
         })
       }
-      presentationRuntime.failResponse(event)
+      if (!responseFailed) presentationRuntime.failResponse(event)
       // A provider may close an inactive response scope while a delegated
       // backend task is still running. The task remains healthy, and any
       // pending announcement has already returned to the retry queue, so this

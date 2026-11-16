@@ -148,6 +148,102 @@ test('projects the Bailian Web Search MCP pages response', async () => {
   })
 })
 
+test('projects the keyless Keenable Web Search MCP JSON response', async () => {
+  const calls = []
+  const transports = []
+  const provider = createWebSearchProvider({
+    webSearchProvider: 'keenable',
+    webSearchMcpUrl: 'https://api.keenable.ai/mcp?keenable_title=qwen-audio-agent',
+    webSearchMcpToken: '',
+    webSearchMcpTool: 'search_web_pages',
+  }, {
+    clientFactory: () => fakeClient({
+      tools: [{
+        name: 'search_web_pages',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string' },
+            max_results: { type: 'integer' },
+            snippet_max_length: { type: 'integer' },
+            output_format: { type: 'string', enum: ['text', 'json'] },
+          },
+        },
+      }],
+      result: {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            query: 'latest facts',
+            results: [{
+              title: 'Example',
+              url: 'https://example.com/page',
+              description: '',
+              snippet: 'Current facts.',
+              published_at: '2026-10-01T00:00:00Z',
+              acquired_at: '2026-10-02T00:00:00Z',
+            }],
+          }),
+        }],
+      },
+    }, calls),
+    transportFactory: (url, options) => {
+      transports.push({ url, options })
+      return {}
+    },
+  })
+
+  assert.equal(provider.isConfigured(), true)
+  const result = await provider.search('latest facts', { limit: 3 })
+
+  assert.equal(
+    transports[0].url.href,
+    'https://api.keenable.ai/mcp?keenable_title=qwen-audio-agent',
+  )
+  assert.equal(transports[0].options.requestInit, undefined)
+  assert.deepEqual(calls.find(call => call[0] === 'callTool')[1], {
+    name: 'search_web_pages',
+    arguments: {
+      query: 'latest facts',
+      max_results: 3,
+      output_format: 'json',
+      snippet_max_length: 1200,
+    },
+  })
+  assert.deepEqual(result, {
+    results: [{
+      title: 'Example',
+      url: 'https://example.com/page',
+      snippet: 'Current facts.',
+      publishedAt: '2026-10-01T00:00:00Z',
+    }],
+  })
+})
+
+test('sends preset tool arguments only when the tool declares them', async () => {
+  const calls = []
+  const provider = new McpWebSearchProvider({
+    url: 'https://search.example/mcp',
+    toolArguments: { output_format: 'json', query: 'override' },
+    clientFactory: () => fakeClient({
+      tools: [{
+        name: 'web_search',
+        inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
+      }],
+      result: { structuredContent: {
+        results: [{ title: 'Facts', url: 'https://example.com/facts' }],
+      }, content: [] },
+    }, calls),
+    transportFactory: () => ({}),
+  })
+
+  await provider.search('facts')
+  assert.deepEqual(
+    calls.find(call => call[0] === 'callTool')[1].arguments,
+    { query: 'facts' },
+  )
+})
+
 test('fails closed for missing tools, sources, and insecure token transport', async () => {
   const missingTool = new McpWebSearchProvider({
     url: 'https://search.example/mcp',
@@ -216,6 +312,14 @@ test('factory selects only configured built-in search adapters', () => {
     webSearchMcpToken: '',
     webSearchMcpTool: 'bailian_web_search',
   }).isConfigured(), false)
+  const keenable = createWebSearchProvider({
+    webSearchProvider: 'keenable',
+    webSearchMcpUrl: 'https://api.keenable.ai/mcp?keenable_title=qwen-audio-agent',
+    webSearchMcpToken: '',
+    webSearchMcpTool: 'search_web_pages',
+  })
+  assert.equal(keenable.describe().key, 'keenable-mcp')
+  assert.equal(keenable.isConfigured(), true)
   assert.throws(
     () => createWebSearchProvider({ webSearchProvider: 'unknown' }),
     /不支持的 Web Search Provider/,

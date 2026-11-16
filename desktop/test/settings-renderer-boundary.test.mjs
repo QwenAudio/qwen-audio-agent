@@ -53,12 +53,20 @@ test('model catalogs come from main-process snapshots and never become editable 
   assert.match(renderer, /realtimeModelCatalogs = result\.realtimeModelCatalogs/)
   assert.match(renderer, /realtimeConfigurationPending = value\.realtimeConfigurationPending === true/)
   assert.match(renderer, /realtimeConfigurationPending = result\.realtimeConfigurationPending === true/)
-  assert.match(renderer, /realtimeForm\.load\(settings, realtimeModelCatalogs, realtimeModelCatalogError\)/)
+  assert.match(renderer, /realtimeForm\.load\(settings, realtimeModelCatalogs\)/)
   const editableSettings = renderer.slice(renderer.indexOf('function formSettings()'), renderer.indexOf('function fingerprint('))
   assert.doesNotMatch(editableSettings, /realtimeModelCatalogs|realtimeConfigurationPending/)
   assert.match(realtimeForm, /realtimeModelCatalog\(provider\.key, modelCatalogs\)/)
   assert.match(realtimeForm, /resolveRealtimeModelProfile\(values\[model\.key\], provider\.key, catalogs\)/)
   assert.doesNotMatch(realtimeForm, /readFile|createRealtimeModelCatalogs|datalist|realtimeProtocolProfile/)
+})
+
+test('fixed model snapshots have no obsolete local catalog error state', () => {
+  for (const file of ['main.mjs', 'settings-store.mjs', 'settings.js', 'settings.html', 'realtime-settings-form.mjs', 'i18n.mjs']) {
+    const source = readFileSync(resolve(sourceDirectory, file), 'utf8')
+    assert.doesNotMatch(source, /modelCatalogStatus|realtimeModelCatalogError|modelCatalogError|realtime-model-catalog-error|renderRealtimeModelCatalogError/)
+    assert.doesNotMatch(source, /本地模型目录读取失败|请修复目录/)
+  }
 })
 
 test('desktop settings consumes Gateway pairing codes but does not issue them', () => {

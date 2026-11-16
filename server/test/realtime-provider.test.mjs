@@ -1318,7 +1318,7 @@ test('restores recent conversation through the shared GA session lifecycle', () 
   assert.equal(sent[0].type, 'session.update')
   assert.doesNotMatch(sent[0].session.instructions, /此前正在处理项目/)
   assert.equal(sent[1].type, 'conversation.item.create')
-  assert.match(sent[1].item.id, /^msg_[0-9a-f]{32}$/)
+  assert.match(sent[1].item.id, /^msg_[0-9a-f]{28}$/)
   assert.match(sent[1].item.content[0].text, /此前正在处理项目/)
   frontend.handleProviderEvent({ type: 'conversation.item.created', item: sent[1].item })
 })
@@ -2244,8 +2244,8 @@ test('namespaces GA conversation item ids by item type', async () => {
 
   // The GA schema rejects an id from the wrong namespace outright, so the
   // prefix has to match the item type rather than a generic "item_".
-  assert.match(sent[0].item.id, /^fco_[0-9a-f]{32}$/)
-  assert.match(sent[1].item.id, /^msg_[0-9a-f]{32}$/)
+  assert.match(sent[0].item.id, /^fco_[0-9a-f]{28}$/)
+  assert.match(sent[1].item.id, /^msg_[0-9a-f]{28}$/)
 })
 
 test('keeps the beta dialect on a single conversation item id namespace', async () => {
@@ -2416,6 +2416,7 @@ test('the Qwen provider exposes its supported realtime capabilities', () => {
   assert.deepEqual(qwen.capabilities, {
     acknowledgesSessionUpdate: true,
     singleResponseSlot: true,
+    requiresResponseCreated: true,
     responseMetadataCorrelation: false,
     perResponseInstructions: true,
     sessionOutputVoice: true,

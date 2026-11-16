@@ -127,6 +127,47 @@ test('projects one voice turn from speech start through final transcript', () =>
   )
 })
 
+for (const itemId of ['vad-old', 'asr-old']) {
+  test(`a late transcript (${itemId}) does not end the current speech boundary`, () => {
+    const { runtime, turns, calls } = harness()
+    runtime.handleProviderEvent({
+      type: 'input_audio_buffer.speech_started',
+      item_id: 'vad-old',
+    })
+    runtime.handleProviderEvent({
+      type: 'input_audio_buffer.speech_stopped',
+      item_id: 'vad-old',
+    })
+    runtime.handleProviderEvent({
+      type: 'input_audio_buffer.speech_started',
+      item_id: 'vad-current',
+    })
+    const current = turns.current()
+    const speechEndCount = () => calls.filter(([name]) => name === 'endSpeech').length
+    const endsBeforeFinal = speechEndCount()
+    assert.equal(turns.userSpeaking, true)
+
+    // ASR and speech-boundary ids can differ. Completing text alone must not
+    // release the current speech gate, even if correlation uses its fallback.
+    runtime.handleProviderEvent({
+      type: 'conversation.item.input_audio_transcription.completed',
+      item_id: itemId,
+      transcript: '上一轮迟到的转写',
+    })
+
+    assert.deepEqual(turns.current(), current)
+    assert.equal(turns.userSpeaking, true)
+    assert.equal(speechEndCount(), endsBeforeFinal)
+
+    runtime.handleProviderEvent({
+      type: 'input_audio_buffer.speech_stopped',
+      item_id: 'vad-current',
+    })
+    assert.equal(turns.userSpeaking, false)
+    assert.equal(speechEndCount(), endsBeforeFinal + 1)
+  })
+}
+
 test('keeps consecutive utterances separate when the provider reuses an item id', () => {
   const { runtime, events, records } = harness()
   const utterances = ['梁家辉最近有什么新闻', '我靠，这么牛逼']

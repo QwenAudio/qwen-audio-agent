@@ -95,7 +95,6 @@ body { background: #08090d; }
     white-space: nowrap;
   }
   .mobile-runtime .brand small,
-  .mobile-runtime .app > header .ghost,
   .mobile-runtime .backend,
   .mobile-runtime .model-status { display: none; }
   .mobile-runtime header .voice {

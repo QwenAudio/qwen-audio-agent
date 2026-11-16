@@ -91,6 +91,26 @@ test('installs and stops a launchd user service', async () => {
   }
 })
 
+test('writes the systemd working directory as a bare path', async () => {
+  const root = temporaryDirectory()
+  try {
+    const installed = await manageGatewayService('install', {
+      platform: 'linux',
+      xdgConfigHome: resolve(root, 'xdg'),
+      configDirectory: resolve(root, 'config'),
+      nodePath: '/usr/bin/node',
+      gatewayPath: '/opt/my server/50%/index.mjs',
+      execute: async () => ({ stdout: '', stderr: '' }),
+    })
+    const unit = readFileSync(installed.servicePath, 'utf8')
+    // systemd does not unquote WorkingDirectory=; quotes make the unit fail to load.
+    assert.match(unit, /^WorkingDirectory=\/opt\/my server\/50%%$/m)
+    assert.match(unit, /^ExecStart="\/usr\/bin\/node" "\/opt\/my server\/50%%\/index.mjs"/m)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('installs a systemd user service with restart protection', async () => {
   const root = temporaryDirectory()
   const calls = []
@@ -117,7 +137,7 @@ test('installs a systemd user service with restart protection', async () => {
     const unit = readFileSync(installed.servicePath, 'utf8')
     assert.match(unit, /ExecStart="\/usr\/bin\/node"/)
     assert.match(unit, /"\/opt\/server\/index.mjs"/)
-    assert.match(unit, /WorkingDirectory="\/opt\/server"/)
+    assert.match(unit, /^WorkingDirectory=\/opt\/server$/m)
     assert.match(unit, /Restart=on-failure/)
     assert.deepEqual(calls.at(-1), [
       'systemctl',

@@ -2,10 +2,16 @@ import { config } from './config.mjs'
 import { isIP } from 'node:net'
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
-const TRUSTED_NATIVE_CLIENT_ORIGINS = new Set(['https://qwaudio.local'])
+const TRUSTED_NATIVE_CLIENT_ORIGINS = new Set([
+  'https://qwaudio.local',
+  'capacitor://qwaudio.local',
+])
 
 function normalizedOrigin(value) {
   if (typeof value !== 'string' || !value.trim()) return ''
+  // WKWebView uses a custom scheme for bundled iOS resources. Recognize only
+  // the fixed native app origins; arbitrary opaque origins remain invalid.
+  if (TRUSTED_NATIVE_CLIENT_ORIGINS.has(value.trim())) return value.trim()
   try {
     const url = new URL(value)
     return ['http:', 'https:'].includes(url.protocol) ? url.origin : ''

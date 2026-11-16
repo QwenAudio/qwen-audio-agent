@@ -21,6 +21,8 @@
 
 ## News
 
+- **2026-11-10 · [v2.1.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v2.1.0)**
+  🎙️ 接入 Qwen Audio 3.1 Realtime，统一前台配置；🧩 支持执行中调整任务、完成后继续加工；🎭 新增可运行的[双连接数字人示例](https://github.com/QwenAudio/qwen-audio-agent/blob/main/examples/digital-human/README_ZH.md)，支持替换渲染服务；📷 WebUI 新增拍照输入。
 - **2026-09-23 · [v2.0.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v2.0.0)**
   🏗️ 重构编排运行时，统一客户端协议与 ACP / A2A 后台接入；🎙️ 扩展[语音与视频模型](#语音前台)；🧠 完善前台工具、记忆与资料库；💬 新增桌面对话面板与手机远程连接；🧩 新增[客服、座舱、数字人等示例](#示例与场景扩展)；📄 发布[技术报告](https://arxiv.org/pdf/2609.25195)。
 - **2026-08-20 · [v1.11.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.11.0)**

@@ -28,6 +28,12 @@ function systemd(value) {
     .replaceAll('\n', '')}"`
 }
 
+// Path settings such as WorkingDirectory= are not unquoted by systemd, so they
+// take the bare path; only specifier expansion (%) needs escaping.
+function systemdPath(value) {
+  return String(value).replaceAll('%', '%%').replaceAll('\n', '')
+}
+
 function executeFile(command, args, options = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
     execFile(command, args, options, (error, stdout, stderr) => {
@@ -136,7 +142,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=${systemd(workingDirectory)}
+WorkingDirectory=${systemdPath(workingDirectory)}
 ExecStart=${command.map(systemd).join(' ')}
 ${Object.entries(environment).map(([key, value]) => (
     `Environment=${systemd(`${key}=${value}`)}`

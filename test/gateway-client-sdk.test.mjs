@@ -87,7 +87,8 @@ test('reports a socket construction failure and recovers without throwing into t
       return socket
     },
   })
-  assert.deepEqual(statuses.map(status => status.state), ['connecting', 'unavailable'])
+  assert.deepEqual(statuses.map(status => status.state), ['connecting', 'unavailable', 'disconnected'])
+  assert.equal(statuses[1].phase, 'connection')
   assert.equal(statuses[1].error, failure)
   assert.equal(client.ready, false)
   t.mock.timers.tick(50)
@@ -97,35 +98,131 @@ test('reports a socket construction failure and recovers without throwing into t
   assert.equal(client.ready, true)
 })
 
-test('does not create a second socket when a failure callback immediately restarts the client', t => {
+for (const callbackState of ['unavailable', 'disconnected']) {
+  test(`does not create a second socket when the ${callbackState} callback restarts after construction fails`, t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const socket = new FakeSocket()
+    const statuses = []
+    let attempts = 0
+    const client = new GatewayClient({
+      url: 'wss://gateway.test/api/realtime',
+      reconnectMinMs: 50,
+      createSocket: () => {
+        attempts += 1
+        if (attempts === 1) throw new Error('Socket construction failed')
+        return socket
+      },
+      onStatus: status => {
+        statuses.push(status.state)
+        if (status.state === callbackState) {
+          client.stop()
+          client.start()
+        }
+      },
+    })
+    t.after(() => client.stop())
+    client.start()
+    assert.deepEqual(statuses, callbackState === 'unavailable'
+      ? ['connecting', 'unavailable', 'connecting']
+      : ['connecting', 'unavailable', 'disconnected', 'connecting'])
+    assert.equal(client.socket, socket)
+    assert.equal(client.reconnectTimer, null)
+    t.mock.timers.tick(50)
+    assert.equal(attempts, 2)
+    socket.open()
+    completeHandshake(socket)
+    assert.equal(client.ready, true)
+  })
+
+  test(`stopping in the ${callbackState} callback suppresses retries after construction fails`, t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const statuses = []
+    let attempts = 0
+    const client = new GatewayClient({
+      url: 'wss://gateway.test/api/realtime',
+      reconnectMinMs: 50,
+      createSocket: () => {
+        attempts += 1
+        throw new Error('Socket construction failed')
+      },
+      onStatus: status => {
+        statuses.push(status.state)
+        if (status.state === callbackState) client.stop()
+      },
+    })
+    t.after(() => client.stop())
+    client.start()
+    assert.deepEqual(statuses, callbackState === 'unavailable'
+      ? ['connecting', 'unavailable']
+      : ['connecting', 'unavailable', 'disconnected'])
+    assert.equal(client.stopped, true)
+    assert.equal(client.reconnectTimer, null)
+    t.mock.timers.tick(1_000)
+    assert.equal(attempts, 1)
+  })
+}
+
+test('caller-managed recovery runs once after socket construction fails', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
-  const sockets = []
+  const socket = new FakeSocket()
+  const statuses = []
   let attempts = 0
+  let retryTimer
   const client = new GatewayClient({
     url: 'wss://gateway.test/api/realtime',
-    reconnectMinMs: 50,
+    reconnect: false,
     createSocket: () => {
       attempts += 1
       if (attempts === 1) throw new Error('Socket construction failed')
-      const socket = new FakeSocket()
-      sockets.push(socket)
       return socket
     },
     onStatus: status => {
-      if (status.state === 'unavailable') {
-        client.stop()
-        client.start()
+      statuses.push(status.state)
+      if (status.state === 'disconnected') {
+        retryTimer = setTimeout(() => { client.stop(); client.start() }, 50)
       }
     },
   })
-  t.after(() => client.stop())
+  t.after(() => { clearTimeout(retryTimer); client.stop() })
   client.start()
-  assert.equal(sockets.length, 1)
-  t.mock.timers.tick(50)
-  assert.equal(sockets.length, 1)
-  sockets[0].open()
-  completeHandshake(sockets[0])
+  assert.deepEqual(statuses, ['connecting', 'unavailable', 'disconnected'])
+  assert.equal(client.reconnectTimer, null)
+  assert.equal(client.connectTimer, null)
+  assert.equal(client.handshakeTimer, null)
+  t.mock.timers.tick(49)
+  assert.equal(attempts, 1)
+  t.mock.timers.tick(1)
+  assert.equal(attempts, 2)
+  socket.open()
+  completeHandshake(socket)
   assert.equal(client.ready, true)
+  t.mock.timers.tick(1_000)
+  assert.equal(attempts, 2)
+  assert.equal(statuses.filter(state => state === 'disconnected').length, 1)
+})
+
+test('repeated socket construction failures retain the existing reconnect backoff', t => {
+  let attempts = 0
+  const { client, statuses } = createTimedClient(t, {
+    createSocket: () => {
+      attempts += 1
+      throw new Error('Socket construction failed')
+    },
+  })
+  for (const delay of [50, 100, 200, 200]) {
+    const before = attempts
+    t.mock.timers.tick(delay - 1)
+    assert.equal(attempts, before)
+    t.mock.timers.tick(1)
+    assert.equal(attempts, before + 1)
+  }
+  assert.equal(statuses.filter(status => status.state === 'disconnected').length, attempts)
+  assert.equal(client.socket, null)
+  assert.equal(client.connectTimer, null)
+  assert.equal(client.handshakeTimer, null)
+  client.stop()
+  t.mock.timers.tick(1_000)
+  assert.equal(attempts, 5)
 })
 
 test('reference Client forwards payload-free memory changes without tool events or a new capability', t => {

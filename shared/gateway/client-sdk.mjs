@@ -274,6 +274,9 @@ export class GatewayClient {
       })
     } catch (error) {
       this.onStatus?.({ state: 'unavailable', phase: 'connection', error })
+      // Callers that own reconnects need the same terminal status as a timeout.
+      if (this.stopped || this.socket !== null) return
+      this.onStatus?.({ state: 'disconnected' })
       if (this.socket === null) this.#scheduleReconnect()
       return
     }

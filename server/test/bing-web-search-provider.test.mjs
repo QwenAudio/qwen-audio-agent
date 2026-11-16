@@ -91,3 +91,12 @@ test('tolerates invalid numeric entities in untrusted result markup', () => {
   )
   assert.equal(parseBingHtmlResults(html)[0].title, 'First \ufffd & current')
 })
+
+test('decodes each entity once, so escaped entity text stays literal', () => {
+  const html = SEARCH_HTML
+    .replace('First</strong>', 'First &amp;lt;div&amp;gt;</strong>')
+    .replace('Another source.', 'Write &amp;amp; in HTML.')
+  const [first, second] = parseBingHtmlResults(html)
+  assert.equal(first.title, 'First &lt;div&gt; & current')
+  assert.equal(second.snippet, 'Write &amp; in HTML.')
+})

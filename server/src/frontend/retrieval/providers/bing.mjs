@@ -24,19 +24,29 @@ function decodedCodePoint(value, radix) {
   return String.fromCodePoint(codePoint)
 }
 
+const NAMED_ENTITIES = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  ensp: ' ',
+  emsp: ' ',
+  middot: '·',
+}
+
+// Decode in a single pass so text produced by one entity is never decoded
+// again: `&amp;lt;` is the literal text `&lt;`, not `<`.
 function decodeEntities(value) {
-  return String(value || '')
-    .replace(/&amp;/giu, '&')
-    .replace(/&lt;/giu, '<')
-    .replace(/&gt;/giu, '>')
-    .replace(/&quot;/giu, '"')
-    .replace(/&(?:apos|#(?:39|x27));/giu, "'")
-    .replace(/&nbsp;/giu, ' ')
-    .replace(/&ensp;/giu, ' ')
-    .replace(/&emsp;/giu, ' ')
-    .replace(/&middot;/giu, '·')
-    .replace(/&#(\d+);/gu, (_, code) => decodedCodePoint(code, 10))
-    .replace(/&#x([0-9a-f]+);/giu, (_, code) => decodedCodePoint(code, 16))
+  return String(value || '').replace(
+    /&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/giu,
+    (entity, decimal, hex, name) => {
+      if (decimal !== undefined) return decodedCodePoint(decimal, 10)
+      if (hex !== undefined) return decodedCodePoint(hex, 16)
+      return NAMED_ENTITIES[name.toLowerCase()] ?? entity
+    },
+  )
 }
 
 function plainText(value) {

@@ -22,6 +22,13 @@ its player implementation are not included in this repository or the default app
   `fetch_url`, enabled by default) let the assistant look up song/artist information alongside
   lyrics; availability depends on the configured search provider and network.
 
+### Demo
+
+Watch voice conversation, music recommendations, and playback control in the mobile
+client. Turn on sound for the full experience (5 min 56 sec).
+
+https://github.com/user-attachments/assets/2af8ca74-e5ca-4984-86b0-951777b05598
+
 ### Tools the assistant can call
 
 There are two kinds. **Client tools** are registered by the mobile client in `session.hello`

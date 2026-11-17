@@ -584,6 +584,9 @@ export function createRealtimeSessionRuntime({
 
   const handleEvent = event => {
     if (closed) return
+    // A late final may finish an existing presentation, never create a new turn
+    // after its original response context has already expired or been removed.
+    if (event.__voiceLateFinal && !presentationRuntime.has(realtimeResponseId(event))) return
     if (isSleepActivityEvent(event)) sleepController?.recordActivity()
     if (isResponseActivityEvent(event)) presentationRuntime.begin(event)
     if (inputs.handleProviderEvent(event)) return

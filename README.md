@@ -27,6 +27,8 @@ tells you:
 
 ## News
 
+- **2026-11-10 · [v2.1.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v2.1.0)**
+  🎙️ Adds Qwen Audio 3.1 Realtime and unified frontend configuration; 🧩 supports updating running tasks and continuing completed work; 🎭 adds a runnable [dual-connection digital-human example](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/digital-human) with replaceable rendering services; 📷 adds photo capture to WebUI.
 - **2026-09-23 · [v2.0.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v2.0.0)**
   🏗️ Rebuilt the orchestration runtime with a unified client protocol and ACP / A2A backend integration; 🎙️ expanded [voice and video model support](#voice-frontends); 🧠 enhanced frontend tools, memory, and knowledge libraries; 💬 added a desktop conversation panel and remote mobile access; 🧩 added [customer service, smart cockpit, digital human, and other examples](#examples-and-scenario-expansion); 📄 published the [technical report](https://arxiv.org/pdf/2609.25195).
 - **2026-08-20 · [v1.11.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.11.0)**

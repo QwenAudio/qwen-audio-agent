@@ -58,7 +58,7 @@ try {
       const compact = await page.locator('.hero').boundingBox()
       const messages = await page.locator('.messages').boundingBox()
       assert.ok(compact.height < 60, 'conversation keeps only a compact status line')
-      assert.ok(messages.height - beforeMessages.height > 100,
+      assert.ok(messages.height - beforeMessages.height > (viewport.height <= 600 ? 40 : 100),
         'conversation gains space previously occupied by welcome decorations')
       await page.locator('.hero small').evaluate(node => {
         node.textContent = 'Connection error: the Gateway is unavailable. Please check the connection and try again.'

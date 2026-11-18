@@ -44,7 +44,8 @@ function decodeEntities(value) {
     (entity, decimal, hex, name) => {
       if (decimal !== undefined) return decodedCodePoint(decimal, 10)
       if (hex !== undefined) return decodedCodePoint(hex, 16)
-      return NAMED_ENTITIES[name.toLowerCase()] ?? entity
+      const key = name.toLowerCase()
+      return Object.hasOwn(NAMED_ENTITIES, key) ? NAMED_ENTITIES[key] : entity
     },
   )
 }

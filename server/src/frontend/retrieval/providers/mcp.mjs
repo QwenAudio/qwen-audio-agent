@@ -160,11 +160,11 @@ function normalizeToolResult(result) {
 
 function callArguments(tool, query, limit, toolArguments = {}) {
   const properties = tool?.inputSchema?.properties || {}
-  const queryField = QUERY_FIELDS.find(field => field in properties) || 'query'
-  // Preserve the frontend's single-query contract without another model call.
-  const args = 'objective' in properties && 'search_queries' in properties
+  const queryField = QUERY_FIELDS.find(field => field in properties)
+  // Keep existing single-query schemas preferred, including mixed schemas.
+  const args = !queryField && 'objective' in properties && 'search_queries' in properties
     ? { objective: query, search_queries: [query] }
-    : { [queryField]: query }
+    : { [queryField || 'query']: query }
   const limitField = LIMIT_FIELDS.find(field => field in properties)
   if (limitField) args[limitField] = limit
   // Preset arguments are sent only when the tool declares them.

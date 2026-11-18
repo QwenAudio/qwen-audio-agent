@@ -109,3 +109,44 @@ test('drops credential-bearing URLs and tolerates invalid numeric entities', () 
   )
   assert.ok(parseSo360Results(withBadEntity)[0].title.includes('\ufffd'))
 })
+
+test('decodes each entity once, so escaped entity text stays literal', () => {
+  const html = SEARCH_HTML.replace('摔倒受伤', '摔倒 &amp;lt;b&amp;gt; 受伤')
+  assert.ok(parseSo360Results(html)[0].title.includes('&lt;b&gt;'))
+})
+
+test('preserves unknown entities, including inherited object property names', () => {
+  const text = '&constructor; &CONSTRUCTOR; &unknown;'
+  const url = 'https://example.org/?value=&constructor;&amp;other=&unknown;'
+  const html = SEARCH_HTML
+    .replace('Second result', text)
+    .replace('Another source.', text)
+    .replace('http://www.sina.cn/news/detail/1.html', url)
+    .replace('https://example.org/plain', url.replace('example.org', 'example.com'))
+  const [first, second] = parseSo360Results(html)
+  assert.equal(second.title, text)
+  assert.equal(second.snippet, text)
+  assert.equal(first.url, 'https://example.org/?value=&constructor;&other=&unknown;')
+  assert.equal(second.url, 'https://example.com/?value=&constructor;&other=&unknown;')
+})
+
+test('decodes numeric entities once and preserves valid Unicode and invalid code point handling', () => {
+  const text = '&amp;#60; &amp;#x3c; &#38;#x3c; &#x26;lt; &#60; &#x1F431; &#xD800; &#1114112;'
+  const expected = '&#60; &#x3c; &#x3c; &lt; < 🐱 \ufffd \ufffd'
+  const html = SEARCH_HTML
+    .replace('Second result', text)
+    .replace('Another source.', text)
+  const result = parseSo360Results(html)[1]
+  assert.equal(result.title, expected)
+  assert.equal(result.snippet, expected)
+})
+
+test('decodes data-mdurl and href attribute entities only once', () => {
+  const url = 'https://example.org/?literal=&amp;lt;&amp;nested=&amp;amp;&amp;number=&#38;lt;'
+  const html = SEARCH_HTML
+    .replace('http://www.sina.cn/news/detail/1.html', url)
+    .replace('https://example.org/plain', url.replace('example.org', 'example.com'))
+  const [first, second] = parseSo360Results(html)
+  assert.equal(first.url, 'https://example.org/?literal=&lt;&nested=&amp;&number=&lt;')
+  assert.equal(second.url, 'https://example.com/?literal=&lt;&nested=&amp;&number=&lt;')
+})

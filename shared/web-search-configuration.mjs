@@ -3,14 +3,15 @@
 export function resolveWebSearchConfiguration(env = process.env) {
   const bailianMcpUrl = 'https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/mcp'
   const keenableMcpUrl = 'https://api.keenable.ai/mcp?keenable_title=qwen-audio-agent'
+  const parallelMcpUrl = 'https://mcp.parallel.ai/mcp?tools=web_search'
   const explicitMcpUrl = String(env.QWEN_AUDIO_WEB_SEARCH_MCP_URL || '').trim()
   const dashscopeApiKey = String(env.DASHSCOPE_API_KEY || '').trim()
   const requestedProvider = String(env.QWEN_AUDIO_WEB_SEARCH_PROVIDER || '').trim().toLowerCase()
   const provider = requestedProvider || (explicitMcpUrl ? 'mcp' : 'so360')
-  if (!['bailian', 'bing', 'keenable', 'mcp', 'none', 'so360'].includes(provider)) {
+  if (!['bailian', 'bing', 'keenable', 'mcp', 'none', 'parallel', 'so360'].includes(provider)) {
     throw new Error(
       '不支持的 Web Search Provider：'
-      + `${provider}（可选 bailian、bing、keenable、mcp、none、so360）`,
+      + `${provider}（可选 bailian、bing、keenable、mcp、none、parallel、so360）`,
     )
   }
   if (provider === 'keenable') {
@@ -21,6 +22,17 @@ export function resolveWebSearchConfiguration(env = process.env) {
       mcpUrl: keenableMcpUrl,
       mcpToken: String(env.KEENABLE_API_KEY || '').trim(),
       mcpTool: 'search_web_pages',
+    }
+  }
+  if (provider === 'parallel') {
+    // Keyless by default, and `tools=web_search` keeps the shared Parallel MCP
+    // server scoped to search. Never forward credentials or endpoint overrides
+    // saved for another MCP service; use the custom mcp route for an API key.
+    return {
+      provider,
+      mcpUrl: parallelMcpUrl,
+      mcpToken: '',
+      mcpTool: 'web_search',
     }
   }
   const usesBailianMcp = provider === 'bailian'

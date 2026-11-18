@@ -30,6 +30,20 @@ QWEN_AUDIO_WEB_SEARCH_PROVIDER=keenable
 上下文。预设固定使用上述地址和 `search_web_pages` 工具，不读取下方的
 `QWEN_AUDIO_WEB_SEARCH_MCP_*` 设置。
 
+内置的 [Parallel](https://docs.parallel.ai/integrations/mcp/quickstart) 预设无需账号
+或 Key，即可连接 Parallel MCP 服务（`https://mcp.parallel.ai/mcp?tools=web_search`）。
+免 Key 调用使用 Fast 搜索模式，调用额度较低：
+
+```dotenv
+QWEN_AUDIO_WEB_SEARCH_PROVIDER=parallel
+```
+
+启用该预设后，搜索词会发送到 Parallel，返回的标题、摘录和链接作为来源进入语音模型
+上下文。`tools=web_search` 把该共享服务限定为搜索，其网页读取与研究类工具不会进入
+前台。预设固定使用上述地址和 `web_search` 工具，不读取下方的
+`QWEN_AUDIO_WEB_SEARCH_MCP_*` 设置；如需发送 Parallel API Key，请选择 `mcp` 并显式
+配置地址与 Token。
+
 同一个与供应商无关的 Adapter 也可以接入其他兼容的 MCP 搜索服务；自定义地址必须
 显式提供自己的凭据：
 
@@ -40,7 +54,7 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN=your-token
 QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 ```
 
-可选 `so360`（默认）、`bing`、`bailian`、`keenable`、`mcp` 或 `none`。设置 `none` 只关闭搜索，网页读取工具仍可用；同时关闭搜索和网页读取时设置：
+可选 `so360`（默认）、`bing`、`bailian`、`keenable`、`parallel`、`mcp` 或 `none`。设置 `none` 只关闭搜索，网页读取工具仍可用；同时关闭搜索和网页读取时设置：
 
 ```dotenv
 QWEN_AUDIO_WEB_TOOLS_ENABLED=false

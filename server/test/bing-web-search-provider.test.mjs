@@ -91,3 +91,46 @@ test('tolerates invalid numeric entities in untrusted result markup', () => {
   )
   assert.equal(parseBingHtmlResults(html)[0].title, 'First \ufffd & current')
 })
+
+test('decodes each entity once, so escaped entity text stays literal', () => {
+  const html = SEARCH_HTML
+    .replace('First</strong>', 'First &amp;lt;div&amp;gt;</strong>')
+    .replace('Another source.', 'Write &amp;amp; in HTML.')
+  const [first, second] = parseBingHtmlResults(html)
+  assert.equal(first.title, 'First &lt;div&gt; & current')
+  assert.equal(second.snippet, 'Write &amp; in HTML.')
+})
+
+test('preserves unknown entities, including inherited object property names', () => {
+  const text = '&constructor; &CONSTRUCTOR; &unknown;'
+  const html = SEARCH_HTML
+    .replace('>Second<', `>${text}<`)
+    .replace('Another source.', text)
+    .replace('https://example.org/second', 'https://example.org/?value=&constructor;&amp;other=&unknown;')
+  const result = parseBingHtmlResults(html)[1]
+  assert.equal(result.title, text)
+  assert.equal(result.snippet, text)
+  assert.equal(result.url, 'https://example.org/?value=&constructor;&other=&unknown;')
+})
+
+test('decodes numeric entities once and preserves valid Unicode and invalid code point handling', () => {
+  const text = '&amp;#60; &amp;#x3c; &#38;#x3c; &#x26;lt; &#60; &#x1F431; &#xD800; &#1114112;'
+  const expected = '&#60; &#x3c; &#x3c; &lt; < 🐱 \ufffd \ufffd'
+  const html = SEARCH_HTML
+    .replace('>Second<', `>${text}<`)
+    .replace('Another source.', text)
+  const result = parseBingHtmlResults(html)[1]
+  assert.equal(result.title, expected)
+  assert.equal(result.snippet, expected)
+})
+
+test('decodes URL attribute entities only once', () => {
+  const html = SEARCH_HTML.replace(
+    'https://example.org/second',
+    'https://example.org/?literal=&amp;lt;&amp;nested=&amp;amp;&amp;number=&#38;lt;',
+  )
+  assert.equal(
+    parseBingHtmlResults(html)[1].url,
+    'https://example.org/?literal=&lt;&nested=&amp;&number=&lt;',
+  )
+})

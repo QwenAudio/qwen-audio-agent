@@ -135,41 +135,48 @@ try {
         })
       }
     })
-    const selectors = [
-      '.app', '.app > header', '.workspace', '.hero .orb', '.messages',
-      '.multimodal-composer', '.composer-attach', '.composer-photo', '.composer-send',
-      '.voice', '.mobile-disconnect',
-      ...(width > 600 ? ['[data-action="knowledge"]', '[data-action="new-session"]'] : []),
-    ]
-    const boxes = await page.evaluate(selectors => {
-      const result = {}
-      for (const selector of selectors) {
-        const element = document.querySelector(selector)
-        const rect = element.getBoundingClientRect()
-        const style = getComputedStyle(element)
-        result[selector] = {
-          top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left,
-          height: rect.height, width: rect.width,
-          contentHeight: element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom),
+    const conversation = await page.locator('.messages').innerHTML()
+    for (const active of [false, true]) {
+      await page.locator('.messages').evaluate((node, html) => { node.innerHTML = html },
+        active ? conversation : '<div class="empty">试着说</div>')
+      assert.equal(await page.locator('.hero .orb').isVisible(), !active,
+        `${name}: welcome artwork visibility follows conversation state`)
+      const selectors = [
+        '.app', '.app > header', '.workspace', ...(active ? [] : ['.hero .orb']), '.messages',
+        '.multimodal-composer', '.composer-attach', '.composer-photo', '.composer-send',
+        '.voice', '.mobile-disconnect',
+        ...(width > 600 ? ['[data-action="knowledge"]', '[data-action="new-session"]'] : []),
+      ]
+      const boxes = await page.evaluate(selectors => {
+        const result = {}
+        for (const selector of selectors) {
+          const element = document.querySelector(selector)
+          const rect = element.getBoundingClientRect()
+          const style = getComputedStyle(element)
+          result[selector] = {
+            top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left,
+            height: rect.height, width: rect.width,
+            contentHeight: element.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom),
+          }
         }
+        return result
+      }, selectors)
+      for (const [selector, rect] of Object.entries(boxes)) {
+        assert.ok(rect.width > 0 && rect.height > 0, `${name}: ${selector} has no visible box`)
+        assert.ok(rect.top >= top - 1, `${name}: ${selector} overlaps the top safe area`)
+        assert.ok(rect.bottom <= height - bottom + 1, `${name}: ${selector} overlaps the bottom safe area`)
+        assert.ok(rect.left >= left - 1, `${name}: ${selector} overlaps the left safe area`)
+        assert.ok(rect.right <= width - right + 1, `${name}: ${selector} overlaps the right safe area`)
       }
-      return result
-    }, selectors)
-    for (const [selector, rect] of Object.entries(boxes)) {
-      assert.ok(rect.width > 0 && rect.height > 0, `${name}: ${selector} has no visible box`)
-      assert.ok(rect.top >= top - 1, `${name}: ${selector} overlaps the top safe area`)
-      assert.ok(rect.bottom <= height - bottom + 1, `${name}: ${selector} overlaps the bottom safe area`)
-      assert.ok(rect.left >= left - 1, `${name}: ${selector} overlaps the left safe area`)
-      assert.ok(rect.right <= width - right + 1, `${name}: ${selector} overlaps the right safe area`)
+      assert.ok(boxes['.messages'].contentHeight >= 20, `${name}: messages have no readable content space`)
+      assert.ok(boxes['.voice'].height >= 44, `${name}: microphone touch target is too small`)
+      assert.ok(boxes['.voice'].width >= 44, `${name}: microphone touch target is too narrow`)
+      for (const selector of [...(active ? [] : ['.hero .orb']), '.voice', '.composer-photo',
+        ...(width > 600 ? ['[data-action="knowledge"]', '[data-action="new-session"]'] : [])]) {
+        await assertClickable(page, selector, name)
+      }
+      console.log(`PASS ${name} ${active ? 'conversation' : 'welcome'}`)
     }
-    assert.ok(boxes['.messages'].contentHeight >= 20, `${name}: messages have no readable content space`)
-    assert.ok(boxes['.voice'].height >= 44, `${name}: microphone touch target is too small`)
-    assert.ok(boxes['.voice'].width >= 44, `${name}: microphone touch target is too narrow`)
-    for (const selector of ['.hero .orb', '.voice', '.composer-photo',
-      ...(width > 600 ? ['[data-action="knowledge"]', '[data-action="new-session"]'] : [])]) {
-      await assertClickable(page, selector, name)
-    }
-    console.log(`PASS ${name}`)
   }
   for (const viewport of [
     { width: 440, height: 956 },

@@ -118,6 +118,17 @@ test('uses a key-free fallback until the user configures a search provider', () 
     KEENABLE_API_KEY: 'keenable-key',
     QWEN_AUDIO_WEB_SEARCH_PROVIDER: 'keenable',
   }).mcpToken, 'keenable-key')
+  assert.deepEqual(resolveWebSearchConfiguration({
+    QWEN_AUDIO_WEB_SEARCH_PROVIDER: 'parallel',
+    QWEN_AUDIO_WEB_SEARCH_MCP_URL: 'https://search.example/mcp',
+    QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN: 'search-key',
+    QWEN_AUDIO_WEB_SEARCH_MCP_TOOL: 'search_web',
+  }), {
+    provider: 'parallel',
+    mcpUrl: 'https://mcp.parallel.ai/mcp?tools=web_search',
+    mcpToken: '',
+    mcpTool: 'web_search',
+  })
   assert.equal(resolveWebSearchConfiguration({
     KEENABLE_API_KEY: 'keenable-key',
   }).provider, 'so360')

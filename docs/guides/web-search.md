@@ -35,6 +35,22 @@ snippets and links enter the voice model's context as sources. It always uses
 this endpoint and the `search_web_pages` tool and does not read the
 `QWEN_AUDIO_WEB_SEARCH_MCP_*` settings below.
 
+The built-in [Parallel](https://docs.parallel.ai/integrations/mcp/quickstart)
+preset connects to the Parallel MCP server
+(`https://mcp.parallel.ai/mcp?tools=web_search`) without an account or key.
+Keyless use runs Parallel's Fast search mode at lower rate limits:
+
+```dotenv
+QWEN_AUDIO_WEB_SEARCH_PROVIDER=parallel
+```
+
+With this preset, search queries go to Parallel, and the returned titles,
+excerpts and links enter the voice model's context as sources. `tools=web_search`
+keeps that shared server scoped to search, so its fetch and research tools stay
+out of the frontend. It always uses this endpoint and the `web_search` tool and
+does not read the `QWEN_AUDIO_WEB_SEARCH_MCP_*` settings below; to send a
+Parallel API key, choose `mcp` and configure the URL and token explicitly.
+
 The same provider-neutral adapter can connect to another compatible MCP search
 service. Custom endpoints must provide their own credentials explicitly:
 
@@ -45,7 +61,7 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN=your-token
 QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 ```
 
-Choose `so360` (default), `bing`, `bailian`, `keenable`, `mcp`, or `none`. Setting `none` disables search, not page fetching. Disable both search and page fetching with:
+Choose `so360` (default), `bing`, `bailian`, `keenable`, `parallel`, `mcp`, or `none`. Setting `none` disables search, not page fetching. Disable both search and page fetching with:
 
 ```dotenv
 QWEN_AUDIO_WEB_TOOLS_ENABLED=false

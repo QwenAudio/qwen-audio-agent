@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { PACKAGE_VERSION } from '../src/core/package-version.mjs'
 import {
   McpWebSearchProvider,
 } from '../src/frontend/retrieval/providers/mcp.mjs'
@@ -86,6 +87,39 @@ test('projects structured MCP search output behind the Web Search port', async (
   })
   assert.equal(calls.at(-1)[0], 'close')
 })
+
+for (const queryField of ['query', 'q', 'search_query']) {
+  test(`preserves required ${queryField} when an MCP schema also offers objective and search_queries`, async () => {
+    const calls = []
+    const provider = new McpWebSearchProvider({
+      url: 'https://search.example/mcp',
+      clientFactory: () => fakeClient({
+        tools: [{
+          name: 'web_search',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              [queryField]: { type: 'string' },
+              objective: { type: 'string' },
+              search_queries: { type: 'array', items: { type: 'string' } },
+              limit: { type: 'integer' },
+            },
+            required: [queryField],
+          },
+        }],
+        result: { structuredContent: {
+          results: [{ title: 'Facts', url: 'https://example.com/facts' }],
+        }, content: [] },
+      }, calls),
+      transportFactory: () => ({}),
+    })
+
+    await provider.search('latest facts', { limit: 3 })
+    assert.deepEqual(calls.find(call => call[0] === 'callTool')[1].arguments, {
+      [queryField]: 'latest facts', limit: 3,
+    })
+  })
+}
 
 test('accepts text MCP results only when they contain source links', async () => {
   const provider = new McpWebSearchProvider({
@@ -200,7 +234,11 @@ test('projects the keyless Keenable Web Search MCP JSON response', async () => {
     transports[0].url.href,
     'https://api.keenable.ai/mcp?keenable_title=qwen-audio-agent',
   )
-  assert.equal(transports[0].options.requestInit, undefined)
+  // Keyless: the shared User-Agent is the only header, so no Authorization and
+  // no credentials saved for another MCP service reach Keenable.
+  assert.deepEqual(transports[0].options.requestInit.headers, {
+    'User-Agent': `qwen-audio-agent/${PACKAGE_VERSION}`,
+  })
   assert.deepEqual(calls.find(call => call[0] === 'callTool')[1], {
     name: 'search_web_pages',
     arguments: {

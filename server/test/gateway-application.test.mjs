@@ -297,18 +297,41 @@ test('protects remote HTTP access and completes one-time device pairing', async 
     },
   })
   assert.equal(browserAuthenticated.status, 200)
-  const directSocket = new WebSocket(
-    `ws://127.0.0.1:${port}/api/realtime?sessionId=direct-device`,
-    {
+  const nativeOrigins = ['https://qwaudio.local', 'capacitor://qwaudio.local']
+  async function expectOriginDenied(origin, token, status) {
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/api/realtime`, {
       headers: {
         Host: 'gateway.example.test',
-        Authorization: `Bearer ${direct.access_token}`,
-        Origin: 'https://qwaudio.local',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        Origin: origin,
       },
-    },
-  )
-  await once(directSocket, 'open')
-  const directClosed = once(directSocket, 'close')
+    })
+    t.after(() => socket.terminate())
+    await assert.rejects(once(socket, 'open'), {
+      message: `Unexpected server response: ${status}`,
+    })
+  }
+  for (const origin of nativeOrigins) {
+    await expectOriginDenied(origin, undefined, 401)
+    // A valid static key is not a Gateway-issued native device identity.
+    await expectOriginDenied(origin, accessToken, 403)
+  }
+  const directClosed = []
+  for (const [index, origin] of nativeOrigins.entries()) {
+    const directSocket = new WebSocket(
+      `ws://127.0.0.1:${port}/api/realtime?sessionId=direct-device-${index}`,
+      {
+        headers: {
+          Host: 'gateway.example.test',
+          Authorization: `Bearer ${direct.access_token}`,
+          Origin: origin,
+        },
+      },
+    )
+    t.after(() => directSocket.terminate())
+    await once(directSocket, 'open')
+    directClosed.push(once(directSocket, 'close'))
+  }
   const directRevoked = await requestJson({
     port,
     path: `/api/access/devices/${issued.body.device.id}`,
@@ -316,7 +339,9 @@ test('protects remote HTTP access and completes one-time device pairing', async 
     headers: { Host: `127.0.0.1:${port}` },
   })
   assert.equal(directRevoked.status, 204)
-  assert.equal((await directClosed)[0], GATEWAY_CLIENT_REVOKED_CLOSE_CODE)
+  for (const [closeCode] of await Promise.all(directClosed)) {
+    assert.equal(closeCode, GATEWAY_CLIENT_REVOKED_CLOSE_CODE)
+  }
   const directDeniedAfterRevocation = await requestJson({
     port,
     path: '/api/health',
@@ -377,18 +402,27 @@ test('protects remote HTTP access and completes one-time device pairing', async 
   })
   assert.equal(replay.status, 401)
 
-  const remoteSocket = new WebSocket(
-    `ws://127.0.0.1:${port}/api/realtime?sessionId=paired-device`,
-    {
-      headers: {
-        Host: 'gateway.example.test',
-        Authorization: `Bearer ${paired.body.access_token}`,
-        Origin: 'https://qwaudio.local',
+  for (const origin of [
+    'null', 'capacitor://attacker.example', 'capacitor://qwaudio.local/path',
+  ]) {
+    await expectOriginDenied(origin, paired.body.access_token, 403)
+  }
+  const remoteClosed = []
+  for (const [index, origin] of nativeOrigins.entries()) {
+    const remoteSocket = new WebSocket(
+      `ws://127.0.0.1:${port}/api/realtime?sessionId=paired-device-${index}`,
+      {
+        headers: {
+          Host: 'gateway.example.test',
+          Authorization: `Bearer ${paired.body.access_token}`,
+          Origin: origin,
+        },
       },
-    },
-  )
-  await once(remoteSocket, 'open')
-  const remoteClosed = once(remoteSocket, 'close')
+    )
+    t.after(() => remoteSocket.terminate())
+    await once(remoteSocket, 'open')
+    remoteClosed.push(once(remoteSocket, 'close'))
+  }
   const revoked = await requestJson({
     port,
     path: '/api/access/devices/phone-one',
@@ -396,8 +430,9 @@ test('protects remote HTTP access and completes one-time device pairing', async 
     headers: { Host: `127.0.0.1:${port}` },
   })
   assert.equal(revoked.status, 204)
-  const [closeCode] = await remoteClosed
-  assert.equal(closeCode, GATEWAY_CLIENT_REVOKED_CLOSE_CODE)
+  for (const [closeCode] of await Promise.all(remoteClosed)) {
+    assert.equal(closeCode, GATEWAY_CLIENT_REVOKED_CLOSE_CODE)
+  }
 
   const deniedAfterRevocation = await requestJson({
     port,

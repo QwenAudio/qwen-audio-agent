@@ -27,6 +27,11 @@ createGatewayApplication({
 - 每个 Provider 都是独立适配器，完整拥有自己的 URL、认证、模型、Session 和错误分类语义；不要通过改造另一个 Provider 来承载业务差异。
 - `url()`、`headers()`、`model()` 可从宿主配置闭包读取服务地址、令牌和模型；Gateway 不要求为业务 Provider 增加环境变量。
 - `createProtocol()` 每条 Realtime 连接调用一次，适合生成连接级 ID 和隔离状态。
+- `createProtocol({ emit, send })` 还会收到两个钩子：`emit(event)` 注入一条经 `normalizeIncoming()` 的合成服务端事件，例如在输出静默后收掉当前语音段；`send(payload, options)` 经 `encodeOutgoing()` 发出协议自己的事件，以 `{ correlate: false }` 发出的 `response.create` 不关联等待中的 Gateway 请求。
+- `concurrentVoicePlayback` 声明全双工服务：语音输出与后端工作并行，是否回复某一轮由模型决定，没有得到回复的轮次会被释放，不报错。只代表播放的合成 response 标 `__voicePlayback: true`，模型自发的发言再标 `__voiceAutomatic: true`；它们不阻挡 Gateway 请求，要求说话的请求只由播放 response 回复。用户打断调用可选的 `interruptPlayback()`，用户是开口打断时带 `{ speech: true }`，其他取消以 `{ stop: true }` 调用它，它可以返回一帧由运行时发出。用户后续的轮次只对 `respond_permission` 与 `update_agent_task` 顶掉更早的工具调用，更早轮次的 `cancel_agent_task` 也取消不到后来轮次发起的工作；权限请求和后台追问只能由 Gateway 询问之后开始的轮次回答。播报在其 response 完成时确认送达。默认关闭。
+- `interruptionPlaysOut` 声明模型在用户打断时把已经生成的语音说完。插话、文字输入和 `interrupt` 都不清空播放；`voice.ready` 带上 `interruptionPlaysOut: true`，客户端在 `listening` 和自己发起打断时继续播放。默认关闭。
+- `pacedOutputAudio` 声明输出音频按播放速度到达、没有提前量。`voice.ready` 带上 `pacedOutputAudio: true`，客户端连本机 Gateway 时也先缓冲再播放，和连远程 Gateway 时一样。默认关闭。
+- `toolOutputsBeforeResponse` 声明服务在有调用未回传结果时拒绝 `response.create`，且发起调用的 response 只在之后的 `response.create` 上继续。函数结果不进响应队列，Gateway 请求等所有调用都有结果后才发出，运行时把这个 response 续上一次：由 Gateway 的后续请求，或由 `continueToolResults()`。当前连接并未在等的调用，其结果不发送。默认关闭。
 - 可选的同步 `validateSessionOptions({ sessionOptions })` 在上游连接前执行；拒绝已确认无效的服务参数，其他服务特有参数仍需上游验证。这不绕过受支持模型 ID 的目录检查。
 - `connectionMessages()` 在 WebSocket 打开后、`session.update` 之前发送原始握手帧。
 - 其余事件通过 `encodeOutgoing()` 与 `normalizeIncoming()` 转换，Gateway 的工具调用、任务和客户端协议保持不变。
@@ -57,7 +62,7 @@ Provider 和 Protocol 会在注册与建连时校验；缺少方法或返回无�
 
 ## 桌面设置
 
-仓库内置前台的设置统一定义在 `shared/realtime-provider-definitions.mjs`，它不依赖 Node.js，也不包含密钥值或连接实现。在这里声明供应商名称、可配置字段和默认值。各供应商共用当前连接的 `QWEN_AUDIO_REALTIME_*` 环境变量，不需再新增一套 Key、模型、地址和音色变量。供应商专属模型和 API 数据分别位于 `shared/realtime-models/dashscope.mjs`、`stepfun.mjs`、`gpt-live.mjs`、`google-live.mjs`、`doubao-seeduplex.mjs`，`shared/realtime-model-catalog.mjs` 是公共入口。这些代码数据定义模型 ID、API 绑定、能力、会话默认参数和接入约束，聚合与解析层不包含供应商具体配置。桌面模型下拉框使用生成的静态支持列表，不接受用户自定义模型记录，也不通过自由输入的模型名称推断支持情况。
+仓库内置前台的设置统一定义在 `shared/realtime-provider-definitions.mjs`，它不依赖 Node.js，也不包含密钥值或连接实现。在这里声明供应商名称、可配置字段和默认值。各供应商共用当前连接的 `QWEN_AUDIO_REALTIME_*` 环境变量，不需再新增一套 Key、模型、地址和音色变量。供应商专属模型和 API 数据分别位于 `shared/realtime-models/dashscope.mjs`、`stepfun.mjs`、`gpt-live.mjs`、`gpt-live-1.mjs`、`google-live.mjs`、`doubao-seeduplex.mjs`，`shared/realtime-model-catalog.mjs` 是公共入口。这些代码数据定义模型 ID、API 绑定、能力、会话默认参数和接入约束，聚合与解析层不包含供应商具体配置。桌面模型下拉框使用生成的静态支持列表，不接受用户自定义模型记录，也不通过自由输入的模型名称推断支持情况。
 
 界面显示“服务地址、API Key、模型、音色”四行，分别对应 `endpoint`、`credential`、`model`、`voice` 配置槽位。Provider 只暴露可配置槽位；由上游管理的模型、音色保持禁用。Bearer 令牌使用 API Key 字段。切换供应商时应清空或替换旧连接值，不能将旧凭据发送给另一家服务。旧变量别名只在配置读取边界处理，不进入 Adapter。连接远端 Gateway 时，仍由远端管理前台配置。
 

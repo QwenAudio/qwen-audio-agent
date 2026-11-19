@@ -3,12 +3,14 @@
 import { DEFAULT_DASHSCOPE_REALTIME_MODEL, dashscopeModels } from './realtime-models/dashscope.mjs'
 import { stepfunModels } from './realtime-models/stepfun.mjs'
 import { gptLiveModels } from './realtime-models/gpt-live.mjs'
+import { gptLive1Models } from './realtime-models/gpt-live-1.mjs'
 import { googleLiveModels } from './realtime-models/google-live.mjs'
 import { doubaoSeeduplexModels } from './realtime-models/doubao-seeduplex.mjs'
 
 export * from './realtime-models/dashscope.mjs'
 export * from './realtime-models/stepfun.mjs'
 export * from './realtime-models/gpt-live.mjs'
+export * from './realtime-models/gpt-live-1.mjs'
 export * from './realtime-models/google-live.mjs'
 export * from './realtime-models/doubao-seeduplex.mjs'
 
@@ -16,6 +18,7 @@ export const REALTIME_MODEL_BUILTINS = Object.freeze({
   dashscope: dashscopeModels,
   stepfun: stepfunModels,
   'gpt-live': gptLiveModels,
+  'gpt-live-1': gptLive1Models,
   'google-live': googleLiveModels,
   'doubao-seeduplex': doubaoSeeduplexModels,
 })

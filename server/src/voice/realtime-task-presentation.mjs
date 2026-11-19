@@ -26,7 +26,7 @@ function inputSchemaSummary(schema) {
 /** Realtime presentation adapter; no Task state, execution or transport ownership. */
 export function createRealtimeTaskPresentation({
   getState, getFrontend, deliveryRuntime, updateContext, cancelPermission,
-  taskAnnouncementFactory, config, onError, onProgressError,
+  taskAnnouncementFactory, config, onError, onProgressError, onPresentRequest = () => {},
 }) {
   return {
     state: getState,
@@ -103,7 +103,11 @@ export function createRealtimeTaskPresentation({
           instructions: permission ? permissionResponseInstructions : inputRequestResponseInstructions,
           contextTiming: 'immediate',
         },
-      }), options)
+      }), options).then(outcome => {
+        // Asked once the question was put to the user, not while it waited.
+        if (outcome?.completed) onPresentRequest(request.id)
+        return outcome
+      })
     },
     resolveRequest(kind, id, { announced }) {
       const frontend = getFrontend()

@@ -23,6 +23,9 @@ import {
   FrontendToolLoop,
 } from './frontend-tool-loop.mjs'
 
+// Calls that answer or update a pending request act for the latest user turn.
+const LATEST_TURN_TOOLS = new Set([RESPOND_PERMISSION_TOOL_NAME, UPDATE_AGENT_TASK_TOOL_NAME])
+
 const MAX_DEBUG_RESULT_CHARS = 180
 
 function failure(errorCode, userMessage, {
@@ -86,6 +89,9 @@ export class ToolCallHandler {
     getFrontend,
     getTurnId,
     getTurnGeneration,
+    isUserTurnSinceBoundary = () => false,
+    userTurnBeganAfter = () => false,
+    answersRequest = () => true,
     backendRuntime,
     taskOperations,
     backendAvailability = null,
@@ -117,6 +123,9 @@ export class ToolCallHandler {
     this.getFrontend = getFrontend
     this.getTurnId = getTurnId
     this.getTurnGeneration = getTurnGeneration
+    this.isUserTurnSinceBoundary = isUserTurnSinceBoundary
+    this.userTurnBeganAfter = userTurnBeganAfter
+    this.answersRequest = answersRequest
     this.taskOperations = taskOperations || (taskManager ? new TaskOperations({
       taskManager, backendRuntime, respondAuthorization, respondInput, permissionPolicy,
     }) : null)
@@ -281,11 +290,21 @@ export class ToolCallHandler {
     return true
   }
 
-  isStale(turnId, generation) {
-    return (
-      generation !== this.getTurnGeneration()
+  isStale(turnId, generation, toolName = '') {
+    const superseded = generation !== this.getTurnGeneration()
       || Boolean(turnId && this.getTurnId() && turnId !== this.getTurnId())
+    // Full duplex: later user turns alone do not supersede a turn's calls.
+    return superseded && !(
+      this.getFrontend?.()?.capabilities?.concurrentVoicePlayback
+      && !LATEST_TURN_TOOLS.has(toolName)
+      && this.isUserTurnSinceBoundary({ turnId, turnGeneration: generation })
     )
+  }
+
+  // Full duplex: a call from an earlier turn does not act on work a later user turn started.
+  startedLater(taskTurnId, turnId) {
+    return Boolean(this.getFrontend?.()?.capabilities?.concurrentVoicePlayback
+      && this.userTurnBeganAfter(taskTurnId, turnId))
   }
 
   async sendOutput(callId, output, turnId, taskId, options) {
@@ -450,15 +469,16 @@ export class ToolCallHandler {
   async flushDeferredToolResponse(responseId, batch) {
     if (!batch.sourceDone || batch.pending > 0) return
     this.deferredToolResponses.delete(responseId)
+    const continuation = { turnId: batch.turnId, turnGeneration: batch.turnGeneration }
     if (batch.failed) {
       this.onToolResponseFailed({ responseId, turnId: batch.turnId })
-      return
+      return this.continueToolResults(continuation)
     }
     if (
       batch.suppressResponse || !batch.responseRequested
       || (batch.sourceHasSpeech && !batch.requiresResultSummary)
       || this.isStale(batch.turnId, batch.turnGeneration)
-    ) return
+    ) return this.continueToolResults(continuation)
     const instructions = [...batch.responseInstructions]
     if (batch.requiresResultSummary && instructions.length) {
       instructions.push(
@@ -466,7 +486,7 @@ export class ToolCallHandler {
       )
     }
     try {
-      await this.getFrontend()?.ensureResponse?.(
+      const outcome = await this.getFrontend()?.ensureResponse?.(
         {
           turnId: batch.turnId,
           turnGeneration: batch.turnGeneration,
@@ -488,23 +508,37 @@ export class ToolCallHandler {
           } : {}),
         },
       )
+      if (outcome?.skipped) await this.continueToolResults(continuation)
     } catch (error) {
       this.onToolResponseFailed({ responseId, turnId: batch.turnId })
       throw error
     }
   }
 
-  async closeStaleCall(callId, turnId) {
-    await this.sendOutput(
-      callId,
-      {
-        status: 'superseded',
-        message: '用户已经开始了新一轮，这次尚未提交。',
-      },
-      turnId,
-      null,
-      { createResponse: false },
-    )
+  // Continues a response the service resumes only after its tool results.
+  async continueToolResults(context) {
+    await this.getFrontend()?.continueToolResults?.(context)
+  }
+
+  async closeStaleCall(callId, turnId, { responseId = '', turnGeneration } = {}) {
+    // Joins its response's batch, which decides once how that response continues.
+    const deferred = this.getFrontend()?.capabilities?.toolOutputsBeforeResponse
+      ? this.beginDeferredToolResponse(responseId, { turnId, turnGeneration, requestResponse: false })
+      : null
+    try {
+      await this.sendOutput(
+        callId,
+        {
+          status: 'superseded',
+          message: '用户已经开始了新一轮，这次尚未提交。',
+        },
+        turnId,
+        null,
+        { createResponse: false },
+      )
+    } finally {
+      await this.completeDeferredToolResponse(deferred)
+    }
   }
 
   createWork(...args) {
@@ -558,15 +592,15 @@ export class ToolCallHandler {
       invalidArguments = true
     }
 
-    if (this.isStale(turnId, generation)) {
-      await this.closeStaleCall(callId, turnId)
+    const responseId = String(callContext.responseId || event.response_id || '').trim()
+    if (this.isStale(turnId, generation, toolName)) {
+      await this.closeStaleCall(callId, turnId, { responseId, turnGeneration: generation })
       return
     }
 
     const external = this.externalTool(toolName)
     const tool = frontendToolRegistry.get(toolName) || external?.tool
     if (tool) this.activeToolEntries.set(callId, tool)
-    const responseId = String(callContext.responseId || event.response_id || '').trim()
     const debug = {
       callId,
       turnId,
@@ -652,6 +686,8 @@ export class ToolCallHandler {
       return execution
     } catch (error) {
       failed = true
+      // A frontend that still waits for this call's output gets a failure.
+      this.getFrontend()?.failCall?.(callId, failure('tool_failed', '工具执行失败。'))?.catch(() => {})
       throw error
     } finally {
       this.activeToolEntries.delete(callId)

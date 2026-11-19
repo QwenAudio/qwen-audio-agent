@@ -67,6 +67,7 @@ test('npm pack keeps the usable example but excludes installed media, SDKs and p
     'shared/realtime-models/dashscope.mjs',
     'shared/realtime-models/stepfun.mjs',
     'shared/realtime-models/gpt-live.mjs',
+    'shared/realtime-models/gpt-live-1.mjs',
     'shared/realtime-models/google-live.mjs',
     'shared/realtime-models/doubao-seeduplex.mjs',
   ]

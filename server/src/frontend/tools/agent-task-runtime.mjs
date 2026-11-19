@@ -3,6 +3,7 @@ import { PERMISSION_DECISIONS } from '../../../../shared/permission-decisions.mj
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
 import { isTaskCancellable } from '../../task/task-state.mjs'
 import { toolFailure as failure } from './tool-result.mjs'
+import { RESPOND_PERMISSION_TOOL_NAME } from './features/agent-task-tools.mjs'
 
 const CANCEL_RECEIPT_INSTRUCTIONS = [
   '根据本次响应中的全部取消结果，只作一次简短自然的确认。',
@@ -511,6 +512,12 @@ export class AgentTaskRuntime {
     const pending = this.pendingPermissions()
     try {
       const transcript = String(await this.host.transcripts.transcript(turnId)).trim()
+      // A newer user turn or an explicit stop can supersede this decision
+      // while its transcript is pending. Check before submitting permission.
+      if (this.host.isStale(turnId, generation, RESPOND_PERMISSION_TOOL_NAME)) {
+        await this.host.closeStaleCall(callId, turnId)
+        return
+      }
       if (!response || !transcript) {
         await this.host.sendOutput(
           callId,

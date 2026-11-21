@@ -15,6 +15,7 @@ import { realtimeResponseId } from './response-lifecycle.mjs'
 
 const PRESENTATION_RESPONSE_EVENTS = new Set([
   'response.created',
+  'response.interrupted',
   'response.audio.delta',
   'response.output_audio.delta',
   'response.audio_transcript.delta',
@@ -220,7 +221,12 @@ export class RealtimePresentationRuntime {
   handle(event) {
     if (!PRESENTATION_RESPONSE_EVENTS.has(event?.type)) return false
     if (event.type === 'response.created') return true
-    if (
+    if (event.type === 'response.interrupted') {
+      const id = realtimeResponseId(event)
+      const reason = 'user_interruption'
+      if (this.contexts.has(id) && !this.playbackTurns.has(id)) this.cancelPlayback(id, { reason })
+      if (this.playbackTurns.size) this.send({ type: GatewayServerEvent.PLAYBACK_CLEAR, reason })
+    } else if (
       event.type === 'response.audio.delta'
       || event.type === 'response.output_audio.delta'
     ) {

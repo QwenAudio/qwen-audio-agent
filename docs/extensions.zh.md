@@ -56,6 +56,17 @@ VoiceMem 安装与配置示例：
 
 ## 客户端：自己构建
 
+服务端注册的 Client Event handler 可以使用连接作用域的外部输入 effects：
+`setExternalInput(boolean, { audioInput })` 暂停普通输入处理，可选择继续原生音频
+输入，保持模型连接和原有轮次检测。`onRealtimeEvent(listener)` 订阅规范化模型事件，
+订阅时回放未完成的语音输入，并返回取消订阅函数；`appendAudio(audio)` 沿用普通
+麦克风入口校验。`setInputCollecting(boolean)`
+取消旧回复并在收集期间阻止提前展示与工具执行；收集结束后用 `submitInput(parts)`
+创建普通用户轮次。`publishClientState(state, data)` 发送 `client.state`，
+`onDisconnect(cleanup)` 清理扩展资源。这些能力只提供给可信注册 handler，
+不从客户端载荷反序列化。[四音区座舱示例](../examples/smart-cockpit/docs/multi-zone.md)
+的 ASR、批次与座位语义均留在 example 中。
+
 网关在单条 WebSocket 上讲类型化事件。按客户端协议构建自定义客户端，
 或通过稳定性契约把助手嵌入宿主页面——桌面悬浮球、TUI、WebUI 用的都是
 同一条通道。

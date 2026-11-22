@@ -61,6 +61,25 @@ function fixture() {
   }
 }
 
+test('unscoped window and temperature commands default to the driver; explicit all remains available', async () => {
+  const { service, options } = fixture()
+  await service.execute('vehicle_window_control', { action: 'open' }, options)
+  await service.execute('vehicle_temperature_control', { action: 'set', temperature: 24 }, options)
+  const vehicle = service.snapshot('car-one').vehicle
+  assert.equal(vehicle.windowFL, 1)
+  assert.equal(vehicle.windowFR, 0)
+  assert.equal(vehicle.windowRL, 0)
+  assert.equal(vehicle.windowRR, 0)
+  assert.equal(vehicle.acTemp, 24)
+  assert.equal(vehicle.passengerTemp, 25)
+  assert.equal(vehicle.rearTemp, 25)
+  await service.execute('vehicle_window_control', { action: 'open', window: 'windows' }, options)
+  await service.execute('vehicle_temperature_control', { action: 'set', temperature: 22, zone: 'all' }, options)
+  const all = service.snapshot('car-one').vehicle
+  assert.deepEqual([all.windowFL, all.windowFR, all.windowRL, all.windowRR], [1, 1, 1, 1])
+  assert.deepEqual([all.acTemp, all.passengerTemp, all.rearTemp], [22, 22, 22])
+})
+
 test('queries a live vehicle location without changing unrelated cockpit state', async () => {
   const { service, options } = fixture()
   const output = await service.execute('vehicle_location_query', {}, options)
@@ -112,6 +131,7 @@ test('validates temperature bounds before mutating state', async () => {
   const accepted = await service.execute('vehicle_temperature_control', {
     action: 'set',
     temperature: 23,
+    zone: 'all',
   }, options)
   assert.equal(accepted.data.vehicle.acTemp, 23)
   assert.equal(accepted.data.vehicle.passengerTemp, 23)

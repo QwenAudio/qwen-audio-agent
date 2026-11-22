@@ -2,7 +2,7 @@ import qqMusicIcon from '../assets/qq_music.png'
 import flashBuyIcon from '../assets/taobao_flashbuy.png'
 import { PLAYLIST } from './MusicPanel'
 
-export default function Dock({ screen, onNavigateHome, onOpenSettings, onToggleChat, carState, musicState, onTogglePlay, onOpenMusic, onOpenFlashBuy, onChangeTemperature, temperaturePending }) {
+export default function Dock({ screen, onNavigateHome, onOpenSettings, onToggleChat, carState, musicState, onTogglePlay, onOpenMusic, onOpenFlashBuy, onOpenMultiZone, onChangeTemperature, temperaturePending }) {
   const currentTrack = PLAYLIST[musicState?.currentIndex || 0] || PLAYLIST[0]
   return (
     <footer className="dock" aria-label="底部车机控制栏">
@@ -34,6 +34,7 @@ export default function Dock({ screen, onNavigateHome, onOpenSettings, onToggleC
         <img className="capsule-icon" src={qqMusicIcon} alt="QQ音乐" />
       </div>
       <div className="dock-side">
+        <button className={`dock-btn zone-dock-button ${screen === 'multi-zone' ? 'is-active' : ''}`} aria-label="四音区模拟" onClick={onOpenMultiZone}>四音区</button>
         <button className={`dock-btn flashbuy ${screen === 'flashbuy' ? 'is-active' : ''}`} aria-label="淘宝闪购" onClick={onOpenFlashBuy}>
           <img className="flashbuy-dock-icon" src={flashBuyIcon} alt="" aria-hidden="true" />
         </button>

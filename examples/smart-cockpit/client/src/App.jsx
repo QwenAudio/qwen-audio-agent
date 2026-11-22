@@ -8,6 +8,7 @@ import VehiclePanel from './components/VehiclePanel'
 import MapPanel from './components/MapPanel'
 import SettingsPanel from './components/SettingsPanel'
 import ChatPanel from './components/ChatPanel'
+import MultiZonePanel from './components/MultiZonePanel'
 import MusicPanel, { PLAYLIST } from './components/MusicPanel'
 import FlashBuyPanel from './components/FlashBuyPanel'
 import useCockpitState from './hooks/useCockpitState'
@@ -104,6 +105,7 @@ function parseHash() {
   }
   if (hash === 'music') return { screen: 'music', tab: 'persona' }
   if (hash === 'flashbuy') return { screen: 'flashbuy', tab: 'persona' }
+  if (hash === 'multi-zone') return { screen: 'multi-zone', tab: 'persona' }
   return { screen: 'main', tab: 'persona' }
 }
 
@@ -137,6 +139,7 @@ export default function App() {
     remove: deleteMemory,
   } = useGatewayMemory()
   const [screen, setScreen] = useState('main')
+  const multiZoneOpenedRef = useRef(false)
   const [settingsTab, setSettingsTab] = useState('persona')
   const [selectedPersona, setSelectedPersona] = useState(() => getStoredChoice(
     PERSONA_STORAGE_KEY,
@@ -409,12 +412,16 @@ export default function App() {
     activateVoice,
     deactivateVoice,
     sendInput,
+    sendZoneText,
+    multiZoneState,
+    inputReady,
     publishEnvironmentEvent,
   } = useVoiceSession({
     muted: voiceMuted,
     clientId,
     persona: selectedPersona,
     voice: selectedVoice,
+    multiZone: screen === 'multi-zone',
     onVoiceMessage: handleVoiceMessage,
     onConversationRecovery: handleConversationRecovery,
     onMemoryChanged: loadMemories,
@@ -458,6 +465,7 @@ export default function App() {
   }, [resetCockpitState])
 
   useEffect(() => {
+    if (screen === 'multi-zone') return undefined
     const targetScreen = cockpitScreenForProgress(visualProgress, {
       navigationActive: navState.status === 'navigating',
     })
@@ -467,11 +475,19 @@ export default function App() {
       window.location.hash = `#${targetScreen}`
     })
     return () => cancelAnimationFrame(frame)
-  }, [navState.status, visualProgress])
+  }, [navState.status, screen, visualProgress])
 
   useEffect(() => {
     const onHashChange = () => {
       const { screen: s, tab } = parseHash()
+      // Simulation is opt-in for this page visit, including when an old demo
+      // link or a browser refresh retains the multi-zone hash.
+      if (s === 'multi-zone' && !multiZoneOpenedRef.current) {
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}#main`)
+        setScreen('main')
+        return
+      }
+      if (s !== 'multi-zone') multiZoneOpenedRef.current = false
       setScreen(s)
       setSettingsTab(tab)
     }
@@ -485,7 +501,7 @@ export default function App() {
   }, [loadMemories, screen, settingsTab])
 
   return (
-    <main className="device" aria-label="车机语音交互原型">
+    <main className={`device ${screen === 'multi-zone' ? 'is-multi-zone' : ''}`} aria-label="车机语音交互原型">
       <section className="screen">
         <TopBar weather={weatherState} />
 
@@ -521,6 +537,9 @@ export default function App() {
             {screen === 'flashbuy' && (
               <FlashBuyPanel flashBuyState={flashBuyState} onFlashBuyAction={handleFlashBuyAction} />
             )}
+            {screen === 'multi-zone' && (
+              <MultiZonePanel state={multiZoneState} ready={inputReady && multiZoneState.enabled} carState={carState} onSend={sendZoneText} voiceMuted={voiceMuted} voiceError={voiceError} onToggleVoice={toggleVoiceMute} messages={chatMessages} onOpenChat={toggleChat} />
+            )}
             {screen === 'settings' && (
               <SettingsPanel
                 activeTab={settingsTab} onTabChange={changeTab}
@@ -543,7 +562,7 @@ export default function App() {
         </div>
 
         {commandError && <p className="cockpit-command-error" role="status">{commandError}</p>}
-        <Dock screen={screen} onNavigateHome={navigateHome} onOpenSettings={() => openSettings('persona')} onToggleChat={toggleChat} carState={carState} musicState={musicState} onTogglePlay={musicState.playing ? musicPause : musicPlay} onOpenMusic={openMusic} onOpenFlashBuy={openFlashBuy} onChangeTemperature={changeTemperature} temperaturePending={temperaturePending} />
+        <Dock screen={screen} onOpenMultiZone={() => { multiZoneOpenedRef.current = true; setScreen('multi-zone'); window.location.hash = '#multi-zone' }} onNavigateHome={navigateHome} onOpenSettings={() => openSettings('persona')} onToggleChat={toggleChat} carState={carState} musicState={musicState} onTogglePlay={musicState.playing ? musicPause : musicPlay} onOpenMusic={openMusic} onOpenFlashBuy={openFlashBuy} onChangeTemperature={changeTemperature} temperaturePending={temperaturePending} />
       </section>
     </main>
   )

@@ -10,7 +10,7 @@ import {
 } from '../projections/cockpit-state'
 
 function serviceOrigin() {
-  return import.meta.env.VITE_COCKPIT_SERVICE_ORIGIN || 'http://127.0.0.1:3010'
+  return import.meta.env?.VITE_COCKPIT_SERVICE_ORIGIN || ''
 }
 
 export default function useCockpitState(cockpitId, { onActivity } = {}) {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 function serviceOrigin() {
-  return import.meta.env.VITE_COCKPIT_SERVICE_ORIGIN || 'http://127.0.0.1:3010'
+  return import.meta.env?.VITE_COCKPIT_SERVICE_ORIGIN || ''
 }
 
 function skillUrl(cockpitId, skillId = '') {

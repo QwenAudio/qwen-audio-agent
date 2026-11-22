@@ -60,6 +60,20 @@ VoiceMem installation and configuration example:
 
 ## Client: Build Your Own
 
+Server-registered Client Event handlers receive connection-scoped effects for
+external input pipelines: `setExternalInput(boolean, { audioInput })` switches off
+ordinary input processing while optionally continuing native audio ingress.
+The provider connection and its turn detection remain unchanged.
+`onRealtimeEvent(listener)` observes normalized provider events, replays unfinished
+speech on subscription, and returns an unsubscribe function. `appendAudio(audio)`
+uses the ordinary microphone ingress checks. `setInputCollecting(boolean)` cancels the current response and
+blocks premature presentation/tools while collecting; `submitInput(parts)` creates
+an ordinary user turn after collection ends. `publishClientState(state, data)`
+sends a `client.state` event, and `onDisconnect(cleanup)` releases extension-owned
+resources. These effects are only supplied to trusted registered handlers, never
+decoded from client payloads. The [four-zone cockpit example](../examples/smart-cockpit/docs/multi-zone.md)
+keeps its ASR, batching and seat semantics outside the framework.
+
 The Gateway speaks typed events over a single WebSocket. Build a custom client
 against the client protocol, or embed the assistant into a host page through
 the stability contract — the same channel the desktop orb, TUI, and WebUI use.

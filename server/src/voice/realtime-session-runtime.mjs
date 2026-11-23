@@ -92,6 +92,11 @@ export function createRealtimeSessionRuntime({
     send(event)
   }
   let inputEnabled = false
+  let externalInput = false
+  let externalAudioInput = false
+  let inputCollecting = false
+  const realtimeEventListeners = new Set()
+  const pendingProviderInputs = new Map()
   let outputEnabled = false
   // Set only by host arbitration. Unlike inputEnabled (which the client
   // declares about itself) this means the client has been ordered to stop
@@ -152,6 +157,7 @@ export function createRealtimeSessionRuntime({
     getFrontend: () => realtimeSession?.frontend,
     isDeliveryBlocked: delivery => (
       closed
+      || inputCollecting
       || !realtimeSession?.ready
       || (delivery.mode !== 'context' && (sleeping || waking || !outputEnabled))
     ),
@@ -280,6 +286,8 @@ export function createRealtimeSessionRuntime({
       }
     },
     onDisconnected: () => {
+      pendingProviderInputs.clear()
+      for (const listener of realtimeEventListeners) listener({ type: 'session.disconnected' })
       taskCoordinator.resetPresentation()
       clearVisualInput()
       clearResponseCandidate()
@@ -597,7 +605,7 @@ export function createRealtimeSessionRuntime({
     getFrontend: () => realtimeSession.frontend,
     getOutputEnabled: () => outputEnabled,
     getNonVoiceClient: () => nonVoiceClient,
-    getPlaybackReceipts: () => playbackReceipts,
+    getPlaybackReceipts: () => playbackReceipts && outputEnabled,
     getResponseTurnCandidate: () => responseTurnCandidate,
     clearResponseCandidate,
     clearResponseWatchdog,
@@ -610,11 +618,41 @@ export function createRealtimeSessionRuntime({
 
   const handleEvent = event => {
     if (closed) return
+    if (event.type === 'input_audio_buffer.speech_started') {
+      pendingProviderInputs.set(event.item_id, { events: [event], suppressed: externalInput, ended: false })
+    } else if (inputs.handles(event)) {
+      const pending = pendingProviderInputs.get(event.item_id)
+      if (pending) {
+        pending.events = pending.events.filter(previous => previous.type !== event.type)
+        pending.events.push(event)
+        if (event.type === 'input_audio_buffer.speech_stopped') {
+          pending.ended = true
+          if (event.reason === 'turn_invalid') pendingProviderInputs.delete(event.item_id)
+        }
+      }
+    }
+    let cancelAutomaticResponse = false
+    if (event.type === 'response.created' && !event.__voiceContext?.turnId) {
+      for (const [id, pending] of pendingProviderInputs) {
+        if (!pending.ended) continue
+        cancelAutomaticResponse ||= pending.suppressed
+        pendingProviderInputs.delete(id)
+      }
+      cancelAutomaticResponse ||= externalInput
+      if (cancelAutomaticResponse) event.__voiceContext = { ...event.__voiceContext, suppressed: true }
+    }
+    for (const listener of realtimeEventListeners) listener(event)
+    if (externalInput && inputs.handles(event)) return
+    if ((inputCollecting && isResponseActivityEvent(event))
+      || (externalInput && event.type === 'response.created' && !event.__voiceContext?.turnId)) {
+      event.__voiceContext = { ...event.__voiceContext, suppressed: true }
+    }
     // A late final may finish an existing presentation, never create a new turn
     // after its original response context has already expired or been removed.
     if (event.__voiceLateFinal && !presentationRuntime.has(realtimeResponseId(event))) return
     if (isSleepActivityEvent(event)) sleepController?.recordActivity()
     if (isResponseActivityEvent(event)) presentationRuntime.begin(event)
+    if (cancelAutomaticResponse) realtimeSession.cancelResponse()
     if (inputs.handleProviderEvent(event)) return
     const responseFailed = event.type === 'response.done' && event.response?.status === 'failed'
     // Terminal handling may remove or suppress the context; retain its original
@@ -662,7 +700,10 @@ export function createRealtimeSessionRuntime({
         startedAt,
         resultReady: false,
       })
-      toolCalls.handle(event, { ...callContext, responseId: id })
+      toolCalls.handle(event, {
+        ...callContext, responseId: id,
+        ...(inputCollecting || callContext.suppressed ? { turnGeneration: -1 } : {}),
+      })
         .catch(error => {
           connectionLogger.warn('realtime.tool_call.failed', {
             ...callFields,
@@ -1095,6 +1136,7 @@ export function createRealtimeSessionRuntime({
         // Defence in depth: a client that has not yet acted on the suspension
         // must not be able to feed audio through it.
         || inputSuspended
+        || (externalInput && !externalAudioInput)
         || !voiceAccess.isActive()
       ) {
         return
@@ -1131,6 +1173,7 @@ export function createRealtimeSessionRuntime({
       event.type === GatewayClientEvent.TEXT_MESSAGE
       || event.type === GatewayClientEvent.INPUT_MESSAGE
     ) {
+      if (externalInput) return
       if (sleeping || waking) {
         emit({
           type: 'error',
@@ -1241,6 +1284,48 @@ export function createRealtimeSessionRuntime({
       inputActive: inputEnabled && !inputSuspended && !sleeping && !closed && voiceAccess.isActive(),
     }),
     updateOutputVoice: updateSessionOutputVoice,
+    // Trusted extensions observe native input or collect external turns.
+    // Business batching stays outside the framework; submission reuses the
+    // ordinary user-turn lifecycle without replacing provider turn detection.
+    setExternalInput(enabled, { audioInput = false } = {}) {
+      const next = enabled === true
+      if (closed) return
+      externalAudioInput = next && audioInput === true
+      if (next === externalInput) return
+      externalInput = next
+      if (!externalAudioInput) realtimeSession.clearPendingAudio()
+      if (externalInput) {
+        for (const pending of pendingProviderInputs.values()) pending.suppressed = true
+        handleClientEvent({ type: GatewayClientEvent.INTERRUPT })
+      }
+      connectionLogger.info('realtime.input_mode.changed', {
+        externalInput, audioInput: externalAudioInput, rebuild: false, provider: realtimeSession.providerKey,
+      })
+    },
+    onRealtimeEvent(listener) {
+      realtimeEventListeners.add(listener)
+      for (const pending of pendingProviderInputs.values()) {
+        for (const event of pending.events) listener(event)
+      }
+      return () => realtimeEventListeners.delete(listener)
+    },
+    setInputCollecting(active) {
+      if (closed || inputCollecting === (active === true)) return
+      inputCollecting = active === true
+      if (inputCollecting) {
+        if (sleeping) wakeFromSleep()
+        handleClientEvent({ type: GatewayClientEvent.INTERRUPT })
+        announcementWindow.beginTurn(gatewayTurnId())
+      } else {
+        announcementWindow.reset()
+      }
+    },
+    submitExternalInput(parts) {
+      if (closed || sleeping || waking) throw new Error('Frontend session is unavailable')
+      if (inputCollecting) throw new Error('External input is not ready')
+      sleepController.recordActivity()
+      inputs.submit({ parts })
+    },
     setAssistantProfile(profile) {
       if (closed) return
       sessionAssistantProfile = String(profile || '').trim()
@@ -1260,6 +1345,8 @@ export function createRealtimeSessionRuntime({
     close() {
       if (closed) return
       closed = true
+      realtimeEventListeners.clear()
+      pendingProviderInputs.clear()
       toolScope.abort(new Error('Client disconnected'))
       releaseVoiceClient()
       taskCoordinator.close()

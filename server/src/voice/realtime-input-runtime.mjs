@@ -14,6 +14,7 @@ const PROVIDER_INPUT_EVENTS = new Set([
   'input_audio_buffer.speech_stopped',
   'input_audio_buffer.committed',
   'conversation.item.ambient_audio_transcription.completed',
+  'conversation.item.input_audio_transcription.started',
   'conversation.item.input_audio_transcription.delta',
   'conversation.item.input_audio_transcription.text',
   'conversation.item.input_audio_transcription.completed',
@@ -85,6 +86,8 @@ export class RealtimeInputRuntime {
       this.#commitAudio(event)
     } else if (event.type === 'conversation.item.ambient_audio_transcription.completed') {
       this.turns.completeInput(event.item_id)
+    } else if (event.type === 'conversation.item.input_audio_transcription.started') {
+      this.#startTranscript(event)
     } else if (
       event.type === 'conversation.item.input_audio_transcription.delta'
       || event.type === 'conversation.item.input_audio_transcription.text'
@@ -124,7 +127,9 @@ export class RealtimeInputRuntime {
       state: 'listening',
       turnId: started.context.turnId,
     })
-    this.getFrontend()?.cancel({ reason: 'user_interruption', speech: true })
+    if (!event.providerHandlesInterruption) {
+      this.getFrontend()?.cancel({ reason: 'user_interruption', speech: true })
+    }
   }
 
   // A frontend whose model finishes the speech it already generated keeps playing.
@@ -134,6 +139,17 @@ export class RealtimeInputRuntime {
       type: GatewayServerEvent.PLAYBACK_CLEAR,
       reason: 'user_interruption',
     })
+  }
+
+  #startTranscript(event) {
+    const started = this.turns.beginVoice(event.item_id)
+    if (!started.accepted) return
+    // Some providers deliver transcription without a VAD start. Associate
+    // the text with a voice turn without interrupting ongoing playback.
+    this.turns.endSpeech()
+    this.turns.commit(started.context)
+    this.clearResponseCandidate()
+    this.send({ type: GatewayServerEvent.TURN_STARTED, turnId: started.context.turnId })
   }
 
   #stopSpeech(event) {

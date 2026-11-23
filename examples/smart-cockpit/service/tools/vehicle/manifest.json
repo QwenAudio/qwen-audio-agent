@@ -110,7 +110,7 @@
               "front",
               "all"
             ],
-            "description": "温区。不指定时默认 all"
+            "description": "温区。不指定时默认 driver（主驾）；全车必须显式传 all"
           },
           "temperature": {
             "type": "number",
@@ -157,7 +157,7 @@
               "left",
               "right"
             ],
-            "description": "要控制的车窗。不指定时默认全部车窗"
+            "description": "要控制的车窗。不指定时默认 windowFL（主驾）；全部车窗必须显式传 windows"
           },
           "level": {
             "type": "number",

@@ -197,7 +197,7 @@ function clamp(value, { min, max }) {
 }
 
 function windowParts(value) {
-  const window = clean(value) || 'windows'
+  const window = clean(value) || 'windowFL'
   if (WINDOW_PARTS.includes(window)) return [window]
   const parts = WINDOW_GROUPS[window]
   if (!parts) throw new Error('Unknown vehicle window')
@@ -205,7 +205,7 @@ function windowParts(value) {
 }
 
 function temperatureFields(value) {
-  const zone = clean(value) || 'all'
+  const zone = clean(value) || 'driver'
   const fields = TEMPERATURE_ZONES[zone]
   if (!fields) throw new Error('Unknown temperature zone')
   return { zone, fields }
@@ -326,7 +326,7 @@ function executeWindow(args, context) {
   const state = updateVehicle(cockpitId, store, next => {
     for (const part of parts) next.vehicle[part] = value
   })
-  const target = PART_LABELS[clean(args.window) || 'windows'] || '车窗'
+  const target = PART_LABELS[clean(args.window) || 'windowFL'] || '车窗'
   const actionText = action === 'close' ? '关闭' : action === 'vent' ? '通风' : '打开'
   return changed(`已${actionText}${target}`, state)
 }

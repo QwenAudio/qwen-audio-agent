@@ -30,6 +30,7 @@ import {
 import { activateAudioContext } from '../audio/activation'
 import { gatewayWebSocketUrl } from '../config/gateway'
 import { CockpitEnvironmentOutbox } from '../projections/environment-events'
+import { CockpitInputRouter, MULTI_ZONE_STATE } from '../projections/multi-zone-input'
 
 const INPUT_SAMPLE_RATE = 16000
 const OUTPUT_SAMPLE_RATE = 24000
@@ -116,6 +117,7 @@ export default function useVoiceSession({
   clientId,
   persona,
   voice,
+  multiZone = false,
   onVoiceMessage,
   onConversationRecovery,
   onMemoryChanged,
@@ -126,6 +128,10 @@ export default function useVoiceSession({
   const [progress, setProgress] = useState(null)
   const [error, setError] = useState(null)
   const [connectionError, setConnectionError] = useState(null)
+  const [multiZoneState, setMultiZoneState] = useState({ enabled: false, wakeZone: 'driver', batch: null, history: [] })
+  const [inputReady, setInputReady] = useState(false)
+  const inputRouterRef = useRef(null)
+  const multiZoneRef = useRef(multiZone)
   const clientRef = useRef(null)
   const audioContextRef = useRef(null)
   const audioReadyRef = useRef(null)
@@ -392,6 +398,7 @@ export default function useVoiceSession({
   }, [publishMutedState])
 
   const deactivateVoice = useCallback(() => {
+    inputRouterRef.current?.stopAudio()
     publishMutedState(true)
   }, [publishMutedState])
 
@@ -399,7 +406,9 @@ export default function useVoiceSession({
     const handleEvent = (event) => {
       const state = gatewayVoiceState(event)
       if (state) setVoiceState(state)
-      if (event.type === GatewayServerEvent.MEMORY_CHANGED) {
+      if (event.type === GatewayServerEvent.CLIENT_STATE && event.state === MULTI_ZONE_STATE) {
+        setMultiZoneState(event.data)
+      } else if (event.type === GatewayServerEvent.MEMORY_CHANGED) {
         onMemoryChangedRef.current?.()
       } else if (event.type === GatewayServerEvent.VOICE_READY && event.inputSampleRate) {
         inputSampleRateRef.current = event.inputSampleRate
@@ -500,11 +509,16 @@ export default function useVoiceSession({
       },
       onStatus: status => {
         if (status.state === 'ready') {
+          const router = new CockpitInputRouter(client, { onReady: setInputReady, onError: reason => setError(reason.message) })
+          inputRouterRef.current = router
+          router.setMode(multiZoneRef.current).catch(reason => setError(reason.message))
           onMemoryChangedRef.current?.()
           publishedMutedRef.current = mutedRef.current
           publishAssistantProfile(client)
           syncOutputVoice(client)
         } else if (['connecting', 'disconnected', 'unavailable'].includes(status.state)) {
+          if (inputRouterRef.current) inputRouterRef.current.ready = false
+          setInputReady(false)
           realtimeReadyRef.current = false
           publishedMutedRef.current = null
           for (const sync of [personaSyncRef.current, voiceSyncRef.current]) {
@@ -533,6 +547,11 @@ export default function useVoiceSession({
       if (clientRef.current === client) clientRef.current = null
     }
   }, [clearPlayback, clientId, finishResponsePlayback, flushEnvironmentEvents, playPcmAudio, publishAssistantProfile, sendPlaybackReceipt, syncOutputVoice])
+
+  useEffect(() => {
+    multiZoneRef.current = multiZone
+    inputRouterRef.current?.setMode(multiZone).catch(reason => setError(reason.message))
+  }, [multiZone])
 
   useEffect(() => {
     if (!muted) void flushEnvironmentEvents()
@@ -608,10 +627,7 @@ export default function useVoiceSession({
             context.sampleRate,
             inputSampleRateRef.current,
           )
-          activeClient.send({
-            type: GatewayClientEvent.AUDIO_APPEND,
-            audio: floatToPcm16Base64(samples),
-          })
+          inputRouterRef.current?.audio(floatToPcm16Base64(samples))
         }
         source.connect(processor)
         processor.connect(context.destination)
@@ -659,9 +675,23 @@ export default function useVoiceSession({
     mediaRequestRef.current = null
   }, [])
 
-  const sendInput = useCallback((parts) => (
-    clientRef.current?.send({ type: GatewayClientEvent.INPUT_MESSAGE, parts }) === true
-  ), [])
+  const sendInput = useCallback((parts) => {
+    const router = inputRouterRef.current
+    if (!router?.ready) return false
+    if (router.actual) {
+      const text = parts.filter(part => part.type === 'text').map(part => part.text).join('\n').trim()
+      if (!text) return false
+      router.text([{ zone: 'driver', text }]).catch(reason => setError(reason.message))
+      return true
+    }
+    return clientRef.current?.send({ type: GatewayClientEvent.INPUT_MESSAGE, parts }) === true
+  }, [])
+
+  const sendZoneText = useCallback(rows => {
+    const router = inputRouterRef.current
+    if (!router) return Promise.reject(new Error('对话连接尚未就绪'))
+    return router.text(rows)
+  }, [])
 
   return {
     voiceState,
@@ -672,6 +702,9 @@ export default function useVoiceSession({
     activateVoice,
     deactivateVoice,
     sendInput,
+    sendZoneText,
+    multiZoneState,
+    inputReady,
     publishEnvironmentEvent,
   }
 }

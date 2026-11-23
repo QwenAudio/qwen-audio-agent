@@ -2115,6 +2115,27 @@ test('injects progress with response-scoped presentation instructions', async ()
   assert.equal((await outcome).completed, true)
 })
 
+test('a cancellation acknowledgement is delivered even after local active-response cleanup', () => {
+  const events = []
+  const frontend = createQwenFrontend({ onEvent: event => events.push(event) })
+  frontend.ready = true
+  frontend.send = () => {}
+  frontend.handleProviderEvent({ type: 'response.created', response: { id: 'late-cancel' } })
+  frontend.cancel()
+  frontend.activeResponses.delete('late-cancel')
+  frontend.handleProviderEvent({ type: 'response.done', response: { id: 'late-cancel', status: 'cancelled' } })
+  assert.ok(events.some(event => event.type === 'response.done' && event.response.status === 'cancelled'))
+  assert.equal(frontend.responseSlot.blocked, false)
+  frontend.handleProviderEvent({
+    type: 'response.function_call_arguments.done', response_id: 'late-cancel',
+    call_id: 'late-vehicle-call', name: 'vehicle_window_control',
+    arguments: '{"action":"open","window":"windowFL"}',
+  })
+  assert.equal(events.some(event => event.call_id === 'late-vehicle-call'), false,
+    'Qwen output from a finished cancelled response cannot reach the tool runtime')
+  frontend.close()
+})
+
 test('cancelling a response before response.created releases its queue entry', async () => {
   const frontend = createQwenFrontend()
   frontend.ready = true

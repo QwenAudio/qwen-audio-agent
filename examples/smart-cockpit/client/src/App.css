@@ -18,6 +18,55 @@
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
 }
 
+.multi-zone-panel { min-height: 0; min-width: 0; overflow-y: auto; padding: 24px; border-radius: 22px; background: var(--panel); box-shadow: var(--inner-shadow); border: 1px solid rgba(255,255,255,.72); }
+.multi-zone-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.zone-heading-actions { display: flex; align-items: center; gap: 10px; }
+.multi-zone-heading small { color: var(--muted); font-size: 10px; letter-spacing: 1.5px; }
+.multi-zone-heading h2 { margin: 6px 0; font-size: 26px; }
+.zone-connection { font-size: 12px; color: var(--muted); padding: 6px 10px; border-radius: 20px; background: #e7eded; }
+.zone-connection.is-ready { color: #157a67; background: #d9f0e9; }
+.zone-description, .zone-footnote { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.zone-presets, .zone-actions { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+.zone-presets button, .zone-mic, .zone-close { background: rgba(255,255,255,.8); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 12px; }
+.zone-close:hover { background: #e2f0ef; }
+.zone-close:focus-visible { outline: 2px solid var(--aqua); outline-offset: 2px; }
+.zone-seat-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+.zone-seat { padding: 13px; background: rgba(255,255,255,.65); border: 1px solid var(--line); border-radius: 15px; }
+.zone-seat.is-speaking { border-color: var(--aqua); box-shadow: 0 0 0 2px #44c4b818; }
+.zone-seat-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 9px; }
+.zone-seat-title strong { font-size: 14px; }
+.zone-seat-title span { font-size: 10px; color: #258a7e; }
+.zone-input-label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+.zone-seat textarea { width: 100%; min-height: 60px; resize: vertical; border: 1px solid var(--line); border-radius: 9px; background: #f7fafb; padding: 8px; font: inherit; font-size: 12px; color: var(--text); }
+.zone-seat textarea:focus { outline: 2px solid var(--aqua); }
+.zone-vehicle-state { display: flex; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 10px; margin-top: 8px; }
+.zone-transcript { font-size: 12px; margin: 6px 0; color: #157a67; }
+.zone-actions { justify-content: space-between; }
+.zone-send { border-radius: 10px; padding: 10px 20px; background: #268e83; color: white; font-size: 13px; }
+.zone-send:disabled { opacity: .4; cursor: default; }
+.zone-collection-state { font-size: 12px; line-height: 1.7; background: #e2f0ef; padding: 10px; border-radius: 10px; }
+.zone-error { color: #ae3454; font-size: 12px; }
+.zone-debug details { border-top: 1px solid var(--line); padding: 12px 0; font-size: 12px; }
+.zone-debug summary { cursor: pointer; }
+.zone-debug summary span { float: right; color: var(--muted); font-size: 10px; }
+.zone-debug pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.7 ui-monospace, monospace; background: #f7fafb; border-radius: 8px; padding: 10px; }
+.zone-tool { border-bottom: 1px solid var(--line); padding: 10px 0; }
+.zone-tool strong { font-size: 11px; overflow-wrap: anywhere; }
+.zone-tool > span { margin-left: 8px; color: var(--muted); }
+.zone-reply { font-size: 13px; line-height: 1.7; padding: 10px; color: #176f65; }
+.zone-dock-button { width: auto !important; font-size: 12px; white-space: nowrap; }
+@media (max-width: 940px) {
+  .device.is-multi-zone { min-width: 0; width: calc(100vw - 16px); height: calc(100dvh - 16px); aspect-ratio: auto; }
+  .is-multi-zone .main-grid { grid-template-columns: minmax(0, 1fr); }
+  .is-multi-zone .vehicle-panel { display: none; }
+  .is-multi-zone .topbar { padding: 0 18px; }
+  .is-multi-zone .brand { min-width: 0; font-size: 12px; }
+  .is-multi-zone .status-icons { gap: 12px; }
+  .is-multi-zone .dock { gap: 8px; padding-left: 12px; padding-right: 12px; }
+  .is-multi-zone .dock .music-capsule { display: none; }
+  .is-multi-zone .dock-side { gap: 8px; }
+}
+
 * {
   box-sizing: border-box;
 }

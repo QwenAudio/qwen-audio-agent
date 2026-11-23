@@ -7,6 +7,8 @@ Web Audio、3D 车辆与业务面板保持完全自主。
 关键模块：
 
 - `src/hooks/useVoiceSession.js`：GCP 连接、音频采集/播放、回执、Task 与最近对话恢复。
+- `src/components/MultiZonePanel.jsx`：主驾唤醒音区标识、四音区文字模拟、实时识别与工具回执展示。
+- `src/projections/multi-zone-input.js`：经服务端确认启停模拟文字；主驾为固定唤醒音区，两个页面的主驾音频都沿用原有 Realtime Smart Turn，其他区文字提交同一中央会话。
 - `src/hooks/useCockpitState.js`：本示例的 HTTP/SSE 业务状态适配器。
 - `src/hooks/useCockpitSkills.js`：按座舱读取、查看和删除持久化的自定义技能。
 - `src/hooks/useGatewayMemory.js`：通过 Gateway 通用记忆控制面列出/删除前台记忆。
@@ -26,4 +28,4 @@ npm install --prefix examples/smart-cockpit/client
 npm run dev --prefix examples/smart-cockpit/client
 ```
 
-可选变量：`VITE_GATEWAY_ORIGIN`、`VITE_COCKPIT_SERVICE_ORIGIN` 和 `VITE_COCKPIT_ID`。默认值分别对应本地 Gateway、座舱 Service 和 `default` 座舱实例。
+可选变量：`VITE_GATEWAY_ORIGIN`、`VITE_COCKPIT_SERVICE_ORIGIN` 和 `VITE_COCKPIT_ID`。默认通过当前页面的 Vite 代理访问 Gateway 和座舱 Service，Service 地址由 `COCKPIT_SERVICE_ORIGIN` 配置。默认座舱 ID 与 Gateway 保持一致：优先读取显式 `COCKPIT_FRONTEND_MCP_URL` 中的 `cockpitId`，否则读取 `COCKPIT_ID`，最后使用 `default`。`VITE_COCKPIT_ID` 和页面的 `?cockpitId=...` 可显式覆盖；使用语音工具时应与 Gateway 指向同一座舱。修改启动变量后需要重启客户端开发服务器。

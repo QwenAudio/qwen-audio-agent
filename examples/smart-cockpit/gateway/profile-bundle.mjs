@@ -1,12 +1,13 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { FRONTEND_TOOL_DEFINITIONS } from '../service/tools/registry.mjs'
+import { cockpitZoneToolPolicy } from './multi-zone/policy.mjs'
 
 const HEALER_PROFILE_URL = new URL('./assistant/healer.md', import.meta.url)
 
 function policyDescription(tool) {
   const description = String(tool.description || tool.title || tool.name).trim()
-  return `${description} 当前领域配置为前台执行，用户意图明确时直接调用本工具；不要通过 spawn_thinking 重复提交同一操作。`
+  return `${description} 当前领域配置为前台执行，用户意图明确时直接调用本工具；不要通过 spawn_thinking 重复提交同一操作。 ${cockpitZoneToolPolicy(tool.name)}`.trim()
 }
 
 export function createCockpitFrontendMcpConfiguration({

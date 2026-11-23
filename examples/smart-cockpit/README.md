@@ -118,6 +118,13 @@ Earlier runs and sequence/alignment diagnostics remain in the
 
 ## Core features
 
+The Web demo includes a **四音区** (four-zone) simulator. The central Realtime
+session stays bound to the driver wake zone, preserving its original Smart Turn.
+Passenger/rear text simulates recognized speech and can start alone or join a
+speaking driver. Overlapping requests are collected and submitted to the same
+central session after the original turn and reply settle. Screen changes preserve
+the connection and wake-zone binding. See [multi-zone architecture and validation](docs/multi-zone.md).
+
 - **Realtime voice conversation:** continuous dialogue, natural interruption,
   multi-turn context, and runtime voice and persona switching.
 - **Standard tool calling:** vehicle control, navigation, music, weather,

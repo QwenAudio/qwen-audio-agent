@@ -7,6 +7,7 @@ import { cockpitEnvironmentEventDefinitions } from './environment-events.mjs'
 import { loadCockpitEnvironment } from '../bootstrap/environment.mjs'
 import { COCKPIT_SPAWN_THINKING_DESCRIPTION } from './spawn-thinking-tool.mjs'
 import { writeCockpitFrontendProfileBundle } from './profile-bundle.mjs'
+import { createMultiZoneEvents } from './multi-zone/events.mjs'
 
 loadCockpitEnvironment()
 process.env.QWAUDIO_CONFIG_DIR ||= fileURLToPath(new URL('../.runtime', import.meta.url))
@@ -75,10 +76,11 @@ export function startCockpitGateway({
   const agent = createBackendAgentHost(backend, {
     name: 'Cockpit A2A Agent',
   })
+  const multiZone = createMultiZoneEvents()
   const application = createGatewayApplication({
     agent,
     autoStart: false,
-    clientEventDefinitions: [cockpitAssistantProfileEventDefinition, ...cockpitEnvironmentEventDefinitions],
+    clientEventDefinitions: [cockpitAssistantProfileEventDefinition, ...cockpitEnvironmentEventDefinitions, ...multiZone.definitions],
     spawnThinkingDescription: COCKPIT_SPAWN_THINKING_DESCRIPTION,
   })
   const server = application.start({ host, port: listenPort })
@@ -92,6 +94,7 @@ export function startCockpitGateway({
       if (closePromise) return closePromise
       closePromise = (async () => {
         try {
+          multiZone.close()
           await application.close()
         } finally {
           await agent.close()

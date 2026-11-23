@@ -71,7 +71,7 @@ blocks premature presentation/tools while collecting; `submitInput(parts)` creat
 an ordinary user turn after collection ends. `publishClientState(state, data)`
 sends a `client.state` event, and `onDisconnect(cleanup)` releases extension-owned
 resources. These effects are only supplied to trusted registered handlers, never
-decoded from client payloads. The [four-zone cockpit example](../examples/smart-cockpit/docs/multi-zone.md)
+decoded from client payloads. The [four-zone cockpit example](https://github.com/QwenAudio/qwen-audio-agent/blob/main/examples/smart-cockpit/docs/multi-zone.md)
 keeps its ASR, batching and seat semantics outside the framework.
 
 The Gateway speaks typed events over a single WebSocket. Build a custom client

@@ -159,6 +159,54 @@ test('a failed driver transcript cannot turn an overlapping follow-up into a par
   assert.equal(h.coordinator.snapshot().history[0].status, 'failed')
 })
 
+for (const overlap of [false, true]) {
+  test(`a failed ${overlap ? 'overlapping' : 'lone'} driver transcript does not block the next independent passenger request`, async t => {
+    const h = smartHarness(t)
+    h.bridge.receive(start('failed-driver'))
+    if (overlap) h.bridge.text([{ zone: 'passenger', text: '我也要' }], 'old-passenger')
+    h.bridge.receive(end('failed-driver'))
+    h.bridge.receive({ type: 'conversation.item.input_audio_transcription.failed', item_id: 'failed-driver' })
+    assert.equal(h.bridge.busy(), false, 'a failed input must not wait for an automatic response that may never arrive')
+    assert.equal(h.bridge.items.has('failed-driver'), false)
+    assert.deepEqual(h.inputs, [])
+    if (overlap) assert.equal(h.coordinator.snapshot().history[0].status, 'failed')
+
+    // Late input events cannot revive the discarded failed utterance.
+    h.bridge.receive(final('failed-driver', '打开车窗'))
+    h.bridge.receive(end('failed-driver'))
+    h.bridge.text([{ zone: 'passenger', text: '关闭我的车窗' }], 'new-passenger')
+    await sleep(25)
+    assert.deepEqual(h.inputs, ['【副驾】关闭我的车窗'])
+    assert.equal(h.bridge.busy(), false)
+    assert.equal(h.coordinator.batch, null)
+  })
+}
+
+test('a failed driver transcript keeps an already tracked response behind its cancellation confirmation', async t => {
+  const h = smartHarness(t)
+  h.bridge.receive(start('failed-driver'))
+  h.bridge.text([{ zone: 'passenger', text: '我也要' }], 'old-passenger')
+  h.bridge.receive(end('failed-driver'))
+  h.bridge.receive(created('old-response'))
+  h.bridge.receive({ type: 'conversation.item.input_audio_transcription.failed', item_id: 'failed-driver' })
+  assert.equal(h.bridge.items.has('failed-driver'), false)
+  assert.equal(h.bridge.responses.has('old-response'), true)
+  assert.equal(h.bridge.busy(), true)
+  assert.equal(h.coordinator.snapshot().history[0].status, 'failed')
+
+  h.bridge.text([{ zone: 'passenger', text: '关闭我的车窗' }], 'new-passenger')
+  await sleep(25)
+  assert.deepEqual(h.inputs, [], 'recovery must not bypass an outstanding automatic response')
+  assert.equal(h.coordinator.batch.status, 'waiting_realtime')
+  h.bridge.receive(cancelled('unrelated-response'))
+  assert.equal(h.bridge.busy(), true)
+  h.bridge.receive(cancelled('old-response'))
+  await sleep(25)
+  assert.deepEqual(h.inputs, ['【副驾】关闭我的车窗'])
+  assert.equal(h.bridge.busy(), false)
+  assert.equal(h.coordinator.batch, null)
+})
+
 test('provider disconnect clears old speech so a later passenger request can start independently', async t => {
   const h = smartHarness(t)
   h.bridge.receive(start('old-driver'))
@@ -176,17 +224,22 @@ function eventHarness(t) {
   t.after(() => extension.close())
   const router = new GatewayEventRouter({ registry: new ClientEventDefinitionRegistry(extension) })
   const inputs = [], cleanups = [], external = [], collecting = [], listeners = [], states = []
+  const activeListeners = new Set()
   const effects = {
     setExternalInput: value => external.push(value),
     setInputCollecting: value => collecting.push(value),
     submitInput: parts => inputs.push(parts[0].text),
     publishClientState: (_name, state) => states.push(state), appendAudio() {},
-    onRealtimeEvent: listener => { listeners.push(listener); return () => {} },
+    onRealtimeEvent: listener => {
+      listeners.push(listener)
+      activeListeners.add(listener)
+      return () => activeListeners.delete(listener)
+    },
     onDisconnect: cleanup => { cleanups.push(cleanup); return () => {} },
   }
   let counter = 0
   const publish = (data, owner = 'a') => router.publish({ event_id: 'event_' + (++counter), name: MULTI_ZONE_EVENT, data }, { source: { ownerId: owner, sessionId: 'main' }, effects })
-  return { publish, inputs, cleanups, external, collecting, listeners, states }
+  return { publish, inputs, cleanups, external, collecting, listeners, activeListeners, states }
 }
 
 test('non-wake seats start independently while the driver remains the native wake zone', async t => {
@@ -228,3 +281,49 @@ test('registered events validate seats, isolate batches and prevent delayed subm
   await h.publish({ op: 'disable' }, 'b')
   assert.equal(h.external.at(-1), false)
 })
+
+for (const phase of ['merge window', 'unfinished driver turn', 'automatic-response cancellation wait']) {
+  test(`disabling during ${phase} cancels the batch without delayed submission and allows same-session re-entry`, async t => {
+    const h = eventHarness(t)
+    await h.publish({ op: 'enable' })
+    const receive = h.listeners[0]
+    if (phase !== 'merge window') receive(start('old-driver'))
+    await h.publish({ op: 'text', rows: [{ zone: 'passenger', text: '我也要' }] })
+
+    if (phase === 'automatic-response cancellation wait') {
+      receive(end('old-driver'))
+      receive(final('old-driver', '打开车窗'))
+      receive(created('old-response'))
+      await sleep(25)
+      assert.equal(h.states.at(-1).batch.status, 'waiting_realtime')
+    } else {
+      assert.equal(h.states.at(-1).batch.status, phase === 'merge window' ? 'merging' : 'collecting')
+    }
+    assert.deepEqual(h.inputs, [])
+
+    await h.publish({ op: 'disable' })
+    assert.equal(h.states.at(-1).enabled, false)
+    assert.equal(h.states.at(-1).batch, null)
+    assert.equal(h.activeListeners.size, 0, 'leaving unsubscribes the native-turn observer')
+    assert.deepEqual(h.external, [true, false])
+    assert.deepEqual(h.collecting, [true, false])
+
+    // Already queued native events must not revive a closed batch.
+    receive(end('old-driver'))
+    receive(final('old-driver', '打开车窗'))
+    receive(created('old-response'))
+    receive(cancelled('old-response'))
+    await sleep(25)
+    assert.deepEqual(h.inputs, [])
+    await assert.rejects(h.publish({ op: 'text', rows: [{ zone: 'passenger', text: '开窗' }] }), /请先开启/u)
+
+    await h.publish({ op: 'enable' })
+    assert.equal(h.activeListeners.size, 1, 're-entry creates only one active observer')
+    assert.equal(h.states.at(-1).enabled, true)
+    assert.equal(h.states.at(-1).batch, null)
+    await h.publish({ op: 'text', rows: [{ zone: 'passenger', text: '关闭我的车窗' }] })
+    await sleep(25)
+    assert.deepEqual(h.inputs, ['【副驾】关闭我的车窗'])
+    assert.deepEqual(h.collecting, [true, false, true, false])
+  })
+}

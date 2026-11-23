@@ -24,6 +24,45 @@ test('mode changes pause audio until acknowledged and send every frame to exactl
   assert.equal(sent[1].audio, 'CC==')
 })
 
+test('leaving the simulator resumes driver audio after disable acknowledgement and allows re-entry on the same client', async () => {
+  const requests = [], sent = [], ready = []
+  let acknowledgeDisable
+  const client = {
+    request: async (_type, value) => {
+      requests.push(value)
+      if (value.data.op === 'disable') {
+        return new Promise(resolve => { acknowledgeDisable = resolve })
+      }
+      return { accepted: true }
+    },
+    send: event => { sent.push(event); return true },
+  }
+  const router = new CockpitInputRouter(client, { onReady: value => ready.push(value) })
+  await router.setMode(true)
+  assert.equal(router.audio('before-exit'), true)
+
+  const disable = router.setMode(false)
+  assert.equal(router.ready, false)
+  assert.equal(router.audio('during-exit'), false)
+  await assert.rejects(router.text([{ zone: 'passenger', text: '开窗' }]), /尚未就绪/u)
+  assert.equal(requests.at(-1).data.op, 'disable')
+  assert.equal(router.actual, true, 'the acknowledged mode does not change before the server reply')
+  acknowledgeDisable({ accepted: true })
+  await disable
+
+  assert.equal(router.actual, false)
+  assert.equal(router.ready, true)
+  assert.equal(router.audio('after-exit'), true)
+  await assert.rejects(router.text([{ zone: 'passenger', text: '开窗' }]), /尚未就绪/u)
+
+  await router.setMode(true)
+  await router.text([{ zone: 'passenger', text: '关闭我的车窗' }])
+  assert.equal(router.audio('after-re-entry'), true)
+  assert.deepEqual(requests.map(request => request.data.op), ['enable', 'disable', 'enable', 'text'])
+  assert.deepEqual(sent, ['before-exit', 'after-exit', 'after-re-entry'].map(audio => ({ type: 'audio.append', audio })))
+  assert.deepEqual(ready, [false, true, false, true, false, true])
+})
+
 test('normal mode cannot submit simulated passenger text', async () => {
   const router = new CockpitInputRouter({ request: async () => ({ accepted: true }) })
   await router.setMode(false)

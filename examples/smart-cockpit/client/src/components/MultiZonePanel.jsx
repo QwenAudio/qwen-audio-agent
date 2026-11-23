@@ -13,7 +13,7 @@ const PRESETS = [
   ['四区交互', { driver: '打开车窗', passenger: '温度调整到24度', rearLeft: '打开我的座椅加热', rearRight: '我也要' }],
 ]
 
-export default function MultiZonePanel({ state, ready, carState, onSend, voiceMuted, voiceError, onToggleVoice, messages, onOpenChat }) {
+export default function MultiZonePanel({ state, ready, carState, onSend, voiceMuted, voiceError, onToggleVoice, messages, onOpenChat, onClose }) {
   const [drafts, setDrafts] = useState(EMPTY)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
@@ -37,7 +37,10 @@ export default function MultiZonePanel({ state, ready, carState, onSend, voiceMu
     <section className="multi-zone-panel" aria-label="四音区模拟">
       <header className="multi-zone-heading">
         <div><small>SMART COCKPIT · MULTI-ZONE</small><h2>四音区交互</h2></div>
-        <span className={`zone-connection ${ready ? 'is-ready' : ''}`}>{ready ? '已连接' : '连接中'}</span>
+        <div className="zone-heading-actions">
+          <span className={`zone-connection ${ready ? 'is-ready' : ''}`}>{ready ? '已连接' : '连接中'}</span>
+          <button type="button" className="zone-close" onClick={onClose}>返回座舱</button>
+        </div>
       </header>
       <p className="zone-description">主驾为唤醒音区，麦克风直连中央。其他三区用文字模拟识别结果，可独立发送；多人参与时收齐本轮话语后统一处理。</p>
       <div className="zone-presets" aria-label="多音区示例">

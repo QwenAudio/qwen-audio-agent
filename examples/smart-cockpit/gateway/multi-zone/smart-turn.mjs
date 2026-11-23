@@ -58,6 +58,9 @@ export class CockpitSmartTurn {
         this.coordinator.partial('driver', item.id, event.text || event.delta || '')
       } else if (event.type === 'conversation.item.input_audio_transcription.failed') {
         item.failed = true
+        // This input is terminal; already tracked responses still need their done receipt.
+        item.pending = false
+        this.items.delete(key)
         if (this.coordinator.batch?.entries.some(entry => entry.zone === 'driver' && entry.id === item.id)) {
           this.coordinator.fail('主驾识别失败，请重新发送本轮输入')
         }

@@ -255,9 +255,20 @@ export default function App() {
   }, [carState, runCockpitCommand])
 
   const navigateHome = useCallback(() => {
+    multiZoneOpenedRef.current = false
     setScreen('main')
     window.location.hash = '#main'
   }, [])
+
+  const toggleMultiZone = useCallback(() => {
+    if (screen === 'multi-zone') {
+      navigateHome()
+      return
+    }
+    multiZoneOpenedRef.current = true
+    setScreen('multi-zone')
+    window.location.hash = '#multi-zone'
+  }, [navigateHome, screen])
 
   const openSettings = useCallback((tab = 'persona') => {
     setScreen('settings')
@@ -538,7 +549,7 @@ export default function App() {
               <FlashBuyPanel flashBuyState={flashBuyState} onFlashBuyAction={handleFlashBuyAction} />
             )}
             {screen === 'multi-zone' && (
-              <MultiZonePanel state={multiZoneState} ready={inputReady && multiZoneState.enabled} carState={carState} onSend={sendZoneText} voiceMuted={voiceMuted} voiceError={voiceError} onToggleVoice={toggleVoiceMute} messages={chatMessages} onOpenChat={toggleChat} />
+              <MultiZonePanel state={multiZoneState} ready={inputReady && multiZoneState.enabled} carState={carState} onSend={sendZoneText} voiceMuted={voiceMuted} voiceError={voiceError} onToggleVoice={toggleVoiceMute} messages={chatMessages} onOpenChat={toggleChat} onClose={navigateHome} />
             )}
             {screen === 'settings' && (
               <SettingsPanel
@@ -562,7 +573,7 @@ export default function App() {
         </div>
 
         {commandError && <p className="cockpit-command-error" role="status">{commandError}</p>}
-        <Dock screen={screen} onOpenMultiZone={() => { multiZoneOpenedRef.current = true; setScreen('multi-zone'); window.location.hash = '#multi-zone' }} onNavigateHome={navigateHome} onOpenSettings={() => openSettings('persona')} onToggleChat={toggleChat} carState={carState} musicState={musicState} onTogglePlay={musicState.playing ? musicPause : musicPlay} onOpenMusic={openMusic} onOpenFlashBuy={openFlashBuy} onChangeTemperature={changeTemperature} temperaturePending={temperaturePending} />
+        <Dock screen={screen} onToggleMultiZone={toggleMultiZone} onNavigateHome={navigateHome} onOpenSettings={() => openSettings('persona')} onToggleChat={toggleChat} carState={carState} musicState={musicState} onTogglePlay={musicState.playing ? musicPause : musicPlay} onOpenMusic={openMusic} onOpenFlashBuy={openFlashBuy} onChangeTemperature={changeTemperature} temperaturePending={temperaturePending} />
       </section>
     </main>
   )

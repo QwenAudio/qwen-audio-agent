@@ -15,6 +15,7 @@ import { GatewayClientEvent as Input } from '../../shared/protocol/realtime-even
 import { GatewayClientCapability } from '../../shared/protocol/gateway-client-protocol.mjs'
 import { GatewayEventRouter } from '../src/client/client-event-router.mjs'
 import { desktopClientTools } from '../../web/src/desktop/client-tools.js'
+import { createPcmPlaybackQueue, decodePcm } from '../../web/src/realtime/audio.js'
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
 async function until(predicate) {
@@ -437,6 +438,144 @@ test('frontend runtime chats without backend, socket, handshake or provider netw
   assert.deepEqual(h.done, [{ id: 'reply', status: 'completed' }])
   assert.equal(h.manager.list({}).length, 0)
 })
+
+for (const [alreadyPlaying, samePacket] of [[false, false], [true, true]]) {
+  test(`Google Live interruption clears ${alreadyPlaying ? 'scheduled' : 'buffered'} audio`, async t => {
+    const h = harness(t, { backend: false })
+    const session = await h.connect()
+    const scheduled = []
+    const stopped = []
+    const queue = createPcmPlaybackQueue({ remote: true, onFlush: items => scheduled.push(...items) })
+    const frontend = new RealtimeFrontend({
+      provider: REALTIME_PROVIDERS['google-live'],
+      onEvent: event => session.emit(event),
+    })
+    t.after(() => frontend.close())
+    let cursor = h.events.length
+    const receive = content => {
+      frontend.handleProviderEvent({ serverContent: content })
+      for (const event of h.events.slice(cursor)) {
+        if (event.type === 'audio.delta') {
+          const samples = decodePcm(event.audio)
+          queue.push({
+            responseId: event.responseId,
+            samples,
+            sampleRate: event.sampleRate,
+            duration: samples.length / event.sampleRate,
+          })
+        } else if (event.type === 'audio.done') {
+          queue.finish()
+        } else if (event.type === 'playback.clear') {
+          queue.reset()
+          stopped.push(...scheduled.splice(0))
+        }
+      }
+      cursor = h.events.length
+    }
+    const data = Buffer.alloc(alreadyPlaying ? 24000 : 9600).toString('base64')
+    const audio = { modelTurn: { parts: [{ inlineData: { data } }] } }
+    receive(audio)
+    const oldId = h.events.findLast(e => e.type === 'audio.delta').responseId
+    assert.equal(scheduled.length, alreadyPlaying ? 1 : 0)
+    if (alreadyPlaying) h.send({ type: Input.PLAYBACK_STARTED, responseId: oldId })
+    const beforeInterrupt = h.events.length
+    receive(samePacket ? { ...audio, interrupted: true, turnComplete: true } : { interrupted: true })
+    assert.deepEqual(queue.responseIds(), [])
+    assert.equal(scheduled.length, 0)
+    assert.equal(stopped.length, alreadyPlaying ? 1 : 0)
+    if (!samePacket) {
+      assert.ok(frontend.activeResponses.has(oldId))
+      receive({ interrupted: true, ...audio })
+      receive({ turnComplete: true })
+    }
+    assert.deepEqual(h.done, [{ id: oldId, status: 'cancelled' }])
+    assert.equal(frontend.activeResponses.size, 0)
+    const interruptionEvents = h.events.slice(beforeInterrupt)
+    assert.equal(interruptionEvents.filter(e => e.type === 'playback.clear').length, 1)
+    assert.equal(interruptionEvents.some(e => ['audio.delta', 'audio.done'].includes(e.type)), false)
+    assert.equal(session.cancels, 0)
+    receive({ ...audio, turnComplete: true })
+    assert.equal(scheduled.length, 1)
+    assert.notEqual(scheduled[0].responseId, oldId)
+  })
+}
+
+test('Google Live records split audio transcripts across interruption and consecutive turns', async t => {
+  const h = harness(t, { backend: false })
+  const session = await h.connect({}, {
+    capabilitiesNegotiated: true, capabilities: ['input.audio', 'input.text'],
+  })
+  const frontend = new RealtimeFrontend({
+    provider: REALTIME_PROVIDERS['google-live'],
+    onEvent: event => session.emit(event),
+  })
+  t.after(() => frontend.close())
+  const activity = type => frontend.handleProviderEvent({ voiceActivity: { type } })
+  const receive = content => frontend.handleProviderEvent({ serverContent: content })
+  activity('ACTIVITY_START')
+  const first = receive({ inputTranscription: { text: '帮我' } })
+  const second = receive({ inputTranscription: { text: '播放音乐' } })
+  assert.equal(first.at(-1).item_id, second.at(-1).item_id)
+  activity('ACTIVITY_END')
+  receive({ outputTranscription: { text: '好的' } })
+  activity('ACTIVITY_START')
+  receive({ inputTranscription: { text: '换一首' } })
+  receive({ interrupted: true })
+  receive({ turnComplete: true })
+  assert.deepEqual(h.events.filter(e => e.type === 'transcript.final').map(e => e.content), ['帮我播放音乐'])
+
+  activity('ACTIVITY_END')
+  receive({ outputTranscription: { text: '你好' } })
+  receive({ outputTranscription: { text: '，世界', finished: true } })
+  receive({ outputTranscription: { text: '，世界', finished: true } })
+  receive({ turnComplete: true })
+  const userTurns = h.events.filter(e => e.type === 'turn.started').map(e => e.turnId)
+  assert.equal(userTurns.length, 2)
+  assert.notEqual(userTurns[0], userTurns[1])
+  assert.deepEqual(h.events.filter(e => e.type === 'transcript.delta' && e.role === 'user')
+    .map(e => [e.content, e.turnId, e.replace]), [
+    ['帮我', userTurns[0], true],
+    ['帮我播放音乐', userTurns[0], true],
+    ['换一首', userTurns[1], true],
+  ])
+  assert.deepEqual(h.events.filter(e => e.type === 'transcript.final')
+    .map(e => [e.role, e.content, e.turnId]), [
+    ['user', '帮我播放音乐', userTurns[0]],
+    ['user', '换一首', userTurns[1]],
+    ['assistant', '你好，世界', userTurns[1]],
+  ])
+  assert.equal(session.cancels, 0)
+  const history = h.conversationSync.frontendContext(h)
+  assert.equal(history.filter(e => e.content === '换一首').length, 1)
+  assert.equal(history.filter(e => e.content === '你好，世界').length, 1)
+})
+
+for (const withVoiceActivity of [false, true]) {
+  test(`Google Live retains late input transcription (voice activity: ${withVoiceActivity})`, async t => {
+    const h = harness(t, { backend: false })
+    const session = await h.connect()
+    const frontend = new RealtimeFrontend({
+      provider: REALTIME_PROVIDERS['google-live'],
+      onEvent: event => session.emit(event),
+    })
+    t.after(() => frontend.close())
+    const activity = type => frontend.handleProviderEvent({ voiceActivity: { type } })
+    const receive = content => frontend.handleProviderEvent({ serverContent: content })
+    if (withVoiceActivity) activity('ACTIVITY_START')
+    receive({ inputTranscription: { text: 'hello', finished: false } })
+    if (withVoiceActivity) activity('ACTIVITY_END')
+    receive({ outputTranscription: { text: 'hi' }, turnComplete: true })
+    const turnId = h.events.find(e => e.type === 'turn.started').turnId
+    assert.equal(h.events.find(e => e.type === 'response.started').turnId, turnId)
+    assert.equal(h.events.some(e => e.type === 'transcript.final' && e.role === 'user'), false)
+    receive({ inputTranscription: { text: ' again', finished: true } })
+    receive({ inputTranscription: { text: ' again', finished: true } })
+    assert.deepEqual(h.events.filter(e => e.type === 'transcript.final' && e.role === 'user')
+      .map(e => [e.content, e.turnId]), [['hello again', turnId]])
+    assert.equal(h.conversationSync.frontendContext(h)
+      .filter(e => e.role === 'user' && e.content === 'hello again').length, 1)
+  })
+}
 
 test('DashScope early transcript cannot bind the next voice response to the previous turn', async t => {
   const h = harness(t, { backend: false })

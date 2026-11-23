@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### 新增功能
+
+- 新增默认关闭的 GPT-Live 1 Realtime Provider（OpenAI Live API，全双工，推理与工具调用委托给 Responses 模型；被插话、文字输入或停止打断时，已生成的语音播完再停）。
+
 ### 修复与改进
 
 - 修复 Google Live 打断后仍播放缓冲音频的问题，立即清理播放队列并丢弃本轮迟到的音频。

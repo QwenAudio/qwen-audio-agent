@@ -16,7 +16,7 @@ const OMNI_TRANSPORT_CAPABILITIES = Object.freeze({
 export function apiProfile(family, turnDetection, { visual = false, sessionConstraints = {} } = {}) {
   return Object.freeze({
     family,
-    turnDetection: Object.freeze({ type: turnDetection }),
+    turnDetection: turnDetection ? Object.freeze({ type: turnDetection }) : null,
     defaultModelCapabilities: visual ? OMNI_MODEL_CAPABILITIES : AUDIO_MODEL_CAPABILITIES,
     transportCapabilities: visual ? OMNI_TRANSPORT_CAPABILITIES : AUDIO_TRANSPORT_CAPABILITIES,
     sessionConstraints: Object.freeze(sessionConstraints),

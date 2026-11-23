@@ -235,6 +235,86 @@ test('manual text input supersedes speech and reaches the frontend once', async 
   )
 })
 
+test('user speech and typed input cancel the frontend as a user interruption', async () => {
+  const { runtime } = harness()
+  const reasons = []
+  runtime.getFrontend().cancel = options => reasons.push(options?.reason)
+  runtime.handleProviderEvent({ type: 'input_audio_buffer.speech_started', item_id: 'item-voice' })
+  runtime.submit({ text: '看一下这个问题' })
+  await Promise.resolve()
+  assert.deepEqual(reasons, ['user_interruption', 'user_interruption'])
+})
+
+test('a frontend whose model plays out interrupted speech keeps playback on speech and typed input', async () => {
+  const { runtime, events } = harness()
+  const cancels = []
+  Object.assign(runtime.getFrontend(), { capabilities: { interruptionPlaysOut: true }, cancel: options => cancels.push(options) })
+  runtime.handleProviderEvent({ type: 'input_audio_buffer.speech_started', item_id: 'item-voice' })
+  runtime.submit({ text: '看一下这个问题' })
+  await Promise.resolve()
+  assert.ok(!events.some(event => event.type === 'playback.clear'), 'neither clears playback')
+  assert.deepEqual(events.find(event => event.type === 'voice.state'), { type: 'voice.state', state: 'listening', turnId: 'voice-1' })
+  assert.deepEqual(cancels, [{ reason: 'user_interruption', speech: true }, { reason: 'user_interruption' }])
+})
+
+for (const interruptionPlaysOut of [false, true]) {
+  test(`provider-owned interruption skips duplicate cancellation independently of playback policy (${interruptionPlaysOut})`, async () => {
+    const { runtime, events, speechStarts } = harness()
+    const cancels = []
+    Object.assign(runtime.getFrontend(), {
+      capabilities: { interruptionPlaysOut },
+      cancel: options => cancels.push(options),
+    })
+
+    runtime.handleProviderEvent({
+      type: 'input_audio_buffer.speech_started',
+      item_id: 'provider-interruption',
+      providerHandlesInterruption: true,
+    })
+
+    assert.deepEqual(cancels, [])
+    assert.equal(speechStarts.length, 1)
+    assert.deepEqual(events.find(event => event.type === 'voice.state'), {
+      type: 'voice.state', state: 'listening', turnId: 'voice-1',
+    })
+    assert.equal(events.some(event => event.type === 'playback.clear'), !interruptionPlaysOut)
+
+    runtime.submit({ text: '新的文字问题' })
+    await Promise.resolve()
+    assert.deepEqual(cancels, [{ reason: 'user_interruption' }])
+  })
+}
+
+test('transcription without a VAD start keeps one turn without interrupting playback', () => {
+  const { runtime, turns, events, records, calls, speechStarts } = harness()
+  runtime.handleProviderEvent({
+    type: 'conversation.item.input_audio_transcription.started',
+    item_id: 'transcript-only',
+  })
+  runtime.handleProviderEvent({
+    type: 'conversation.item.input_audio_transcription.delta',
+    item_id: 'transcript-only',
+    text: '你好',
+  })
+  runtime.handleProviderEvent({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'transcript-only',
+    transcript: '你好',
+  })
+
+  assert.deepEqual(turns.committed(), { turnId: 'voice-1', turnGeneration: 1 })
+  assert.equal(turns.userSpeaking, false)
+  assert.deepEqual(speechStarts, [])
+  assert.ok(!calls.some(([name]) => ['cancel', 'dismissActive'].includes(name)))
+  assert.ok(!events.some(event => event.type === 'playback.clear' || event.state === 'listening'))
+  assert.equal(events.filter(event => event.type === 'turn.started').length, 1)
+  assert.deepEqual(events.filter(event => event.type === 'transcript.final').map(event => [event.turnId, event.content]), [
+    ['voice-1', '你好'],
+  ])
+  assert.equal(records.length, 1)
+  assert.equal(records[0].content, '你好')
+})
+
 test('invalid manual input fails before changing the current turn', () => {
   const { runtime, turns, events } = harness()
 

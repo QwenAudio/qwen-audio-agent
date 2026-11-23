@@ -11,6 +11,7 @@
 | Qwen Audio / Omni 3.5 / Omni 3.8 | `dashscope`（默认） | DashScope API Key；Omni 3.8 还需业务空间专属地址 | [Audio 语音](../voice-frontends/qwen-audio-realtime.zh.md) / [Omni 视觉](../voice-frontends/qwen-omni-realtime.zh.md) |
 | StepAudio 3 | `stepfun` | StepFun API Key | [StepFun](../voice-frontends/stepfun.zh.md) |
 | OpenAI Realtime | `gpt-live` | OpenAI API Key | [GPT-Live](../voice-frontends/gpt-live.zh.md) |
+| OpenAI Live API | `gpt-live-1` | OpenAI API Key | [GPT-Live 1](../voice-frontends/gpt-live-1.zh.md) |
 | Gemini Live | `google-live` | Google API Key | [Google Live](../voice-frontends/google-live.zh.md) |
 | 豆包 Seeduplex | `doubao-seeduplex` | 豆包 API Key | 模型、音色与服务地址配置见下表 |
 | Hugging Face speech-to-speech | `speech-to-speech` | 先启动服务；默认 `ws://127.0.0.1:8765/v1/realtime` | [本地模型链路](../voice-frontends/speech-to-speech.zh.md) |
@@ -55,12 +56,13 @@ QWEN_AUDIO_REALTIME_VOICE=
 | `dashscope` | `qwen-audio-3.1-realtime-plus` | `wss://dashscope.aliyuncs.com/api-ws/v1/realtime` |
 | `stepfun` | `stepaudio-3-realtime-preview` | `wss://api.stepfun.com/v1/realtime` |
 | `gpt-live` | `gpt-realtime-2.1` | `wss://api.openai.com/v1/realtime` |
+| `gpt-live-1` | `gpt-live-1` | `wss://api.openai.com/v1/live/sessions` |
 | `google-live` | `gemini-3.8-live` | `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent` |
 | `doubao-seeduplex` | `1.2.6.1` | `wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue` |
 | `speech-to-speech` | 上游配置 | `ws://127.0.0.1:8765/v1/realtime` |
 | `minicpm-o` | 上游配置 | `ws://127.0.0.1:8006/v1/realtime?mode=audio` |
 
-speech-to-speech 与 MiniCPM-o 的模型、音色由上游服务管理，应留空；服务启用 Bearer 认证时才需填写 API Key。Qwen3.8 Omni 必须填写[业务空间专属地址](../voice-frontends/qwen-omni-realtime.zh.md#配置)，不能使用 DashScope 公共默认地址。统一配置不改变各服务的协议和能力限制，这些差异仍由 Provider adapter 处理。
+speech-to-speech 与 MiniCPM-o 的模型、音色由上游服务管理，应留空；服务启用 Bearer 认证时才需填写 API Key。Qwen3.8 Omni 必须填写[业务空间专属地址](../voice-frontends/qwen-omni-realtime.zh.md#配置)，不能使用 DashScope 公共默认地址。统一配置不改变各服务的协议和能力限制，这些差异仍由 Provider adapter 处理。GPT-Live 1 另读取 `GPT_LIVE_1_DELEGATION_MODEL`，即它委托的 Responses 模型（默认 `gpt-6-luna`），以及[其指南](../voice-frontends/gpt-live-1.zh.md#配置)中的四个时间参数。
 
 DashScope 当前内置以下模型档案：
 

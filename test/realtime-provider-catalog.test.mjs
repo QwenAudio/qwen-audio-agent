@@ -70,6 +70,28 @@ test('GPT-Live and Google Live resolve independent credentials and models', () =
   assert.equal(resolveRealtimeModelProfile(google.active.model, 'google-live').family, 'google-live')
 })
 
+test('GPT-Live 1 resolves its code-owned model without borrowing Realtime connection settings', () => {
+  const env = {
+    QWEN_AUDIO_REALTIME_PROVIDER: 'openai-live',
+    OPENAI_API_KEY: 'realtime-key', DASHSCOPE_API_KEY: 'dash-key',
+    GPT_LIVE_REALTIME_MODEL: 'gpt-realtime-2.1',
+    GPT_LIVE_REALTIME_URL: 'wss://realtime.example/v1/realtime',
+  }
+  const unconfigured = resolveRealtimeFrontendConfiguration(env)
+  assert.equal(unconfigured.active.provider, 'gpt-live-1')
+  assert.equal(unconfigured.active.model, 'gpt-live-1')
+  assert.equal(unconfigured.active.endpoint, 'wss://api.openai.com/v1/live/sessions')
+  assert.equal(unconfigured.active.modelProfile.family, 'gpt-live-1')
+  assert.equal(unconfigured.active.modelProfile.sessionDefaults.turnDetection, null)
+  assert.equal(unconfigured.credential, '')
+  assert.equal(unconfigured.active.configured, false)
+
+  const configured = resolveRealtimeFrontendConfiguration({ ...env, QWEN_AUDIO_REALTIME_API_KEY: 'live-key' })
+  assert.equal(configured.credential, 'live-key')
+  assert.equal(configured.active.configured, true)
+  assert.equal(Object.hasOwn(configured.active, 'credential'), false)
+})
+
 test('Doubao Seeduplex resolves aliases, endpoint, model and voice independently', () => {
   const configuration = resolveRealtimeFrontendConfiguration({
     QWEN_AUDIO_REALTIME_PROVIDER: 'doubao',

@@ -11,6 +11,7 @@ Keep provider selection, credentials, endpoints, and the selected model in the `
 | Qwen Audio / Omni 3.5 / Omni 3.8 | `dashscope` (default) | DashScope API key; Omni 3.8 also requires a workspace-specific URL | [Audio](../voice-frontends/qwen-audio-realtime.md) / [Omni vision](../voice-frontends/qwen-omni-realtime.md) |
 | StepAudio 3 | `stepfun` | StepFun API key | [StepFun](../voice-frontends/stepfun.md) |
 | OpenAI Realtime | `gpt-live` | OpenAI API key | [GPT-Live](../voice-frontends/gpt-live.md) |
+| OpenAI Live API | `gpt-live-1` | OpenAI API key | [GPT-Live 1](../voice-frontends/gpt-live-1.md) |
 | Gemini Live | `google-live` | Google API key | [Google Live](../voice-frontends/google-live.md) |
 | Doubao Seeduplex | `doubao-seeduplex` | Doubao API key | Configure its model, voice, and endpoint below |
 | Hugging Face speech-to-speech | `speech-to-speech` | Start the service; default: `ws://127.0.0.1:8765/v1/realtime` | [Local model pipeline](../voice-frontends/speech-to-speech.md) |
@@ -55,12 +56,13 @@ Provider defaults:
 | `dashscope` | `qwen-audio-3.1-realtime-plus` | `wss://dashscope.aliyuncs.com/api-ws/v1/realtime` |
 | `stepfun` | `stepaudio-3-realtime-preview` | `wss://api.stepfun.com/v1/realtime` |
 | `gpt-live` | `gpt-realtime-2.1` | `wss://api.openai.com/v1/realtime` |
+| `gpt-live-1` | `gpt-live-1` | `wss://api.openai.com/v1/live/sessions` |
 | `google-live` | `gemini-3.8-live` | `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent` |
 | `doubao-seeduplex` | `1.2.6.1` | `wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue` |
 | `speech-to-speech` | Set upstream | `ws://127.0.0.1:8765/v1/realtime` |
 | `minicpm-o` | Set upstream | `ws://127.0.0.1:8006/v1/realtime?mode=audio` |
 
-For speech-to-speech and MiniCPM-o, leave model and voice empty: the upstream service controls them. Set the API key only if that service requires a Bearer token. Qwen3.8 Omni requires an explicit [workspace-specific URL](../voice-frontends/qwen-omni-realtime.md#setup), not the public DashScope default. Uniform configuration does not change each service's protocol or capability limits; the Provider adapter handles those differences.
+For speech-to-speech and MiniCPM-o, leave model and voice empty: the upstream service controls them. Set the API key only if that service requires a Bearer token. Qwen3.8 Omni requires an explicit [workspace-specific URL](../voice-frontends/qwen-omni-realtime.md#setup), not the public DashScope default. Uniform configuration does not change each service's protocol or capability limits; the Provider adapter handles those differences. GPT-Live 1 also reads `GPT_LIVE_1_DELEGATION_MODEL`, the Responses model it delegates to (default `gpt-6-luna`), and four timing settings described in its [guide](../voice-frontends/gpt-live-1.md#configuration).
 
 Current built-in DashScope model profiles:
 

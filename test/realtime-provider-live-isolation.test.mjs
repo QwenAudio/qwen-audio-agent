@@ -10,6 +10,7 @@ import { resolveRealtimeFrontendConfiguration } from '../shared/realtime-provide
 const profiles = [
   { provider: 'doubao-seeduplex', alias: 'seeduplex', modelValue: '1.2.6.1' },
   { provider: 'gpt-live', alias: 'openai', modelValue: 'gpt-realtime-2.1' },
+  { provider: 'gpt-live-1', alias: 'openai-live', modelValue: 'gpt-live-1' },
   { provider: 'google-live', alias: 'gemini-live', modelValue: 'gemini-3.8-live' },
 ]
 for(const entry of profiles) {
@@ -64,7 +65,7 @@ test('server exposes one active frontend connection without changing backend cre
       provider: config.audioProvider, active: config.realtimeModel,
       credential: config.realtimeCredential, backendCredential: config.backends.llm.apiKey,
       providers: listRealtimeProviders().map(provider => provider.key),
-      inactive: ['dashscope', 'gpt-live', 'google-live'].map(key => providerRuntimeConfiguration(key).credential),
+      inactive: ['dashscope', 'gpt-live', 'gpt-live-1', 'google-live'].map(key => providerRuntimeConfiguration(key).credential),
     }));
   `
   const env = { ...process.env,
@@ -82,5 +83,5 @@ test('server exposes one active frontend connection without changing backend cre
   assert.equal(result.credential, 'step-key')
   assert.equal(result.backendCredential, 'backend-key')
   assert.deepEqual(result.providers, ['stepfun'])
-  assert.deepEqual(result.inactive, ['', '', ''])
+  assert.deepEqual(result.inactive, ['', '', '', ''])
 })

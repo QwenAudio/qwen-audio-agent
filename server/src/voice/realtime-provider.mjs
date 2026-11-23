@@ -170,6 +170,7 @@ export class RealtimeFrontend {
     this.restoringContext = false
     this.audioInputStarted = false
     this.activeResponses = new Set()
+    this.cancelledResponses = new Set()
     // Only used by providers requiring response.created. false = awaiting final
     // while active; true = successfully ended and awaiting one late final.
     this.pendingFinalResponses = new Map()
@@ -325,6 +326,7 @@ export class RealtimeFrontend {
         && event.type !== 'response.created'
         && isResponseActivityEvent(event)
         && !this.activeResponses.has(realtimeResponseId(event))
+        && !(event.type === 'response.done' && this.cancelledResponses.has(realtimeResponseId(event)))
       ) {
         const id = realtimeResponseId(event)
         if (!FINAL_TEXT_EVENTS.has(event.type) || this.pendingFinalResponses.get(id) !== true) continue
@@ -352,6 +354,7 @@ export class RealtimeFrontend {
         this.completeSessionSetup(onSessionReady, onSessionError)
       }
       this.handleLifecycle(event)
+      if (event.type === 'response.done') this.cancelledResponses.delete(realtimeResponseId(event))
       this.onEvent?.(event)
       events.push(event)
     }
@@ -762,6 +765,8 @@ export class RealtimeFrontend {
   cancel() {
     this.responseQueueGeneration += 1
     const cancelledResponseIds = [...this.activeResponses]
+    for (const id of cancelledResponseIds) this.cancelledResponses.add(id)
+    while (this.cancelledResponses.size > 64) this.cancelledResponses.delete(this.cancelledResponses.values().next().value)
     for (const id of cancelledResponseIds) this.pendingFinalResponses.delete(id)
     const hasResponse = cancelledResponseIds.length
       || this.pendingResponses.some(pending => pending.responseRequested)
@@ -1251,6 +1256,7 @@ export class RealtimeFrontend {
   resetResponses() {
     this.responseQueueGeneration += 1
     this.activeResponses.clear()
+    this.cancelledResponses.clear()
     this.pendingFinalResponses.clear()
     this.responseSlot.release()
     this.rejectConversationItemWaiters(new Error('Realtime 会话已重置'))

@@ -190,6 +190,7 @@ export function attachGatewayClientTransport(server, {
     let admitted = false
     let clientLease = null
     let runtimeMessageChain = Promise.resolve()
+    const extensionCleanups = new Set()
     const voiceClient = {
       ws,
       descriptor,
@@ -329,6 +330,18 @@ export function attachGatewayClientTransport(server, {
         const result = await clientEventRouter.publish(message, {
           source: runtimeSource(),
           effects: {
+            setExternalInput(enabled, options) { sessionRuntime.setExternalInput(enabled, options) },
+            onRealtimeEvent(listener) { return sessionRuntime.onRealtimeEvent(listener) },
+            appendAudio(audio) { sessionRuntime.handleClientEvent({ type: GatewayClientEvent.AUDIO_APPEND, audio }) },
+            setInputCollecting(active) { sessionRuntime.setInputCollecting(active) },
+            submitInput(parts) { sessionRuntime.submitExternalInput(parts) },
+            publishClientState(state, data) {
+              send(ws, { type: GatewayServerEvent.CLIENT_STATE, state, data })
+            },
+            onDisconnect(cleanup) {
+              extensionCleanups.add(cleanup)
+              return () => extensionCleanups.delete(cleanup)
+            },
             setAssistantProfile(profile) {
               // Only a server-registered Client Event handler can reach this
               // effect. The Client supplies a schema-validated identifier,
@@ -465,6 +478,12 @@ export function attachGatewayClientTransport(server, {
         closeCode: Number(code),
         closeReason: reason?.toString() || undefined,
       })
+      for (const cleanup of extensionCleanups) {
+        try { cleanup() } catch (error) {
+          connectionLogger.warn('client_extension.cleanup_failed', { error: error.message })
+        }
+      }
+      extensionCleanups.clear()
       sessionRuntime.close()
       const connections = voiceConnections.get(ownerId)
       connections?.delete(voiceClient)

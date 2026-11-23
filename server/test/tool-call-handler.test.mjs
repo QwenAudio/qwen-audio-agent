@@ -8,6 +8,7 @@ import { ToolCallHandler } from '../src/frontend/tools/tool-call-handler.mjs'
 import { FrontendNotesStore } from '../src/conversation/frontend-notes.mjs'
 import { PermissionPolicy } from '../src/task/permission-policy.mjs'
 import { TurnTranscripts } from '../src/frontend/tools/turn-transcripts.mjs'
+import { RealtimeTurnState } from '../src/voice/realtime-turn-state.mjs'
 import { REALTIME_PROVIDERS, RealtimeFrontend } from '../src/voice/realtime-provider.mjs'
 import { ClientToolSource } from '../src/frontend/tools/client-tool-source.mjs'
 import { MarkdownContextStore } from '../src/memory/providers/markdown/context-store.mjs'
@@ -2448,6 +2449,49 @@ test('an ID-less response cannot switch requests while waiting for the transcrip
   assert.equal(calls.length, 0)
   await kit.finish()
 })
+
+for (const transition of ['unchanged turn', 'newer denial', 'explicit stop']) {
+  test(`permission transcript wait: ${transition}`, async t => {
+    const submissions = []
+    const permissionPolicy = new PermissionPolicy()
+    const kit = await permissionHarness({
+      answer: '可以',
+      permissionPolicy,
+      respondPermission: async (id, decision) => { submissions.push([id, decision]) },
+    })
+    t.after(() => kit.finish())
+    const transcripts = new TurnTranscripts({ waitMs: 1000 })
+    t.after(() => transcripts.close())
+    kit.handler.transcripts = transcripts
+    const turns = new RealtimeTurnState()
+    const earlier = turns.beginManual('turn-one').context
+    kit.handler.getTurnId = () => turns.committedTurnId
+    kit.handler.getTurnGeneration = () => turns.committedTurnGeneration
+    const execution = kit.handler.handle({
+      call_id: 'delayed-permission', name: 'respond_permission',
+      arguments: '{"decision":"task"}',
+    }, earlier)
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(submissions.length, 0, 'the decision waits for the user transcript')
+    assert.equal(transcripts.waiters.has('turn-one'), true)
+    if (transition === 'newer denial') {
+      turns.beginManual('turn-two')
+      transcripts.record('turn-two', '不，先别做了')
+    } else if (transition === 'explicit stop') {
+      turns.advanceBoundary()
+    }
+    transcripts.record('turn-one', '可以')
+    await execution
+    await new Promise(resolve => setImmediate(resolve))
+    const superseded = transition !== 'unchanged turn'
+    assert.deepEqual(submissions, superseded ? [] : [['auth-one', 'once']])
+    assert.equal(kit.outputs.at(-1)[1].status, superseded ? 'superseded' : 'submitted')
+    if (superseded) {
+      assert.equal(kit.manager.get(kit.task.id).authorization.status, 'pending')
+      assert.equal(permissionPolicy.shouldAutoAllow('owner', 'voice', kit.task.id), false)
+    }
+  })
+}
 
 test('another user confirmation reuses the sole in-flight permission receipt', async () => {
   const calls = []

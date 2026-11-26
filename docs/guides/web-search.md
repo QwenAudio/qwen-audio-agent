@@ -51,6 +51,24 @@ out of the frontend. It always uses this endpoint and the `web_search` tool and
 does not read the `QWEN_AUDIO_WEB_SEARCH_MCP_*` settings below; to send a
 Parallel API key, choose `mcp` and configure the URL and token explicitly.
 
+The built-in [SpecStream](https://specstream.ai/docs) preset connects to the
+SpecStream MCP server (`https://api.specstream.ai/mcp`) and calls its
+`search_web` tool in the fast tier, which returns results in about a second.
+It needs an API key; a new account starts with $10 of credit and a fast search
+of up to 10 results costs $0.001:
+
+```dotenv
+QWEN_AUDIO_WEB_SEARCH_PROVIDER=specstream
+SPECSTREAM_API_KEY=your-key
+```
+
+With this preset, search queries go to SpecStream, and the returned titles,
+snippets, site names and links enter the voice model's context as sources. It
+always uses this endpoint and the `search_web` tool, sends only
+`SPECSTREAM_API_KEY`, and does not read the `QWEN_AUDIO_WEB_SEARCH_MCP_*`
+settings below. Without the key the preset stays unconfigured and no request
+is made.
+
 The same provider-neutral adapter can connect to another compatible MCP search
 service. Custom endpoints must provide their own credentials explicitly:
 
@@ -61,7 +79,7 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN=your-token
 QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 ```
 
-Choose `so360` (default), `bing`, `bailian`, `keenable`, `parallel`, `mcp`, or `none`. Setting `none` disables search, not page fetching. Disable both search and page fetching with:
+Choose `so360` (default), `bing`, `bailian`, `keenable`, `parallel`, `specstream`, `mcp`, or `none`. Setting `none` disables search, not page fetching. Disable both search and page fetching with:
 
 ```dotenv
 QWEN_AUDIO_WEB_TOOLS_ENABLED=false

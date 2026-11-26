@@ -44,6 +44,21 @@ QWEN_AUDIO_WEB_SEARCH_PROVIDER=parallel
 `QWEN_AUDIO_WEB_SEARCH_MCP_*` 设置；如需发送 Parallel API Key，请选择 `mcp` 并显式
 配置地址与 Token。
 
+内置的 [SpecStream](https://specstream.ai/docs) 预设连接 SpecStream MCP 服务
+（`https://api.specstream.ai/mcp`），以 fast 档调用其 `search_web` 工具，约一秒返回
+结果。该预设需要 API Key；新账号自带 10 美元额度，一次不超过 10 条结果的 fast 搜索
+费用为 0.001 美元：
+
+```dotenv
+QWEN_AUDIO_WEB_SEARCH_PROVIDER=specstream
+SPECSTREAM_API_KEY=your-key
+```
+
+启用该预设后，搜索词会发送到 SpecStream，返回的标题、摘要、站点名和链接作为来源进入
+语音模型上下文。预设固定使用上述地址和 `search_web` 工具，只发送
+`SPECSTREAM_API_KEY`，不读取下方的 `QWEN_AUDIO_WEB_SEARCH_MCP_*` 设置；未设置 Key
+时预设保持未配置状态，不发出任何请求。
+
 同一个与供应商无关的 Adapter 也可以接入其他兼容的 MCP 搜索服务；自定义地址必须
 显式提供自己的凭据：
 
@@ -54,7 +69,7 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN=your-token
 QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 ```
 
-可选 `so360`（默认）、`bing`、`bailian`、`keenable`、`parallel`、`mcp` 或 `none`。设置 `none` 只关闭搜索，网页读取工具仍可用；同时关闭搜索和网页读取时设置：
+可选 `so360`（默认）、`bing`、`bailian`、`keenable`、`parallel`、`specstream`、`mcp` 或 `none`。设置 `none` 只关闭搜索，网页读取工具仍可用；同时关闭搜索和网页读取时设置：
 
 ```dotenv
 QWEN_AUDIO_WEB_TOOLS_ENABLED=false

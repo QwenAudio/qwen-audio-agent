@@ -141,6 +141,25 @@ test('uses a key-free fallback until the user configures a search provider', () 
     mcpToken: '',
     mcpTool: 'web_search',
   })
+  assert.deepEqual(resolveWebSearchConfiguration({
+    SPECSTREAM_API_KEY: 'specstream-key',
+    QWEN_AUDIO_WEB_SEARCH_PROVIDER: 'specstream',
+    QWEN_AUDIO_WEB_SEARCH_MCP_URL: 'https://search.example/mcp',
+    QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN: 'search-key',
+    QWEN_AUDIO_WEB_SEARCH_MCP_TOOL: 'web_search',
+  }), {
+    provider: 'specstream',
+    mcpUrl: 'https://api.specstream.ai/mcp',
+    mcpToken: 'specstream-key',
+    mcpTool: 'search_web',
+  })
+  assert.equal(resolveWebSearchConfiguration({
+    QWEN_AUDIO_WEB_SEARCH_PROVIDER: 'specstream',
+    QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN: 'search-key',
+  }).mcpToken, '')
+  assert.equal(resolveWebSearchConfiguration({
+    SPECSTREAM_API_KEY: 'specstream-key',
+  }).provider, 'so360')
   assert.equal(resolveWebSearchConfiguration({
     KEENABLE_API_KEY: 'keenable-key',
   }).provider, 'so360')

@@ -16,6 +16,7 @@ export function createWebSearchProvider(config, options = {}) {
     || provider === 'bailian'
     || provider === 'keenable'
     || provider === 'parallel'
+    || provider === 'specstream'
   ) {
     return new McpWebSearchProvider({
       url: config.webSearchMcpUrl,
@@ -39,6 +40,16 @@ export function createWebSearchProvider(config, options = {}) {
         : {}),
       ...(provider === 'parallel'
         ? { key: 'parallel-mcp', label: 'Parallel Web Search MCP' }
+        : {}),
+      ...(provider === 'specstream'
+        ? {
+            key: 'specstream-mcp',
+            label: 'SpecStream Web Search MCP',
+            requiresToken: true,
+            // The fast tier returns the engines' first results in about a
+            // second, which keeps a spoken reply from stalling on search.
+            toolArguments: { speed: 'fast' },
+          }
         : {}),
       ...options,
     })

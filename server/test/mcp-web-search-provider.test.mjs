@@ -182,6 +182,97 @@ test('projects the Bailian Web Search MCP pages response', async () => {
   })
 })
 
+test('projects SpecStream search_web sources and sends the key and fast tier', async () => {
+  const calls = []
+  const transports = []
+  const provider = createWebSearchProvider({
+    webSearchProvider: 'specstream',
+    webSearchMcpUrl: 'https://api.specstream.ai/mcp',
+    webSearchMcpToken: 'specstream-key',
+    webSearchMcpTool: 'search_web',
+  }, {
+    clientFactory: () => fakeClient({
+      tools: [{
+        name: 'search_web',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            q: { type: 'string' },
+            num: { type: 'integer' },
+            speed: { type: 'string' },
+            passages: { type: 'boolean' },
+          },
+        },
+      }],
+      result: {
+        structuredContent: {
+          query: 'latest facts',
+          kind: 'list',
+          answer: null,
+          rows: [],
+          sources: [{
+            url: 'https://example.com/page',
+            title: 'Example',
+            site: 'example.com',
+            snippet: 'Current facts.',
+            cited: false,
+            read_at: '2026-11-26T07:12:47+00:00',
+          }],
+          took_ms: 812,
+        },
+        content: [{ type: 'text', text: '{"sources":[]}' }],
+      },
+    }, calls),
+    transportFactory: (url, options) => {
+      transports.push({ url, options })
+      return {}
+    },
+  })
+
+  assert.equal(provider.describe().key, 'specstream-mcp')
+  assert.equal(provider.isConfigured(), true)
+  const result = await provider.search('latest facts', { limit: 3 })
+
+  assert.equal(transports[0].url.href, 'https://api.specstream.ai/mcp')
+  assert.equal(
+    transports[0].options.requestInit.headers.authorization,
+    'Bearer specstream-key',
+  )
+  // Only the declared fields are sent: q, num and the fast tier.
+  assert.deepEqual(calls.find(call => call[0] === 'callTool')[1], {
+    name: 'search_web',
+    arguments: { q: 'latest facts', num: 3, speed: 'fast' },
+  })
+  assert.deepEqual(result, {
+    results: [{
+      title: 'Example',
+      url: 'https://example.com/page',
+      snippet: 'Current facts.',
+      source: 'example.com',
+    }],
+  })
+})
+
+test('the SpecStream preset stays off until SPECSTREAM_API_KEY is set', async () => {
+  const calls = []
+  const provider = createWebSearchProvider({
+    webSearchProvider: 'specstream',
+    webSearchMcpUrl: 'https://api.specstream.ai/mcp',
+    webSearchMcpToken: '',
+    webSearchMcpTool: 'search_web',
+  }, {
+    clientFactory: () => fakeClient({ tools: [], result: {} }, calls),
+    transportFactory: () => ({}),
+  })
+
+  assert.equal(provider.isConfigured(), false)
+  await assert.rejects(
+    provider.search('latest facts'),
+    error => error.code === 'search_not_configured',
+  )
+  assert.deepEqual(calls, [])
+})
+
 test('projects the keyless Keenable Web Search MCP JSON response', async () => {
   const calls = []
   const transports = []

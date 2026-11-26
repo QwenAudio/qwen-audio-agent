@@ -9,13 +9,14 @@ import { listMcpTools } from '../../mcp-tool-discovery.mjs'
 // Keep JSON intact before the runtime bounds individual snippets and citations.
 const MAX_TOOL_TEXT_LENGTH = 64 * 1024
 const QUERY_FIELDS = ['query', 'q', 'search_query']
-const LIMIT_FIELDS = ['limit', 'count', 'top_k', 'max_results']
+const LIMIT_FIELDS = ['limit', 'count', 'top_k', 'max_results', 'num']
 const RESULT_KEYS = [
   'results',
   'search_results',
   'searchResults',
   'items',
   'pages',
+  'sources',
 ]
 
 export class McpWebSearchError extends Error {
@@ -97,6 +98,7 @@ function projectResult(item) {
   )
   const source = clean(
     item.source
+    || item.site
     || item.site_name
     || item.siteName
     || item.hostname

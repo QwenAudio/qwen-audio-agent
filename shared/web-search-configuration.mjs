@@ -4,14 +4,15 @@ export function resolveWebSearchConfiguration(env = process.env) {
   const bailianMcpUrl = 'https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/mcp'
   const keenableMcpUrl = 'https://api.keenable.ai/mcp?keenable_title=qwen-audio-agent'
   const parallelMcpUrl = 'https://mcp.parallel.ai/mcp?tools=web_search'
+  const specstreamMcpUrl = 'https://api.specstream.ai/mcp'
   const explicitMcpUrl = String(env.QWEN_AUDIO_WEB_SEARCH_MCP_URL || '').trim()
   const dashscopeApiKey = String(env.DASHSCOPE_API_KEY || '').trim()
   const requestedProvider = String(env.QWEN_AUDIO_WEB_SEARCH_PROVIDER || '').trim().toLowerCase()
   const provider = requestedProvider || (explicitMcpUrl ? 'mcp' : 'so360')
-  if (!['bailian', 'bing', 'keenable', 'mcp', 'none', 'parallel', 'so360'].includes(provider)) {
+  if (!['bailian', 'bing', 'keenable', 'mcp', 'none', 'parallel', 'so360', 'specstream'].includes(provider)) {
     throw new Error(
       '不支持的 Web Search Provider：'
-      + `${provider}（可选 bailian、bing、keenable、mcp、none、parallel、so360）`,
+      + `${provider}（可选 bailian、bing、keenable、mcp、none、parallel、so360、specstream）`,
     )
   }
   if (provider === 'keenable') {
@@ -33,6 +34,16 @@ export function resolveWebSearchConfiguration(env = process.env) {
       mcpUrl: parallelMcpUrl,
       mcpToken: '',
       mcpTool: 'web_search',
+    }
+  }
+  if (provider === 'specstream') {
+    // Needs SPECSTREAM_API_KEY. Only that key is sent, so endpoint, token and
+    // tool overrides saved for another MCP service never reach SpecStream.
+    return {
+      provider,
+      mcpUrl: specstreamMcpUrl,
+      mcpToken: String(env.SPECSTREAM_API_KEY || '').trim(),
+      mcpTool: 'search_web',
     }
   }
   const usesBailianMcp = provider === 'bailian'

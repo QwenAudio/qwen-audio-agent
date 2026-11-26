@@ -5,6 +5,9 @@
 ### 新增功能
 
 - 新增默认关闭的 GPT-Live 1 Realtime Provider（OpenAI Live API，全双工，推理与工具调用委托给 Responses 模型；被插话、文字输入或停止打断时，已生成的语音播完再停）。
+- 新增可选的 `specstream` Web Search 预设：以 fast 档调用 SpecStream MCP 的 `search_web` 工具，需配置 `SPECSTREAM_API_KEY`，
+  未配置时不发出请求；预设不读取自定义 MCP 的地址、Token 和工具名，默认 360 搜索不变。MCP 搜索结果另识别 `sources`
+  数组、`site` 站点名与 `num` 数量参数。
 
 ### 修复与改进
 
